@@ -1,0 +1,46 @@
+<!--index.html-->
+<!--Embed the header.html template at this location-->
+{{ template "header.html" .}}
+<div class="container-poisc">
+    <div class="card-poisc">
+        <table class="center">
+            <div class="centersH"><h4>{{ if .Message }} {{.Message}} {{end}}</h4></div>
+            <thead>
+            <th>Дата доставки</th>
+            <th>Дата заказа</th>
+            <th>Заказчик</th>
+            <th>Телефон</th>
+            <th>Адрес доставки</th>
+            <th>Товар</th>
+            <th>Кол-во</th>
+            <th>Стоимость</th>
+            <th>Общая стоимость</th>
+            </thead>
+            <tr>
+
+                {{ range .payload }}
+                {{ if .Num }}
+                <td rowspan="{{.Num}}">{{ .DeliveryDate }}</td>
+                <td rowspan="{{.Num}}">{{ .DateTime }}</td>
+                <td rowspan="{{.Num}}">{{ .FullName }}</td>
+                <td rowspan="{{.Num}}">{{ .PhoneNumber }}</td>
+                <td rowspan="{{.Num}}">{{ .DeliveryAddress }}</td>
+                {{end}}
+
+                <td>{{ .ItemName }}</td>
+                <td>{{ .Quantity }}</td>
+                <td>{{ .Cost }}</td>
+
+                {{ if .Num }}
+                {{ if .TotalCost }}
+                <td rowspan="{{.Num}}">{{.TotalCost}}</td>
+                {{end}}
+                {{end}}
+
+            </tr>
+            {{end}}
+        </table>
+    </div>
+</div>
+<!--Embed the footer.html template at this location-->
+{{ template "footer.html" .}}

@@ -173,6 +173,7 @@ func handleMessageText(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 				if len(orders) > 0 {
 					var msgText string
 					var currentDeliveryDate string // Объявляем переменную для отслеживания текущей даты доставки
+					var currentDateTime string
 
 					for i, order := range orders {
 						// Форматирование даты заказа
@@ -187,7 +188,7 @@ func handleMessageText(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 						formattedDate := t.Format("02.01.2006")
 
 						// Группировка по дате доставки
-						if order.DeliveryDate != currentDeliveryDate {
+						if order.DeliveryDate != currentDeliveryDate || order.DateTime != currentDateTime {
 							msgText += fmt.Sprintf("Дата заказа: %v\n", formattedDate)
 							msgText += fmt.Sprintf("Дата доставки: %v\n", order.DeliveryDate)
 							msgText += fmt.Sprintf("Заказчик: %v\n", order.FullName)
@@ -195,11 +196,12 @@ func handleMessageText(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 							msgText += fmt.Sprintf("Адрес доставки: %v\n", order.DeliveryAddress)
 							msgText += "Список заказанных товаров :\n"
 							currentDeliveryDate = order.DeliveryDate
+							currentDateTime = order.DateTime
 						}
 
 						msgText += fmt.Sprintf("%v кол-во: %v цена: %v руб.\n", order.ItemName, order.Quantity, order.Cost)
 
-						if i == len(orders)-1 || (i+1 < len(orders) && orders[i+1].DeliveryDate != currentDeliveryDate) {
+						if i == len(orders)-1 || (i+1 < len(orders) && orders[i+1].DateTime != currentDateTime) {
 							msgText += fmt.Sprintf("Общая стоимость:  %v ркб.\n", order.TotalCost)
 							msgText += "------------------------------------------------------------\n"
 

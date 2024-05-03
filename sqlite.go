@@ -1,3 +1,4 @@
+// main пакет.
 package main
 
 import (
@@ -10,8 +11,10 @@ import (
 	"time"
 )
 
+// db одк
 var db *sql.DB
 
+// OrderInfo оснавная структура данных для заказа продуктов.
 type OrderInfo struct {
 	UserID          int64  `json:"user_id"`
 	FullName        string `json:"full_name"`
@@ -26,59 +29,13 @@ type OrderInfo struct {
 	Num             int    `json:"num"`
 }
 
-// InitDB - инициализация базы данных
+// InitDB - инициализация базы данных.
 func InitDB() {
 	// Открываем соединение с базой данных SQLite
 	var err error
 	db, err = sql.Open("sqlite3", "./data.db")
 	if err != nil {
 		log.Fatal("Error opening database:", err)
-	}
-
-	// Создаем таблицу для хранения пользователей
-	_, err = db.Exec(`
-		CREATE TABLE IF NOT EXISTS users (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			chat_id INTEGER,
-			username TEXT,
-			command TEXT,
-			timestamp DATETIME
-		)
-	`)
-	if err != nil {
-		log.Fatal("Error creating users table:", err)
-	}
-
-	// Создаем таблицу для хранения напоминаний
-	_, err = db.Exec(`
-		CREATE TABLE IF NOT EXISTS reminders (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			date_time DATETIME,
-			message TEXT,
-			user_id INTEGER
-		)
-	`)
-	if err != nil {
-		log.Fatal("Error creating reminders table:", err)
-	}
-
-	_, err = db.Exec(`
-	CREATE TABLE IF NOT EXISTS orders (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		date_time DATETIME,
-		user_id INTEGER,
-		phone_number TEXT, 
-		delivery_address TEXT, 
-		delivery_date TEXT, 
-		full_name TEXT,
-		item_name TEXT, 
-		quantity INTEGER, 
-		cost INTEGER,
-		total_cost INTEGER 
-	)
-	    `)
-	if err != nil {
-		log.Fatal("Error creating reminders table:", err)
 	}
 
 	_, err = db.Exec(`
@@ -157,7 +114,7 @@ func InitDB() {
 
 }
 
-// CloseDB - закрытие соединения с базой данных
+// CloseDB - закрытие соединения с базой данных.
 func CloseDB() {
 	if db != nil {
 		err := db.Close()
@@ -178,7 +135,7 @@ func getOrInsertValues(tx *sql.Tx, tables []string, columns []string, values []i
 		if err != nil && err != sql.ErrNoRows {
 			return nil, fmt.Errorf("error querying rows getOrInsertValues %s:", err)
 		}
-		fmt.Println("getOrInsertValues idd -------------------------------------------", idd)
+
 		if idd == 0 {
 			res, err := tx.Exec(fmt.Sprintf("INSERT INTO %s (%s) VALUES (?)", table, column), value)
 			if err != nil {
@@ -197,8 +154,8 @@ func getOrInsertValues(tx *sql.Tx, tables []string, columns []string, values []i
 	return ids, nil
 }
 
-// Функция для парсинга деталей заказа и добавления в базу данных
-func processOrder(order string, db *sql.DB, userID int64) error {
+// ProcessOrder Функция для парсинга деталей заказа и добавления в базу данных.
+func ProcessOrder(order string, db *sql.DB, userID int64) error {
 	// Регулярные выражения для извлечения информации
 	phoneRegex := regexp.MustCompile(`Номер телефона: (\+\d+)`)
 	addressRegex := regexp.MustCompile(`Адрес доставки: (.+)`)
@@ -289,7 +246,7 @@ func processOrder(order string, db *sql.DB, userID int64) error {
 	return nil
 }
 
-// Функция для выбора из базы данных
+// GetOrdersByUserID Функция для выбора из базы данных.
 func GetOrdersByUserID(db *sql.DB, userID int64) ([]OrderInfo, error) {
 	// Выполняем запрос к базе данных
 	rows, err := db.Query(`
@@ -356,7 +313,7 @@ WHERE
 	return orders, nil
 }
 
-// Структура для хранения параметров фильтрации и сортировки
+// QueryParams Структура для хранения параметров фильтрации и сортировки.
 type QueryParams struct {
 	OrderBy   string
 	OrderDir  string
@@ -366,7 +323,7 @@ type QueryParams struct {
 	// Добавьте другие необходимые фильтры
 }
 
-// Функция для выбора данных из базы данных с фильтрацией и сортировкой
+// GetOrdersWithFilters Функция для выбора данных из базы данных с фильтрацией и сортировкой.
 func GetOrdersWithFilters(db *sql.DB, params QueryParams) ([]OrderInfo, error) {
 	// Создаем базовый запрос
 	query := `

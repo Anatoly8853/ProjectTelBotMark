@@ -5,8 +5,8 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
-// Массив кнопки под меню
-func createCategoryKeyboardReply(categoryName string) ([][]tgbotapi.KeyboardButton, error) {
+// CreateCategoryKeyboardReply Массив кнопки под меню.
+func CreateCategoryKeyboardReply(categoryName string) ([][]tgbotapi.KeyboardButton, error) {
 	// Получаем данные для выбранной категории
 	categoryData, found := Categories[categoryName]
 	if !found {
@@ -42,8 +42,8 @@ func createCategoryKeyboardReply(categoryName string) ([][]tgbotapi.KeyboardButt
 	return keyboard, nil
 }
 
-// Массив кнопки фасовки продукта InlineKeyboardButtonData
-func createCategoryKeyboard(categoryName string) ([][]tgbotapi.InlineKeyboardButton, error) {
+// CreateCategoryKeyboard Массив кнопки фасовки продукта InlineKeyboardButtonData.
+func CreateCategoryKeyboard(categoryName string) ([][]tgbotapi.InlineKeyboardButton, error) {
 	// Получаем данные для выбранной категории
 	categoryData, found := Categories[categoryName]
 	if !found {

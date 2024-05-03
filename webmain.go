@@ -1,3 +1,4 @@
+// main пакет
 package main
 
 import (
@@ -5,6 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// Webnums структура
 type Webnums struct {
 	Num int
 }
@@ -26,13 +28,10 @@ OrderBy:   "tg_user_orders_date.date_time",
 OrderDir:  "ASC",
 }
 orders, err := GetOrdersWithFilters(db, params)
-
-
-
 */
 
-// Главная страница с выводои всех значений из базы
-func handlerIndex(c *gin.Context) {
+// HandlerIndex Главная страница с выводои всех значений из базы.
+func HandlerIndex(c *gin.Context) {
 
 	params := QueryParams{
 		//OrderBy: "tg_user_orders_date.date_time",
@@ -102,15 +101,16 @@ func handlerIndex(c *gin.Context) {
 		}
 	}
 
-	rty := mergeSlidesWithDeliveryDate(payloads, webnums)
+	rty := MergeSlidesWithDeliveryDate(payloads, webnums)
 
 	c.HTML(200, "index.html", gin.H{
-		"Title":    "Телефонный справочник",
+		"Title":    "Заказы Салаты корейские",
 		"Classind": "current",
 		"payload":  rty})
 }
 
-func mergeSlidesWithDeliveryDate(orders []OrderInfo, nums []Webnums) []OrderInfo {
+// MergeSlidesWithDeliveryDate объединяем два слайда для добавление к основному слайду Num.
+func MergeSlidesWithDeliveryDate(orders []OrderInfo, nums []Webnums) []OrderInfo {
 	var result []OrderInfo
 	numIndex := 0
 

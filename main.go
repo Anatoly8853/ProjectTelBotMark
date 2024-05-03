@@ -1,3 +1,4 @@
+// main пакет.
 package main
 
 import (
@@ -15,14 +16,16 @@ import (
 	"time"
 )
 
+// router создаем роутер.
 var router *gin.Engine
 
-func ginRouter() {
+// GinRouter Gin Router функция запускает сервер.
+func GinRouter() {
 	gin.SetMode(gin.ReleaseMode)
 	router = gin.Default()
 	router.Static("/assets/", "front/")
 	router.LoadHTMLGlob("html/templates/*")
-	router.GET("/", handlerIndex)
+	router.GET("/", HandlerIndex)
 	err := router.Run(":8090")
 	if err != nil {
 		fmt.Println(err)
@@ -65,14 +68,14 @@ func main() {
 
 	//log.Printf("Authorized on account %s", bot.Self.UserName)
 
-	go updateMessage(bot)
+	go UpdateMessage(bot)
 
-	ginRouter()
+	GinRouter()
 
 }
 
-// Основной обработчик всех данных бота
-func updateMessage(bot *tgbotapi.BotAPI) {
+// UpdateMessage Основной обработчик всех данных бота.
+func UpdateMessage(bot *tgbotapi.BotAPI) {
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 3
 
@@ -92,7 +95,7 @@ func updateMessage(bot *tgbotapi.BotAPI) {
 			// В этом месте обрабатываем все сообщения, включая команды
 			if update.Message.IsCommand() {
 				// Обработка команд пользователя
-				handleCommands(bot, update)
+				HandleCommands(bot, update)
 			} else {
 				// Обработка текстовых сообщений (не команд)
 				handleMessageText(bot, update)
@@ -106,8 +109,8 @@ func updateMessage(bot *tgbotapi.BotAPI) {
 
 }
 
-// Обработка команды /start и вывод основного меню
-func handleCommands(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
+// HandleCommands Обработка команды /start и вывод основного меню.
+func HandleCommands(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	//var err error
 	msg := tgbotapi.NewMessage(update.Message.Chat.ID, "Нет такой каманды")
 	if update.Message.IsCommand() {
@@ -137,7 +140,7 @@ func handleCommands(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	}
 }
 
-// Разбор callbackData для определения действия текстовых сообщений
+// handleMessageText Разбор callbackData для определения действия текстовых сообщений.
 func handleMessageText(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	msg := tgbotapi.NewMessage(update.Message.Chat.ID, "Нет такой категории продуктов")
 
@@ -243,24 +246,19 @@ func handleMessageText(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 			}
 
 		}
-		//deleteMessages(bot, update.Message.Chat.ID)
 		deletePreviousMessages(bot, update)
 	}
 
 }
 
-// Разбор callbackData для определения действия
+// handleCallbackQueryData Разбор callbackData для определения действия.
 func handleCallbackQueryData(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	if update.CallbackQuery != nil {
 		// Разбор callbackData для определения действия
 		callbackData := update.CallbackQuery.Data
-
 		// Примеры callbackData: "add_1", "remove", "change_1_3" (изменить количество первого товара на 3)
 		parts := strings.Split(callbackData, "_")
-		//if len(parts) != 4 {
-		//	fmt.Println("Некорректный формат строки")
-		//	return
-		//}
+
 		action := parts[0]
 
 		switch action {
@@ -281,12 +279,12 @@ func handleCallbackQueryData(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 
 			addToBasket(bot, update, parts[1], num1, num2) // Добавление товара с указанием названия, количества и стоимости
 		case "confirm":
-			err := processOrder(orderDetails, db, update.CallbackQuery.Message.Chat.ID)
+			err := ProcessOrder(orderDetails, db, update.CallbackQuery.Message.Chat.ID)
 			if err != nil {
 				fmt.Println("Ошибка обработки заказа -------------------------------------------------------:", err)
 				return
 			} else {
-				fmt.Println("Заказ успешно обработан и добавлен в базу данных.")
+				//fmt.Println("Заказ успешно обработан и добавлен в базу данных.")
 				groupMessagesChatID(bot, update)
 				baskets[update.CallbackQuery.Message.Chat.ID] = nil
 			}
@@ -297,21 +295,11 @@ func handleCallbackQueryData(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 
 		case "delete":
 			deleteBasketContents(bot, update)
-			//deletePreviousMessages(bot, update.Message.Chat.ID)
-		case "remove":
-			removeFromBasket(bot, update)
-		case "change":
-			if len(parts) == 3 {
-				// Пример: "change_1_3"
-				//itemID, _ := strconv.Atoi(parts[1])
-				newQuantity, _ := strconv.Atoi(parts[2])
-				changeQuantityInBasket(bot, update, newQuantity)
-			}
 		}
 	}
 }
 
-// Вывод изображения продуктов и кнопки фасовки продукта
+// createCategoryMessage Вывод изображения продуктов и кнопки фасовки продукта.
 func createCategoryMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update, categoryName string) error {
 	chatID := update.Message.Chat.ID
 
@@ -322,10 +310,10 @@ func createCategoryMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update, categor
 	}
 
 	if categoryData.Photo == "" {
-		keyboardReply, err := createCategoryKeyboardReply(categoryData.CategoryName)
+		keyboardReply, err := CreateCategoryKeyboardReply(categoryData.CategoryName)
 		if err != nil {
 			// Обработка ошибки
-			return err
+			return fmt.Errorf("ошибка в CreateCategoryKeyboardReply %s:", err)
 		}
 
 		// Создаем сообщение с инлайн-клавиатурой
@@ -357,7 +345,7 @@ func createCategoryMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update, categor
 		}
 
 		// Создаем кнопки клавиатуры
-		keyboard, err := createCategoryKeyboard(categoryData.CategoryName)
+		keyboard, err := CreateCategoryKeyboard(categoryData.CategoryName)
 		if err != nil {
 			// Обработка ошибки
 			return err
@@ -382,7 +370,7 @@ func createCategoryMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update, categor
 
 }
 
-// Паттерн для поиска эмотзи update.Message.Text
+// separateEmojiAndText Паттерн для поиска эмотзи update.Message.Text.
 func separateEmojiAndText(text string) (string, string) {
 	// Паттерн для поиска эмотзи
 	emojiPattern := regexp.MustCompile(`[\p{So}]`)
@@ -397,7 +385,7 @@ func separateEmojiAndText(text string) (string, string) {
 	return joinStrings(emojis), cleanText
 }
 
-// Объединяем все строки из среза в одну строку из update.Message.Text
+// joinStrings Объединяем все строки из среза в одну строку из update.Message.Text.
 func joinStrings(strs []string) string {
 	// Объединяем все строки из среза в одну строку
 	result := ""

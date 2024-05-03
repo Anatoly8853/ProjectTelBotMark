@@ -41,41 +41,7 @@ func addToBasket(bot *tgbotapi.BotAPI, update tgbotapi.Update, item string, quan
 	sendPopupMessage(bot, update, popupText)
 }
 
-// Удаление последнего добавленного товара из корзины
-func removeFromBasket(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
-	chatID := update.CallbackQuery.Message.Chat.ID
-	if len(baskets[chatID]) > 0 {
-		// Удаляем последний товар из корзины
-		baskets[chatID] = baskets[chatID][:len(baskets[chatID])-1]
-
-		// Отправляем сообщение об успешном удалении
-		popupText := "Последний товар был удален из корзины."
-		sendPopupMessage(bot, update, popupText)
-	} else {
-		// Корзина уже пуста
-		sendPopupMessage(bot, update, "Корзина уже пуста.")
-	}
-}
-
-// Изменение количества последнего добавленного товара
-func changeQuantityInBasket(bot *tgbotapi.BotAPI, update tgbotapi.Update, quantity int) {
-	chatID := update.CallbackQuery.Message.Chat.ID
-	if len(baskets[chatID]) > 0 {
-		// Изменяем количество последнего добавленного товара
-		lastItemIndex := len(baskets[chatID]) - 1
-		baskets[chatID][lastItemIndex].Quantity = quantity
-
-		// Отправляем сообщение об успешном изменении количества
-		itemName := baskets[chatID][lastItemIndex].Item
-		popupText := fmt.Sprintf("Количество '%s' изменено на %d.", itemName, quantity)
-		sendPopupMessage(bot, update, popupText)
-	} else {
-		// Корзина пуста
-		sendPopupMessage(bot, update, "Корзина пуста, изменение количества невозможно.")
-	}
-}
-
-// Отправка всплывающего сообщения
+// Отправка всплывающего сообщения.
 func sendPopupMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update, popupText string) {
 	callbackConfig := tgbotapi.NewCallback(update.CallbackQuery.ID, popupText)
 	callbackConfig.ShowAlert = true // Для отображения в виде всплывающего уведомления
@@ -84,7 +50,7 @@ func sendPopupMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update, popupText st
 	}
 }
 
-// Получение содержимого корзины
+// Получение содержимого корзины.
 func showBasket(bot *tgbotapi.BotAPI, chatID int64, a int) {
 	purchases := baskets[chatID]
 	msg := tgbotapi.NewMessage(chatID, "Вы пока ничего не добавили в корзину")
@@ -129,7 +95,7 @@ func showBasket(bot *tgbotapi.BotAPI, chatID int64, a int) {
 	basketMessages[chatID] = sentMsg.MessageID
 }
 
-// Очищаем корзину
+// Очищаем корзину.
 func deleteBasketContents(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	chatID := update.CallbackQuery.Message.Chat.ID
 
@@ -156,12 +122,17 @@ func deleteBasketContents(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	}
 }
 
-// Пример ввода данных заказа
+// Пример ввода данных заказа.
 func requestDeliveryDetails(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	chatID := update.CallbackQuery.Message.Chat.ID
 
 	// Удаление сообщения
 	deleteMessages(bot, chatID)
+
+	// Получаем текущую дату и добавляем один день
+	tomorrow := time.Now().AddDate(0, 0, 1)
+	// Форматируем дату в строку
+	tomorrowStr := tomorrow.Format("02.01.2006")
 
 	// Формирование текста с просьбой ввести данные для доставки
 	instructions := "Пожалуйста, введите данные в следующем формате:\n" +
@@ -181,12 +152,12 @@ func requestDeliveryDetails(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 		// Сохраняем идентификатор отправленного сообщения для последующего удаления
 		basketMessages[chatID] = sentMsg.MessageID
 	}
-
+	str := fmt.Sprintf("Дата доставки: %v\n", tomorrowStr)
 	// Формирование текста с просьбой ввести данные для доставки
 	instructions =
 		"Номер телефона: +79345678901\n" +
 			"Адрес доставки: Город, Улица, Дом\n" +
-			"Дата доставки: 20.04.2024\n" +
+			str +
 			"ФИО: Иванов Иван"
 
 	// Отправка сообщения с инструкциями и инлайн-клавиатурой
@@ -201,7 +172,7 @@ func requestDeliveryDetails(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	}
 }
 
-// Функция для проверки строки заказа
+// Функция для проверки строки заказа.
 func validateOrderString(orderString string) string {
 	lines := strings.Split(orderString, "\n")
 
@@ -212,8 +183,9 @@ func validateOrderString(orderString string) string {
 	// Разбиваем строку на части по указателю ":"
 	phoneParts := strings.Split(lines[0], ":")
 	// Проверка номера телефона
+	phonePart := strings.Split(phoneParts[1], " ")
 	phoneRegex := regexp.MustCompile(`^(\+7\d{10}|8\d{10})$`)
-	if !phoneRegex.MatchString(strings.TrimSpace(phoneParts[1])) {
+	if !phoneRegex.MatchString(strings.TrimSpace(phonePart[1])) {
 		return "неверный формат номера телефона"
 	}
 	if phoneParts[1] == " +79345678901" {
@@ -252,8 +224,8 @@ func validateOrderString(orderString string) string {
 	return ""
 }
 
-// Анализируем и извлекаем данные из сообщения
-// Объединяем данные заказа с содержимым корзины
+// Анализируем и извлекаем данные из сообщения.
+// Объединяем данные заказа с содержимым корзины.
 func handleDeliveryDetailsMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	chatID := update.Message.Chat.ID
 	messageID := update.Message.MessageID
@@ -332,18 +304,22 @@ func deletePreviousMessages(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	// Проверяем, есть ли сообщения для удаления в этом чате
 	if _, found := messagesToDelete[chatID]; found {
 		// Проходимся по каждому идентификатору сообщения и удаляем его
-		deleteMsg := tgbotapi.NewDeleteMessage(chatID, messageID)
-		if _, err := bot.Request(deleteMsg); err != nil {
-			log.Printf("Ошибка при удалении сообщения: %v", err)
-			// Не используйте log.Panic, чтобы избежать прерывания работы бота из-за одной ошибки
-		}
-
-		for chatIDs, messageIDs := range messagesToDelete {
-			fmt.Printf("ChatID: %d-----------------------------------", chatIDs)
-			for _, messageIDa := range messageIDs {
-				fmt.Printf(" MessageID: %d---------------------------------------------------------------------------------------\n", messageIDa)
+		if messageID > 0 {
+			deleteMsg := tgbotapi.NewDeleteMessage(chatID, messageID)
+			if _, err := bot.Request(deleteMsg); err != nil {
+				//log.Printf("Ошибка при удалении сообщения: %v", err)
+				// Не используйте log.Panic, чтобы избежать прерывания работы бота из-за одной ошибки
 			}
 		}
+		/*
+			for chatIDs, messageIDs := range messagesToDelete {
+				fmt.Printf("ChatID: %d-----------------------------------", chatIDs)
+				for _, messageIDa := range messageIDs {
+					fmt.Printf(" MessageID: %d---------------------------------------------------------------------------------------\n", messageIDa)
+				}
+			}
+
+		*/
 	}
 }
 
@@ -354,10 +330,10 @@ func deleteMessages(bot *tgbotapi.BotAPI, chatID int64) {
 	if messageIDs != 0 {
 		deleteMsg := tgbotapi.NewDeleteMessage(chatID, messageIDs)
 		if _, err := bot.Request(deleteMsg); err != nil {
-			log.Panic(err) // Обработка ошибки по вашему усмотрению
+			//log.Panic(err) // Обработка ошибки по вашему усмотрению
 		}
 
-		fmt.Println("deleteMessages ------------------------------------------------------------------------------", messageIDs)
+		//fmt.Println("deleteMessages ------------------------------------------------------------------------------", messageIDs)
 	}
 }
 
@@ -397,8 +373,11 @@ func groupMessagesChatID(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 }
 
 func isFutureDate(selectedDate string) bool {
+	lines := strings.Split(selectedDate, " ")
+	//fmt.Println("lines[0]---------------------------------------------", lines[0])
+	//fmt.Println("lines[1]---------------------------------------------", lines[1])
 	layout := "02.01.2006" // Формат даты
-	t, err := time.Parse(layout, selectedDate)
+	t, err := time.Parse(layout, lines[1])
 	if err != nil {
 		fmt.Println("Ошибка при разборе даты:", err)
 		return false

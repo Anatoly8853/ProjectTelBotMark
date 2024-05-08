@@ -4,6 +4,8 @@ package main
 import (
 	"fmt"
 	"github.com/gin-gonic/gin"
+	"sort"
+	"time"
 )
 
 // Webnums структура
@@ -35,9 +37,9 @@ func HandlerIndex(c *gin.Context) {
 
 	params := QueryParams{
 		//OrderBy: "tg_user_orders_date.date_time",
-		OrderBy:  "tg_user_orders_date.delivery_date",
-		OrderDir: "DESC",
-		//OrderDir: "ASC",
+		OrderBy: "tg_user_orders_date.delivery_date",
+		//OrderDir: "DESC",
+		OrderDir: "ASC",
 	}
 
 	orders, err := GetOrdersWithFilters(db, params)
@@ -45,6 +47,8 @@ func HandlerIndex(c *gin.Context) {
 		fmt.Println("ошибка в функции handlerIndex запрос к базе GetOrdersWithFilters", err)
 		return
 	}
+
+	sort.Sort(ByDeliveryDate(orders))
 
 	var payloads []OrderInfo
 	var webnums []Webnums
@@ -123,4 +127,15 @@ func MergeSlidesWithDeliveryDate(orders []OrderInfo, nums []Webnums) []OrderInfo
 	}
 
 	return result
+}
+
+type ByDeliveryDate []OrderInfo
+
+func (a ByDeliveryDate) Len() int      { return len(a) }
+func (a ByDeliveryDate) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
+func (a ByDeliveryDate) Less(i, j int) bool {
+	layout := "02.01.2006"
+	dateTime1, _ := time.Parse(layout, a[i].DeliveryDate)
+	dateTime2, _ := time.Parse(layout, a[j].DeliveryDate)
+	return dateTime1.After(dateTime2)
 }

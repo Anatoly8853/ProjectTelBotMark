@@ -6,19 +6,26 @@ import (
 	"log"
 	"os"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 )
 
-// Карта для хранения данных о покупках для каждого пользователя
-var baskets = make(map[int64][]Purchase)
-var basketMessages = make(map[int64]int)
+// Baskets Карта для хранения данных о покупках для каждого пользователя.
+var Baskets = make(map[int64][]Purchase)
+
+// BasketMessages Карта для хранения данных о покупках для каждого пользователя.
+var BasketMessages = make(map[int64]int)
+
+// messagesToDelete удалкение сообщений.
 var messagesToDelete = make(map[int64][]int)
+
+// orderDetails содержание корзины.
 var orderDetails string
 
-// Добавление товаров в корзину
-func addToBasket(bot *tgbotapi.BotAPI, update tgbotapi.Update, item string, quantity int, cost int) {
+// AddToBasket Добавление товаров в корзину.
+func AddToBasket(bot *tgbotapi.BotAPI, update tgbotapi.Update, item string, quantity int, cost int) {
 	chatID := update.CallbackQuery.Message.Chat.ID
 
 	// Добавление покупки в корзину пользователя
@@ -28,31 +35,31 @@ func addToBasket(bot *tgbotapi.BotAPI, update tgbotapi.Update, item string, quan
 		Cost:      cost,
 		Timestamp: time.Now(),
 	}
-	baskets[chatID] = append(baskets[chatID], purchase)
+	Baskets[chatID] = append(Baskets[chatID], purchase)
 
 	// Подсчет общей стоимости в корзине
 	totalCost := 0
-	for _, p := range baskets[chatID] {
+	for _, p := range Baskets[chatID] {
 		totalCost += p.Cost * p.Quantity
 	}
 
 	// Отправка всплывающего сообщения пользователю
 	popupText := fmt.Sprintf("Добавлено в корзину:\n %s, кол-во: %d, цена: %d руб.\n Общая стоимость: %d руб", item, quantity, cost, totalCost)
-	sendPopupMessage(bot, update, popupText)
+	SendPopupMessage(bot, update, popupText)
 }
 
-// Отправка всплывающего сообщения.
-func sendPopupMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update, popupText string) {
+// SendPopupMessage Отправка всплывающего сообщения.
+func SendPopupMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update, popupText string) {
 	callbackConfig := tgbotapi.NewCallback(update.CallbackQuery.ID, popupText)
 	callbackConfig.ShowAlert = true // Для отображения в виде всплывающего уведомления
 	if _, err := bot.Request(callbackConfig); err != nil {
-		log.Panic(err)
+		log.Println(err)
 	}
 }
 
-// Получение содержимого корзины.
-func showBasket(bot *tgbotapi.BotAPI, chatID int64, a int) {
-	purchases := baskets[chatID]
+// ShowBasket Получение содержимого корзины.
+func ShowBasket(bot *tgbotapi.BotAPI, chatID int64, a int) {
+	purchases := Baskets[chatID]
 	msg := tgbotapi.NewMessage(chatID, "Вы пока ничего не добавили в корзину")
 
 	if len(purchases) > 0 {
@@ -92,26 +99,26 @@ func showBasket(bot *tgbotapi.BotAPI, chatID int64, a int) {
 	if err != nil {
 		log.Panic(err)
 	}
-	basketMessages[chatID] = sentMsg.MessageID
+	BasketMessages[chatID] = sentMsg.MessageID
 }
 
-// Очищаем корзину.
-func deleteBasketContents(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
+// DeleteBasketContents Очищаем корзину.
+func DeleteBasketContents(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	chatID := update.CallbackQuery.Message.Chat.ID
 
 	// Очистка содержимого корзины пользователя
-	baskets[chatID] = nil // Или 	baskets[chatID] = []Purchase{} //для обнуления без удаления ключа
+	Baskets[chatID] = nil // Или 	baskets[chatID] = []Purchase{} //для обнуления без удаления ключа
 
 	// Удаление сообщения с содержимым корзины
-	messageID := basketMessages[chatID]
-	//fmt.Println("deleteBasketContents  messageID = ", messageID, "------------------------------------------------------------------")
+	messageID := BasketMessages[chatID]
+
 	if messageID != 0 {
 		deleteMsg := tgbotapi.NewDeleteMessage(chatID, messageID)
 		if _, err := bot.Request(deleteMsg); err != nil {
-			log.Panic(err) // Обработка ошибки по вашему усмотрению
+			log.Println(err) // Обработка ошибки по вашему усмотрению
 		}
 		// После успешного удаления сообщения можно обнулить идентификатор сообщения в basketMessages
-		basketMessages[chatID] = 0
+		BasketMessages[chatID] = 0
 	}
 
 	// Отправка подтверждающего сообщения пользователю, что корзина была очищена
@@ -122,8 +129,8 @@ func deleteBasketContents(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	}
 }
 
-// Пример ввода данных заказа.
-func requestDeliveryDetails(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
+// RequestDeliveryDetails Пример ввода данных заказа.
+func RequestDeliveryDetails(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	chatID := update.CallbackQuery.Message.Chat.ID
 
 	// Удаление сообщения
@@ -150,7 +157,7 @@ func requestDeliveryDetails(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 		log.Printf("Ошибка при отправке сообщения: %v", err)
 	} else {
 		// Сохраняем идентификатор отправленного сообщения для последующего удаления
-		basketMessages[chatID] = sentMsg.MessageID
+		BasketMessages[chatID] = sentMsg.MessageID
 	}
 	str := fmt.Sprintf("Дата доставки: %v\n", tomorrowStr)
 	// Формирование текста с просьбой ввести данные для доставки
@@ -168,12 +175,12 @@ func requestDeliveryDetails(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 		log.Printf("Ошибка при отправке сообщения: %v", err)
 	} else {
 		// Сохраняем идентификатор отправленного сообщения для последующего удаления
-		basketMessages[chatID] = sentMsg.MessageID
+		BasketMessages[chatID] = sentMsg.MessageID
 	}
 }
 
-// Функция для проверки строки заказа.
-func validateOrderString(orderString string) string {
+// ValidateOrderString Функция для проверки строки заказа.
+func ValidateOrderString(orderString string) string {
 	lines := strings.Split(orderString, "\n")
 
 	// Проверка строки на наличие всех полей
@@ -210,7 +217,7 @@ func validateOrderString(orderString string) string {
 	if err != nil {
 		return "неверный формат даты доставки провельный формат даты 02.01.2006"
 	}
-	if !isFutureDate(dateParts[1]) {
+	if !IsFutureDate(dateParts[1]) {
 		return "выбранная дата доставки не может быть прошедшей или текущей датой"
 	}
 
@@ -232,7 +239,7 @@ func handleDeliveryDetailsMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update) 
 	MsgText := update.Message.Text
 
 	// Проверяем, соответствует ли сообщение ожидаемому формату
-	if str := validateOrderString(MsgText); str != "" {
+	if str := ValidateOrderString(MsgText); str != "" {
 
 		// Если данные введены некорректно, просим ввести их заново
 		if _, err := bot.Send(tgbotapi.NewMessage(chatID, str)); err != nil {
@@ -245,7 +252,7 @@ func handleDeliveryDetailsMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update) 
 		orderDetails = "Детали заказа:\n" + MsgText // Сообщение с деталями заказа
 		// Здесь можно добавить логику для добавления информации о содержимом корзины к orderDetails
 		// Получение содержимого корзины
-		purchases := baskets[chatID]
+		purchases := Baskets[chatID]
 
 		//if len(purchases) > 0 {
 		groupedPurchases := make(map[string]Purchase)
@@ -291,12 +298,12 @@ func handleDeliveryDetailsMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update) 
 			fmt.Println(err) // Обработка ошибки по вашему усмотрению
 		} else {
 			// Сохраняем идентификатор отправленного сообщения для последующего удаления
-			basketMessages[chatID] = sentMsg.MessageID
+			BasketMessages[chatID] = sentMsg.MessageID
 		}
 	}
 }
 
-// Удаляем сообщения
+// deletePreviousMessages Удаляем сообщения.
 func deletePreviousMessages(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	messageID := update.Message.MessageID
 	chatID := update.Message.Chat.ID
@@ -323,22 +330,18 @@ func deletePreviousMessages(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	}
 }
 
-// Удаляем сообщения
+// deleteMessages Удаляем сообщения.
 func deleteMessages(bot *tgbotapi.BotAPI, chatID int64) {
 	// Удаление сообщения
-	messageIDs := basketMessages[chatID]
-	if messageIDs != 0 {
-		deleteMsg := tgbotapi.NewDeleteMessage(chatID, messageIDs)
-		if _, err := bot.Request(deleteMsg); err != nil {
-			//log.Panic(err) // Обработка ошибки по вашему усмотрению
-		}
-
-		//fmt.Println("deleteMessages ------------------------------------------------------------------------------", messageIDs)
+	messageIDs := BasketMessages[chatID]
+	deleteMsg := tgbotapi.NewDeleteMessage(chatID, messageIDs)
+	if _, err := bot.Request(deleteMsg); err != nil {
+		//log.Panic(err) // Обработка ошибки по вашему усмотрению
 	}
 }
 
-// отправляем заказ
-func groupMessagesChatID(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
+// GroupMessagesChatID отправляем заказ.
+func GroupMessagesChatID(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	chatID := update.CallbackQuery.Message.Chat.ID
 	msg := tgbotapi.NewMessage(chatID, "Нет данных для отправки")
 	if orderDetails != "" {
@@ -353,7 +356,6 @@ func groupMessagesChatID(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 		message := tgbotapi.NewMessage(groupChatID, orderDetails)
 		_, err = bot.Send(message)
 		if err != nil {
-			//log.Panic(err)
 			fmt.Println("groupMessagesChatID err = ", err)
 			return
 		} else {
@@ -372,10 +374,9 @@ func groupMessagesChatID(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	}
 }
 
-func isFutureDate(selectedDate string) bool {
+// IsFutureDate проверяем валидность даты введенной пользователем при заказе.
+func IsFutureDate(selectedDate string) bool {
 	lines := strings.Split(selectedDate, " ")
-	//fmt.Println("lines[0]---------------------------------------------", lines[0])
-	//fmt.Println("lines[1]---------------------------------------------", lines[1])
 	layout := "02.01.2006" // Формат даты
 	t, err := time.Parse(layout, lines[1])
 	if err != nil {
@@ -386,4 +387,66 @@ func isFutureDate(selectedDate string) bool {
 	currentTime := time.Now()
 	// Сравниваем выбранную дату с текущей
 	return t.After(currentTime) || t.Equal(currentTime)
+}
+
+// MainOrdersByUserID Выводим заказы пользователей.
+func MainOrdersByUserID(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
+	userID := update.Message.Chat.ID // Ваш user_id
+	orders, err := GetOrdersByUserID(db, userID)
+	if err != nil {
+		fmt.Println("Error getting orders:", err)
+		return
+	}
+	sort.Sort(ByDeliveryDate(orders))
+
+	if len(orders) > 0 {
+		var msgText string
+		var currentDeliveryDate string // Объявляем переменную для отслеживания текущей даты доставки
+		var currentDateTime string
+
+		for i, order := range orders {
+			// Форматирование даты заказа
+			// Парсинг строки времени в тип time.Time
+			t, err := time.Parse("15:04 02.01.2006", order.DateTime)
+			if err != nil {
+				fmt.Println("Ошибка парсинга строки времени:", err)
+				return
+			}
+
+			// Форматирование времени в нужный формат
+			formattedDate := t.Format("02.01.2006")
+
+			// Группировка по дате доставки
+			if order.DeliveryDate != currentDeliveryDate || order.DateTime != currentDateTime {
+				msgText += fmt.Sprintf("Дата заказа: %v\n", formattedDate)
+				msgText += fmt.Sprintf("Дата доставки: %v\n", order.DeliveryDate)
+				msgText += fmt.Sprintf("Заказчик: %v\n", order.FullName)
+				msgText += fmt.Sprintf("Телефон для связи: %v\n", order.PhoneNumber)
+				msgText += fmt.Sprintf("Адрес доставки: %v\n", order.DeliveryAddress)
+				msgText += "Список заказанных товаров :\n"
+				currentDeliveryDate = order.DeliveryDate
+				currentDateTime = order.DateTime
+			}
+
+			msgText += fmt.Sprintf("%v кол-во: %v цена: %v руб.\n", order.ItemName, order.Quantity, order.Cost)
+
+			if i == len(orders)-1 || (i+1 < len(orders) && orders[i+1].DateTime != currentDateTime) {
+				msgText += fmt.Sprintf("Общая стоимость:  %v ркб.\n", order.TotalCost)
+				msgText += "------------------------------------------------------------\n"
+
+			}
+
+			msgs := tgbotapi.NewMessage(update.Message.Chat.ID, msgText)
+			if _, err = bot.Send(msgs); err != nil {
+				log.Println("Ошибка отправки сообщения:", err)
+			}
+		}
+
+	} else {
+		msgs := tgbotapi.NewMessage(update.Message.Chat.ID, "Вы ничего у нас не заказывали")
+		if _, err = bot.Send(msgs); err != nil {
+			log.Println("Ошибка отправки сообщения:", err)
+		}
+	}
+
 }

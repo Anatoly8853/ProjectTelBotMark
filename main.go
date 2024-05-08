@@ -3,7 +3,6 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"github.com/gin-gonic/gin"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -13,7 +12,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"time"
 )
 
 // router создаем роутер.
@@ -64,7 +62,7 @@ func main() {
 		return
 	}
 
-	bot.Debug = false //false //true   // выводим лог или нет
+	bot.Debug = true //false //true   // выводим лог или нет
 
 	//log.Printf("Authorized on account %s", bot.Self.UserName)
 
@@ -149,13 +147,12 @@ func handleMessageText(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 		// Обработчик нажатий на кнопки меню
 		categoryName := update.Message.Text
 		// Создаем сообщение с фото категории и встроенной клавиатурой
-		_, pureText := separateEmojiAndText(categoryName)
+		_, pureText := SeparateEmojiAndText(categoryName)
 
 		// Проверяем есть у нас такая категория если нет вызываем другое меню
 		err := createCategoryMessage(bot, update, pureText)
 
 		if err != nil {
-			//log.Println("Ошибка создания сообщения с категорией:", err)
 			// Отправляем сообщение
 			if strings.HasPrefix(pureText, "Номер телефона:") {
 				pureText = "Номер телефона:"
@@ -165,63 +162,9 @@ func handleMessageText(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 
 			case "Номер телефона:":
 				handleDeliveryDetailsMessage(bot, update)
-				//deletePreviousMessages(bot, update)
 			case "Мои заказы":
-				userID := update.Message.Chat.ID // Ваш user_id
-				orders, err := GetOrdersByUserID(db, userID)
-				if err != nil {
-					fmt.Println("Error getting orders:", err)
-					return
-				}
-				if len(orders) > 0 {
-					var msgText string
-					var currentDeliveryDate string // Объявляем переменную для отслеживания текущей даты доставки
-					var currentDateTime string
-
-					for i, order := range orders {
-						// Форматирование даты заказа
-						// Парсинг строки времени в тип time.Time
-						t, err := time.Parse("15:04 02.01.2006", order.DateTime)
-						if err != nil {
-							fmt.Println("Ошибка парсинга строки времени:", err)
-							return
-						}
-
-						// Форматирование времени в нужный формат
-						formattedDate := t.Format("02.01.2006")
-
-						// Группировка по дате доставки
-						if order.DeliveryDate != currentDeliveryDate || order.DateTime != currentDateTime {
-							msgText += fmt.Sprintf("Дата заказа: %v\n", formattedDate)
-							msgText += fmt.Sprintf("Дата доставки: %v\n", order.DeliveryDate)
-							msgText += fmt.Sprintf("Заказчик: %v\n", order.FullName)
-							msgText += fmt.Sprintf("Телефон для связи: %v\n", order.PhoneNumber)
-							msgText += fmt.Sprintf("Адрес доставки: %v\n", order.DeliveryAddress)
-							msgText += "Список заказанных товаров :\n"
-							currentDeliveryDate = order.DeliveryDate
-							currentDateTime = order.DateTime
-						}
-
-						msgText += fmt.Sprintf("%v кол-во: %v цена: %v руб.\n", order.ItemName, order.Quantity, order.Cost)
-
-						if i == len(orders)-1 || (i+1 < len(orders) && orders[i+1].DateTime != currentDateTime) {
-							msgText += fmt.Sprintf("Общая стоимость:  %v ркб.\n", order.TotalCost)
-							msgText += "------------------------------------------------------------\n"
-
-						}
-					}
-
-					msgs := tgbotapi.NewMessage(update.Message.Chat.ID, msgText)
-					if _, err = bot.Send(msgs); err != nil {
-						log.Println("Ошибка отправки сообщения:", err)
-					}
-				} else {
-					msgs := tgbotapi.NewMessage(update.Message.Chat.ID, "Вы ничего у нас не заказывали")
-					if _, err = bot.Send(msgs); err != nil {
-						log.Println("Ошибка отправки сообщения:", err)
-					}
-				}
-
+				//Выводим заказы пользователей
+				MainOrdersByUserID(bot, update)
 			case "Назад":
 				// Возвращаемся в основное меню
 				err = createCategoryMessage(bot, update, "Меню")
@@ -230,7 +173,7 @@ func handleMessageText(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 				}
 			// Другие сценарии...
 			case "Корзина":
-				showBasket(bot, update.Message.Chat.ID, 2)
+				ShowBasket(bot, update.Message.Chat.ID, 2)
 				messageID := update.Message.MessageID
 				chatID := update.Message.Chat.ID
 				deleteMsg := tgbotapi.NewDeleteMessage(chatID, messageID)
@@ -244,11 +187,9 @@ func handleMessageText(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 					log.Println("Ошибка отправки сообщения:", err)
 				}
 			}
-
 		}
 		deletePreviousMessages(bot, update)
 	}
-
 }
 
 // handleCallbackQueryData Разбор callbackData для определения действия.
@@ -277,24 +218,24 @@ func handleCallbackQueryData(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 				return
 			}
 
-			addToBasket(bot, update, parts[1], num1, num2) // Добавление товара с указанием названия, количества и стоимости
+			AddToBasket(bot, update, parts[1], num1, num2) // Добавление товара с указанием названия, количества и стоимости
 		case "confirm":
 			err := ProcessOrder(orderDetails, db, update.CallbackQuery.Message.Chat.ID)
 			if err != nil {
-				fmt.Println("Ошибка обработки заказа -------------------------------------------------------:", err)
+				//fmt.Println("Ошибка обработки заказа -------------------------------------------------------:", err)
 				return
 			} else {
 				//fmt.Println("Заказ успешно обработан и добавлен в базу данных.")
-				groupMessagesChatID(bot, update)
-				baskets[update.CallbackQuery.Message.Chat.ID] = nil
+				GroupMessagesChatID(bot, update)
+				Baskets[update.CallbackQuery.Message.Chat.ID] = nil
 			}
 
 		case "send": // Получение содержимого корзины
 			// Пример ввода данных заказа
-			requestDeliveryDetails(bot, update)
+			RequestDeliveryDetails(bot, update)
 
 		case "delete":
-			deleteBasketContents(bot, update)
+			DeleteBasketContents(bot, update)
 		}
 	}
 }
@@ -306,7 +247,7 @@ func createCategoryMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update, categor
 	// Поиск категории в данных
 	categoryData, found := Categories[categoryName]
 	if !found {
-		return errors.New("категория не найдена в createCategoryMessage")
+		return fmt.Errorf("категория не найдена в createCategoryMessage")
 	}
 
 	if categoryData.Photo == "" {
@@ -333,7 +274,6 @@ func createCategoryMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update, categor
 	} else {
 		// Создаем медиа-объект для изображения
 		photo := tgbotapi.NewInputMediaPhoto(tgbotapi.FilePath(categoryData.Photo))
-		//msgPhoto := tgbotapi.NewMessage(update.Message.Chat.ID, "")
 
 		// Создаем медиагруппу с изображением и URL
 		mediaGroup := tgbotapi.NewMediaGroup(chatID, []interface{}{photo})
@@ -370,8 +310,8 @@ func createCategoryMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update, categor
 
 }
 
-// separateEmojiAndText Паттерн для поиска эмотзи update.Message.Text.
-func separateEmojiAndText(text string) (string, string) {
+// SeparateEmojiAndText Паттерн для поиска эмотзи update.Message.Text.
+func SeparateEmojiAndText(text string) (string, string) {
 	// Паттерн для поиска эмотзи
 	emojiPattern := regexp.MustCompile(`[\p{So}]`)
 	// Ищем все эмотзи в тексте
@@ -382,11 +322,11 @@ func separateEmojiAndText(text string) (string, string) {
 	// Удаляем лишние пробелы
 	cleanText = regexp.MustCompile(`\s+`).ReplaceAllString(cleanText, " ")
 
-	return joinStrings(emojis), cleanText
+	return JoinStrings(emojis), cleanText
 }
 
-// joinStrings Объединяем все строки из среза в одну строку из update.Message.Text.
-func joinStrings(strs []string) string {
+// JoinStrings Объединяем все строки из среза в одну строку из update.Message.Text.
+func JoinStrings(strs []string) string {
 	// Объединяем все строки из среза в одну строку
 	result := ""
 	for _, str := range strs {

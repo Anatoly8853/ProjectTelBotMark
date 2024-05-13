@@ -156,7 +156,7 @@
     "categoryName": "Шиитаке",
     "photo": "./jpeg/Shiitake.jpeg",
     "buttons": [
-      {"text": "⚖ведёрко 0,5\n\uD83D\uDCB5400 рублей", "callback": "add_Грибы шиитаке ведёрко 0,9_1_400"}
+      {"text": "⚖ведёрко 0,5\n\uD83D\uDCB5400 рублей", "callback": "add_Грибы шиитаке ведёрко 0,5_1_400"}
     ]
   },
   "Шампиньоны": {

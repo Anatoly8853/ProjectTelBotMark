@@ -2,13 +2,13 @@
 package main
 
 import (
-	"fmt"
 	"github.com/gin-gonic/gin"
+	"log"
 	"sort"
 	"time"
 )
 
-// Webnums структура
+// Webnums структура.
 type Webnums struct {
 	Num int
 }
@@ -35,6 +35,8 @@ orders, err := GetOrdersWithFilters(db, params)
 // HandlerIndex Главная страница с выводои всех значений из базы.
 func HandlerIndex(c *gin.Context) {
 
+	now := time.Now().Format("02.01.2006") // формат даты в виде DD.MM.YYYY
+
 	params := QueryParams{
 		//OrderBy: "tg_user_orders_date.date_time",
 		OrderBy: "tg_user_orders_date.delivery_date",
@@ -44,7 +46,7 @@ func HandlerIndex(c *gin.Context) {
 
 	orders, err := GetOrdersWithFilters(db, params)
 	if err != nil {
-		fmt.Println("ошибка в функции handlerIndex запрос к базе GetOrdersWithFilters", err)
+		log.Println("ошибка в функции handlerIndex запрос к базе GetOrdersWithFilters", err)
 		return
 	}
 
@@ -64,6 +66,20 @@ func HandlerIndex(c *gin.Context) {
 		for i, order := range orders {
 			var payload OrderInfo
 			var webnum Webnums
+
+			// Парсинг строки времени в тип time.Time
+			t, err := time.Parse("02.01.2006", order.DeliveryDate)
+			if err != nil {
+				log.Println("Ошибка парсинга строки времени:", err)
+				return
+			}
+
+			// Форматирование времени в нужный формат
+			formattedDate := t.Format("02.01.2006")
+
+			if formattedDate == now {
+				payload.CurrentDate = true
+			}
 
 			if order.DateTime != currentDateTime2 {
 				currentDateTime2 = order.DateTime
@@ -98,7 +114,6 @@ func HandlerIndex(c *gin.Context) {
 			if i == len(orders)-1 || (i+1 < len(orders) && orders[i+1].DateTime != currentDateTime2) {
 				webnum.Num = num
 				webnums = append(webnums, webnum)
-				//payload.TotalCost = order.TotalCost
 			}
 
 			payloads = append(payloads, payload)
@@ -107,8 +122,20 @@ func HandlerIndex(c *gin.Context) {
 
 	rty := MergeSlidesWithDeliveryDate(payloads, webnums)
 
+	// Здесь должен быть ваш код для получения данных, например payload
+	/*
+		data := map[string]interface{}{
+			"Title":       "Заказы Салаты корейские",
+			"Classind":    "current",
+			"payload":     rty, // предполагаем, что payload это данные, которые вы хотите отобразить
+			"currentDate": now,
+		}
+
+	*/
+	//fmt.Println(rty)
+
 	c.HTML(200, "index.html", gin.H{
-		"Title":    "Заказы Салаты корейские",
+		"Title":    "Телефонный справочник",
 		"Classind": "current",
 		"payload":  rty})
 }

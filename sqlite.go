@@ -27,6 +27,7 @@ type OrderInfo struct {
 	Quantity        int    `json:"quantity"`
 	Cost            int    `json:"cost"`
 	Num             int    `json:"num"`
+	CurrentDate     bool   `json:"current_date"`
 }
 
 // InitDB - инициализация базы данных.
@@ -35,6 +36,7 @@ func InitDB() {
 	var err error
 	db, err = sql.Open("sqlite3", "./data.db")
 	if err != nil {
+		logError("Error opening database:", err)
 		log.Fatal("Error opening database:", err)
 	}
 
@@ -45,6 +47,7 @@ func InitDB() {
 	)		
 	    `)
 	if err != nil {
+		logError("Error creating table:", err)
 		log.Fatal("Error creating reminders table:", err)
 	}
 
@@ -52,13 +55,26 @@ func InitDB() {
 	CREATE TABLE IF NOT EXISTS tg_user_orders (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     order_id INTEGER,
-    item_name TEXT,
+    item_name INTEGER,
     quantity INTEGER,
     cost INTEGER,
-    FOREIGN KEY (order_id) REFERENCES tg_user_orders_date(id)   
+    FOREIGN KEY (order_id) REFERENCES tg_user_orders_date(id),   
+	FOREIGN KEY (item_name) REFERENCES tg_user_order_id(id) 
 	)
 	`)
 	if err != nil {
+		logError("Error creating table:", err)
+		log.Fatal("Error creating reminders table:", err)
+	}
+
+	_, err = db.Exec(`
+	CREATE TABLE IF NOT EXISTS tg_user_order_id (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,    
+    item_name TEXT     
+	)
+	`)
+	if err != nil {
+		logError("Error creating table:", err)
 		log.Fatal("Error creating reminders table:", err)
 	}
 
@@ -69,6 +85,7 @@ func InitDB() {
 	)
 	`)
 	if err != nil {
+		logError("Error creating table:", err)
 		log.Fatal("Error creating reminders table:", err)
 	}
 
@@ -79,6 +96,7 @@ func InitDB() {
 	)
 	`)
 	if err != nil {
+		logError("Error creating table:", err)
 		log.Fatal("Error creating reminders table:", err)
 	}
 
@@ -89,6 +107,7 @@ func InitDB() {
 	)
 	`)
 	if err != nil {
+		logError("Error creating table:", err)
 		log.Fatal("Error creating reminders table:", err)
 	}
 
@@ -109,6 +128,7 @@ func InitDB() {
 	)	
 	`)
 	if err != nil {
+		logError("Error creating table:", err)
 		log.Fatal("Error creating reminders table:", err)
 	}
 
@@ -119,7 +139,8 @@ func CloseDB() {
 	if db != nil {
 		err := db.Close()
 		if err != nil {
-			log.Println("Error closing database:", err)
+			logError("Error closing database:", err)
+			return
 		}
 	}
 }
@@ -133,18 +154,21 @@ func getOrInsertValues(tx *sql.Tx, tables []string, columns []string, values []i
 		var idd int64
 		err := tx.QueryRow(fmt.Sprintf(`SELECT id FROM %s WHERE %s = ?`, table, column), value).Scan(&idd)
 		if err != nil && err != sql.ErrNoRows {
-			return nil, fmt.Errorf("error querying rows getOrInsertValues %s:", err)
+			logError("Error selecting row: ", err)
+			return nil, err
 		}
 
 		if idd == 0 {
 			res, err := tx.Exec(fmt.Sprintf("INSERT INTO %s (%s) VALUES (?)", table, column), value)
 			if err != nil {
-				return nil, fmt.Errorf("error Exec getOrInsertValues %s:", err)
+				logError("Error inserting row:", err)
+				return nil, err
 			}
 
 			idd, err = res.LastInsertId()
 			if err != nil {
-				return nil, fmt.Errorf("error LastInsertId getOrInsertValues %s:", err)
+				logError("Error inserting row:", err)
+				return nil, err
 			}
 		}
 
@@ -172,12 +196,12 @@ func ProcessOrder(order string, db *sql.DB, userID int64) error {
 	totalCost, _ := strconv.Atoi(totalCostRegex.FindStringSubmatch(order)[1])
 	// Извлечение информации о товарах
 	items := itemRegex.FindAllStringSubmatch(order, -1)
-	//fmt.Println("items-------------------------------------------------------------------", items)
 
 	// Начало транзакции
 	tx, err := db.Begin()
 	if err != nil {
-		return fmt.Errorf("Error starting transaction processOrder %s:", err)
+		logError("Error starting transaction: ", err)
+		return err
 	}
 	defer func() {
 		if err != nil {
@@ -199,6 +223,7 @@ func ProcessOrder(order string, db *sql.DB, userID int64) error {
 	ids, err := getOrInsertValues(tx, tables, columns, values)
 	if err != nil {
 		// Обработать ошибку
+		logError("Error inserting row: ", err)
 		return err
 	}
 
@@ -211,86 +236,99 @@ func ProcessOrder(order string, db *sql.DB, userID int64) error {
 	var existingOrdersDateID int64
 	stmt, err := tx.Prepare(`INSERT INTO tg_user_orders_date (user_id, phone_number_id, full_name_id, delivery_address_id, date_time, delivery_date, total_cost) VALUES (?, ?, ?, ?, ?, ?,?)`)
 	if err != nil {
-		return fmt.Errorf("Error preparing query processOrder %s:", err)
+		logError("Error inserting row: ", err)
+		return err
 	}
-	//defer stmt.Close()
 
 	res, err := stmt.Exec(existingUserID, existingPhoneID, existingFullNameID, existingAddressID, formattedDateTime, deliveryDate, totalCost)
 	if err != nil {
-		return fmt.Errorf("Error executing query %s:", err)
+		logError("Error inserting row: ", err)
+		return err
 	}
 	// Получение ID вставленной записи
 	existingOrdersDateID, err = res.LastInsertId()
 	if err != nil {
-		return fmt.Errorf("Error executing query %s:", err)
+		logError("Error inserting row: ", err)
+		return err
 	}
 
 	// Вставляем новые записи в tg_user_orders
 	stmt, err = tx.Prepare(`INSERT INTO tg_user_orders (order_id, item_name, quantity, cost) VALUES (?, ?, ?, ?)`)
 	if err != nil {
-		return fmt.Errorf("Error preparing query %s:", err)
+		logError("Error inserting row: ", err)
+		return err
 	}
-	//defer stmt.Close()
 
 	for _, item := range items {
 		itemName := item[1]
 		quantity, _ := strconv.Atoi(item[2])
 		cost, _ := strconv.Atoi(item[3])
 
-		_, err = stmt.Exec(existingOrdersDateID, itemName, quantity, cost)
+		// Вставка новой записи в tg_user_Chat_ID
+		// Проверяем, существует ли пользователь с таким user_id
+		tables = []string{"tg_user_order_id"}
+		columns = []string{"item_name"}
+		values = []interface{}{itemName}
+
+		ids, err = getOrInsertValues(tx, tables, columns, values)
 		if err != nil {
-			return fmt.Errorf("Error executing query %s:", err)
+			// Обработать ошибку
+			logError("Error inserting row: ", err)
+			return err
+		}
+
+		_, err = stmt.Exec(existingOrdersDateID, ids[0], quantity, cost)
+		if err != nil {
+			logError("Error inserting query: ", err)
+			return err
 		}
 	}
-
 	return nil
 }
 
 // GetOrdersByUserID Функция для выбора из базы данных.
-func GetOrdersByUserID(db *sql.DB, userID int64) ([]OrderInfo, error) {
+func GetOrdersByUserID(db *sql.DB, userID int64, limit uint8) ([]OrderInfo, error) {
 	// Выполняем запрос к базе данных
 	rows, err := db.Query(`
-       SELECT
-    tg_user_Chat_ID.user_id,
-    tg_user_full_name.full_name,
-    tg_user_orders_date.date_time,
-    tg_user_orders_date.total_cost,
-    tg_user_orders_date.delivery_date,
-    tg_user_phone_number.phone_number,
-    tg_user_delivery_address.delivery_address,
-    tg_user_orders.item_name,
-    tg_user_orders.quantity,
-    tg_user_orders.cost
-FROM
-    tg_user_Chat_ID
-        JOIN
-    tg_user_orders_date ON tg_user_Chat_ID.id = tg_user_orders_date.user_id
-        JOIN
-    tg_user_phone_number ON tg_user_orders_date.phone_number_id = tg_user_phone_number.id
-        JOIN
-    tg_user_delivery_address ON tg_user_orders_date.delivery_address_id = tg_user_delivery_address.id
-        JOIN
-    tg_user_orders ON tg_user_orders_date.id = tg_user_orders.order_id
-        JOIN
-    tg_user_full_name ON tg_user_orders_date.full_name_id = tg_user_full_name.id
-WHERE
-    tg_user_Chat_ID.user_id  = ?`, userID)
+        SELECT
+            tg_user_Chat_ID.user_id,
+            tg_user_full_name.full_name,
+            tg_user_orders_date.date_time,
+            tg_user_orders_date.total_cost,
+            tg_user_orders_date.delivery_date,
+            tg_user_phone_number.phone_number,
+            tg_user_delivery_address.delivery_address,
+            tg_user_order_id.item_name,
+            tg_user_orders.quantity,
+            tg_user_orders.cost
+        FROM
+            tg_user_Chat_ID
+                JOIN tg_user_orders_date ON tg_user_Chat_ID.id = tg_user_orders_date.user_id
+                JOIN tg_user_phone_number ON tg_user_orders_date.phone_number_id = tg_user_phone_number.id
+                JOIN tg_user_delivery_address ON tg_user_orders_date.delivery_address_id = tg_user_delivery_address.id
+                JOIN tg_user_orders ON tg_user_orders_date.id = tg_user_orders.order_id
+                JOIN tg_user_full_name ON tg_user_orders_date.full_name_id = tg_user_full_name.id
+                JOIN tg_user_order_id ON tg_user_orders.item_name = tg_user_order_id.id
+        WHERE
+            tg_user_Chat_ID.user_id = ?
+        ORDER BY
+            tg_user_orders_date.date_time DESC
+        LIMIT ?`, userID, limit)
 	if err != nil {
-		return nil, fmt.Errorf("Error preparing query GetOrdersByUserID %s:", err)
+		logError("Error preparing query GetOrdersByUserID by user: ", err)
+		return nil, err
 	}
-	//defer rows.Close()
 
 	// Создаем слайс для хранения результатов
 	var orders []OrderInfo
 
 	// Обрабатываем каждую строку результата
-	// Обрабатываем каждую строку результата
 	for rows.Next() {
 		var order OrderInfo
-		err := rows.Scan(
+		err = rows.Scan(
 			&order.UserID,
 			&order.FullName,
-			&order.DateTime, // Сканируем как string
+			&order.DateTime,
 			&order.TotalCost,
 			&order.DeliveryDate,
 			&order.PhoneNumber,
@@ -300,13 +338,15 @@ WHERE
 			&order.Cost,
 		)
 		if err != nil {
+			logError("Error getting orders by user: ", err)
 			return nil, err
 		}
 		orders = append(orders, order)
 	}
 
 	// Проверяем наличие ошибок после rows.Next()
-	if err := rows.Err(); err != nil {
+	if err = rows.Err(); err != nil {
+		logError("Проверяем наличие ошибок после rows.Next():", err)
 		return nil, err
 	}
 
@@ -335,16 +375,17 @@ func GetOrdersWithFilters(db *sql.DB, params QueryParams) ([]OrderInfo, error) {
 			tg_user_orders_date.delivery_date,
 			tg_user_phone_number.phone_number,
 			tg_user_delivery_address.delivery_address,
-			tg_user_orders.item_name,
+			tg_user_order_id.item_name,			
 			tg_user_orders.quantity,
 			tg_user_orders.cost
 		FROM
 			tg_user_Chat_ID
 				JOIN tg_user_orders_date ON tg_user_Chat_ID.id = tg_user_orders_date.user_id
-				JOIN tg_user_phone_number ON tg_user_orders_date.phone_number_id = tg_user_phone_number.id
-				JOIN tg_user_delivery_address ON tg_user_orders_date.delivery_address_id = tg_user_delivery_address.id
-				JOIN tg_user_orders ON tg_user_orders_date.id = tg_user_orders.order_id
-				JOIN tg_user_full_name ON tg_user_orders_date.full_name_id = tg_user_full_name.id
+                JOIN tg_user_phone_number ON tg_user_orders_date.phone_number_id = tg_user_phone_number.id
+                JOIN tg_user_delivery_address ON tg_user_orders_date.delivery_address_id = tg_user_delivery_address.id
+                JOIN tg_user_orders ON tg_user_orders_date.id = tg_user_orders.order_id
+                JOIN tg_user_full_name ON tg_user_orders_date.full_name_id = tg_user_full_name.id
+                JOIN tg_user_order_id ON tg_user_orders.item_name = tg_user_order_id.id
 	`
 
 	// Добавляем фильтры к запросу
@@ -381,9 +422,9 @@ func GetOrdersWithFilters(db *sql.DB, params QueryParams) ([]OrderInfo, error) {
 	// Выполняем запрос к базе данных
 	rows, err := db.Query(query, queryArgs...)
 	if err != nil {
+		logError("Error Выполняем запрос к базе данных: ", err)
 		return nil, err
 	}
-	//defer rows.Close()
 
 	// Создаем слайс для хранения результатов
 	var orders []OrderInfo
@@ -391,7 +432,7 @@ func GetOrdersWithFilters(db *sql.DB, params QueryParams) ([]OrderInfo, error) {
 	// Обрабатываем каждую строку результата
 	for rows.Next() {
 		var order OrderInfo
-		err := rows.Scan(
+		err = rows.Scan(
 			&order.UserID,
 			&order.FullName,
 			&order.DateTime,
@@ -404,13 +445,15 @@ func GetOrdersWithFilters(db *sql.DB, params QueryParams) ([]OrderInfo, error) {
 			&order.Cost,
 		)
 		if err != nil {
+			logError("Проверяем наличие ошибок после rows.Scan(): ", err)
 			return nil, err
 		}
 		orders = append(orders, order)
 	}
 
 	// Проверяем наличие ошибок после rows.Next()
-	if err := rows.Err(); err != nil {
+	if err = rows.Err(); err != nil {
+		logError("Error Проверяем наличие ошибок после rows.Next(): ", err)
 		return nil, err
 	}
 

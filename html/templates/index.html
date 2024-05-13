@@ -3,7 +3,7 @@
 {{ template "header.html" .}}
 <style>
     .highlight {
-        background-color: yellow;
+        background-color: lightgoldenrodyellow;
     }
 </style>
 <div class="container-poisc">
@@ -22,7 +22,6 @@
             <th>Общая стоимость</th>
             </thead>
             {{ range .payload }}
-            <!--tr {{ if eq .DeliveryDate $.currentDate }}class="highlight"{{end}}-->
             <tr {{ if .CurrentDate }} class="highlight" {{end}}>
                 {{ if .Num }}
                 <td rowspan="{{.Num}}">{{ .DeliveryDate }}</td>

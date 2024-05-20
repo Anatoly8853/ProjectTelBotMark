@@ -13,8 +13,10 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"time"
 )
+
+// EnableLogging Глобальная переменная для включения/отключения записи логов.
+var EnableLogging = true
 
 // router создаем роутер.
 var router *gin.Engine
@@ -28,12 +30,13 @@ func GinRouter() {
 	router.GET("/", HandlerIndex)
 	err := router.Run(":8090")
 	if err != nil {
-		fmt.Println(err)
+		logError("GinRouter", err)
 		return
 	}
 }
 
 func main() {
+
 	// Открываем соединение с базой данных SQLite
 	var err error
 	InitDB()
@@ -42,31 +45,37 @@ func main() {
 	// Загружаем токен бота из файла .env
 	err = godotenv.Load()
 	if err != nil {
-		log.Fatal("Error loading .env file")
+		//log.Fatal("Error loading .env file")
+		logError("Не удалось открыть файл .env:", err)
+		panic(err)
 	}
 
 	bot, err := tgbotapi.NewBotAPI(os.Getenv("TELEGRAM_TOKEN"))
 	if err != nil {
-		log.Panic(err)
+		logError("Неn токена TELEGRAM_TOKEN:", err)
+		panic(err)
 	}
 
 	// 1. Чтение файла JSON
 	jsonData, er := os.ReadFile("data.json")
 	if er != nil {
-		fmt.Println("Ошибка чтения файла JSON:", er)
-		return
+		logError("Ошибка чтения файла JSON:", er)
+		panic(er)
 	}
 
 	// 2. Распаковка данных
 	err = json.Unmarshal(jsonData, &Categories)
 	if err != nil {
-		fmt.Println("Ошибка распаковки JSON:", err)
+		logError("Ошибка распаковки JSON:", err)
 		return
 	}
 
 	bot.Debug = false //false //true   // выводим лог или нет
 
-	//log.Printf("Authorized on account %s", bot.Self.UserName)
+	//log.Printf("Authorized on account %s\n", bot.Self.UserName)
+	err = fmt.Errorf("все норм")
+	str := fmt.Sprintf("Authorized on account %s", bot.Self.UserName)
+	logError(str, err)
 
 	go UpdateMessage(bot)
 
@@ -80,8 +89,6 @@ func UpdateMessage(bot *tgbotapi.BotAPI) {
 	u.Timeout = 3
 
 	updates := bot.GetUpdatesChan(u)
-
-	//var menuState MenuState = MainMenu
 
 	for update := range updates {
 
@@ -102,11 +109,7 @@ func UpdateMessage(bot *tgbotapi.BotAPI) {
 			}
 			continue
 		}
-
-		// Здесь можно добавить обработку других типов обновлений, если потребуется
-
 	}
-
 }
 
 // HandleCommands Обработка команды /start и вывод основного меню.
@@ -122,7 +125,8 @@ func HandleCommands(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 			// Отправляем главное меню при старте бота или команде /start
 			err := createCategoryMessage(bot, update, "Старт")
 			if err != nil {
-				log.Println("Ошибка создания сообщения с категорией update.Message.IsCommand() = ", err)
+				logError("Ошибка создания сообщения с категорией update.Message.IsCommand() = ", err)
+				return
 			}
 			// Другие команды...
 		case "cabbage":
@@ -133,7 +137,8 @@ func HandleCommands(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 		default:
 			msg.ReplyToMessageID = update.Message.MessageID // Устанавливаем ID сообщения, на которое отвечаем
 			if _, err := bot.Send(msg); err != nil {
-				log.Println("Ошибка отправки сообщения:", err)
+				logError("Ошибка отправки сообщения:", err)
+				return
 			}
 		}
 
@@ -149,15 +154,14 @@ func handleMessageText(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 		// Обработчик нажатий на кнопки меню
 		categoryName := update.Message.Text
 		// Создаем сообщение с фото категории и встроенной клавиатурой
-		_, pureText := separateEmojiAndText(categoryName)
+		_, pureText := SeparateEmojiAndText(categoryName)
 
 		// Проверяем есть у нас такая категория если нет вызываем другое меню
 		err := createCategoryMessage(bot, update, pureText)
 
 		if err != nil {
-			//log.Println("Ошибка создания сообщения с категорией:", err)
 			// Отправляем сообщение
-			if strings.HasPrefix(pureText, "Номер телефона:") {
+			if strings.HasPrefix(pureText, "Номер телефона") {
 				pureText = "Номер телефона:"
 			}
 			switch pureText {
@@ -165,90 +169,35 @@ func handleMessageText(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 
 			case "Номер телефона:":
 				handleDeliveryDetailsMessage(bot, update)
-				//deletePreviousMessages(bot, update)
 			case "Мои заказы":
-				userID := update.Message.Chat.ID // Ваш user_id
-				orders, err := GetOrdersByUserID(db, userID)
-				if err != nil {
-					fmt.Println("Error getting orders:", err)
-					return
-				}
-				if len(orders) > 0 {
-					var msgText string
-					var currentDeliveryDate string // Объявляем переменную для отслеживания текущей даты доставки
-					var currentDateTime string
-
-					for i, order := range orders {
-						// Форматирование даты заказа
-						// Парсинг строки времени в тип time.Time
-						t, err := time.Parse("15:04 02.01.2006", order.DateTime)
-						if err != nil {
-							fmt.Println("Ошибка парсинга строки времени:", err)
-							return
-						}
-
-						// Форматирование времени в нужный формат
-						formattedDate := t.Format("02.01.2006")
-
-						// Группировка по дате доставки
-						if order.DeliveryDate != currentDeliveryDate || order.DateTime != currentDateTime {
-							msgText += fmt.Sprintf("Дата заказа: %v\n", formattedDate)
-							msgText += fmt.Sprintf("Дата доставки: %v\n", order.DeliveryDate)
-							msgText += fmt.Sprintf("Заказчик: %v\n", order.FullName)
-							msgText += fmt.Sprintf("Телефон для связи: %v\n", order.PhoneNumber)
-							msgText += fmt.Sprintf("Адрес доставки: %v\n", order.DeliveryAddress)
-							msgText += "Список заказанных товаров :\n"
-							currentDeliveryDate = order.DeliveryDate
-							currentDateTime = order.DateTime
-						}
-
-						msgText += fmt.Sprintf("%v кол-во: %v цена: %v руб.\n", order.ItemName, order.Quantity, order.Cost)
-
-						if i == len(orders)-1 || (i+1 < len(orders) && orders[i+1].DateTime != currentDateTime) {
-							msgText += fmt.Sprintf("Общая стоимость:  %v ркб.\n", order.TotalCost)
-							msgText += "------------------------------------------------------------\n"
-
-						}
-					}
-
-					msgs := tgbotapi.NewMessage(update.Message.Chat.ID, msgText)
-					if _, err = bot.Send(msgs); err != nil {
-						log.Println("Ошибка отправки сообщения:", err)
-					}
-				} else {
-					msgs := tgbotapi.NewMessage(update.Message.Chat.ID, "Вы ничего у нас не заказывали")
-					if _, err = bot.Send(msgs); err != nil {
-						log.Println("Ошибка отправки сообщения:", err)
-					}
-				}
-
+				//Выводим заказы пользователей
+				MainOrdersByUserID(bot, update)
 			case "Назад":
 				// Возвращаемся в основное меню
 				err = createCategoryMessage(bot, update, "Меню")
 				if err != nil {
 					log.Println("Ошибка создания сообщения с категорией update.Message.Text = ", err)
+					return
 				}
 			// Другие сценарии...
 			case "Корзина":
-				showBasket(bot, update.Message.Chat.ID, 2)
+				ShowBasket(bot, update.Message.Chat.ID)
 				messageID := update.Message.MessageID
 				chatID := update.Message.Chat.ID
 				deleteMsg := tgbotapi.NewDeleteMessage(chatID, messageID)
 				if _, err := bot.Request(deleteMsg); err != nil {
-					log.Printf("Ошибка при удалении сообщения: %v", err)
-					// Не используйте log.Panic, чтобы избежать прерывания работы бота из-за одной ошибки
+					logError("Ошибка при удалении сообщения:", err)
 				}
 			default:
 				msg.ReplyToMessageID = update.Message.MessageID // Устанавливаем ID сообщения, на которое отвечаем
 				if _, err = bot.Send(msg); err != nil {
 					log.Println("Ошибка отправки сообщения:", err)
+					return
 				}
 			}
-
 		}
 		deletePreviousMessages(bot, update)
 	}
-
 }
 
 // handleCallbackQueryData Разбор callbackData для определения действия.
@@ -267,34 +216,34 @@ func handleCallbackQueryData(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 			//deletePreviousMessages(bot, update.CallbackQuery.Message.Chat.ID)
 			num1, err := strconv.Atoi(parts[2])
 			if err != nil {
-				fmt.Println("Ошибка преобразования числа 1:", err)
+				logError("Ошибка преобразования числа 1:", err)
 				return
 			}
 
 			num2, er := strconv.Atoi(parts[3])
 			if er != nil {
-				fmt.Println("Ошибка преобразования числа 2:", er)
+				logError("Ошибка преобразования числа 2:", er)
 				return
 			}
 
-			addToBasket(bot, update, parts[1], num1, num2) // Добавление товара с указанием названия, количества и стоимости
+			AddToBasket(bot, update, parts[1], num1, num2) // Добавление товара с указанием названия, количества и стоимости
 		case "confirm":
 			err := ProcessOrder(orderDetails, db, update.CallbackQuery.Message.Chat.ID)
 			if err != nil {
-				fmt.Println("Ошибка обработки заказа -------------------------------------------------------:", err)
+				logError("Ошибка обработки заказа:", err)
 				return
 			} else {
 				//fmt.Println("Заказ успешно обработан и добавлен в базу данных.")
-				groupMessagesChatID(bot, update)
-				baskets[update.CallbackQuery.Message.Chat.ID] = nil
+				GroupMessagesChatID(bot, update)
+				Baskets[update.CallbackQuery.Message.Chat.ID] = nil
 			}
 
 		case "send": // Получение содержимого корзины
 			// Пример ввода данных заказа
-			requestDeliveryDetails(bot, update)
+			RequestDeliveryDetails(bot, update)
 
 		case "delete":
-			deleteBasketContents(bot, update)
+			DeleteBasketContents(bot, update)
 		}
 	}
 }
@@ -306,14 +255,16 @@ func createCategoryMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update, categor
 	// Поиск категории в данных
 	categoryData, found := Categories[categoryName]
 	if !found {
-		return errors.New("категория не найдена в createCategoryMessage")
+		er := "категория не найдена в createCategoryMessage"
+		return errors.New(er)
 	}
 
 	if categoryData.Photo == "" {
 		keyboardReply, err := CreateCategoryKeyboardReply(categoryData.CategoryName)
 		if err != nil {
 			// Обработка ошибки
-			return fmt.Errorf("ошибка в CreateCategoryKeyboardReply %s:", err)
+			logError("ошибка в CreateCategoryKeyboardReply", err)
+			return err
 		}
 
 		// Создаем сообщение с инлайн-клавиатурой
@@ -324,23 +275,23 @@ func createCategoryMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update, categor
 		// Отправляем сообщение с клавиатурой
 		sentMsg, err := bot.Send(msg)
 		if err != nil {
-			log.Printf("Ошибка при отправке сообщения: %v", err)
+			logError("Ошибка при отправке сообщения:", err)
 			return err
 		} else {
 			// Сохраняем идентификатор сообщения для последующего удаления
 			messagesToDelete[chatID] = append(messagesToDelete[chatID], sentMsg.MessageID)
 		}
+
 	} else {
 		// Создаем медиа-объект для изображения
 		photo := tgbotapi.NewInputMediaPhoto(tgbotapi.FilePath(categoryData.Photo))
-		//msgPhoto := tgbotapi.NewMessage(update.Message.Chat.ID, "")
 
 		// Создаем медиагруппу с изображением и URL
 		mediaGroup := tgbotapi.NewMediaGroup(chatID, []interface{}{photo})
 
 		// Отправляем медиагруппу
 		if _, err := bot.SendMediaGroup(mediaGroup); err != nil {
-			log.Println("Error sending media group:", err)
+			logError("Ошибка при отправке сообщения медиагруппу:", err)
 			return err
 		}
 
@@ -348,6 +299,7 @@ func createCategoryMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update, categor
 		keyboard, err := CreateCategoryKeyboard(categoryData.CategoryName)
 		if err != nil {
 			// Обработка ошибки
+			logError("Ошибка не удается создать кнопки клавиатуры", err)
 			return err
 		}
 
@@ -358,7 +310,7 @@ func createCategoryMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update, categor
 		// Отправляем сообщение с клавиатурой
 		sentMsg, err := bot.Send(msg)
 		if err != nil {
-			log.Printf("Ошибка при отправке сообщения: %v", err)
+			logError("Ошибка при отправке сообщения:", err)
 			return err
 		} else {
 			// Сохраняем идентификатор сообщения для последующего удаления
@@ -367,11 +319,10 @@ func createCategoryMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update, categor
 	}
 	deletePreviousMessages(bot, update)
 	return nil
-
 }
 
-// separateEmojiAndText Паттерн для поиска эмотзи update.Message.Text.
-func separateEmojiAndText(text string) (string, string) {
+// SeparateEmojiAndText Паттерн для поиска эмотзи update.Message.Text.
+func SeparateEmojiAndText(text string) (string, string) {
 	// Паттерн для поиска эмотзи
 	emojiPattern := regexp.MustCompile(`[\p{So}]`)
 	// Ищем все эмотзи в тексте
@@ -382,15 +333,15 @@ func separateEmojiAndText(text string) (string, string) {
 	// Удаляем лишние пробелы
 	cleanText = regexp.MustCompile(`\s+`).ReplaceAllString(cleanText, " ")
 
-	return joinStrings(emojis), cleanText
+	return JoinStrings(emojis), cleanText
 }
 
-// joinStrings Объединяем все строки из среза в одну строку из update.Message.Text.
-func joinStrings(strs []string) string {
+// JoinStrings Объединяем все строки из среза в одну строку из update.Message.Text.
+func JoinStrings(str []string) string {
 	// Объединяем все строки из среза в одну строку
 	result := ""
-	for _, str := range strs {
-		result += str
+	for _, s := range str {
+		result += s
 	}
 	return result
 }

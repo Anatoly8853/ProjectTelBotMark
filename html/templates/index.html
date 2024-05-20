@@ -1,6 +1,11 @@
 <!--index.html-->
 <!--Embed the header.html template at this location-->
 {{ template "header.html" .}}
+<style>
+    .highlight {
+        background-color: yellow;
+    }
+</style>
 <div class="container-poisc">
     <div class="card-poisc">
         <table class="center">
@@ -16,9 +21,9 @@
             <th>Стоимость</th>
             <th>Общая стоимость</th>
             </thead>
-            <tr>
-
-                {{ range .payload }}
+            {{ range .payload }}
+            <!--tr {{ if eq .DeliveryDate $.currentDate }}class="highlight"{{end}}-->
+            <tr {{ if .CurrentDate }} class="highlight" {{end}}>
                 {{ if .Num }}
                 <td rowspan="{{.Num}}">{{ .DeliveryDate }}</td>
                 <td rowspan="{{.Num}}">{{ .DateTime }}</td>
@@ -36,7 +41,6 @@
                 <td rowspan="{{.Num}}">{{.TotalCost}}</td>
                 {{end}}
                 {{end}}
-
             </tr>
             {{end}}
         </table>

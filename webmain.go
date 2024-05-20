@@ -8,11 +8,6 @@ import (
 	"time"
 )
 
-// Webnums структура.
-type Webnums struct {
-	Num int
-}
-
 /*
 // Получить все заказы, отсортированные по дате по убыванию
 params := QueryParams{
@@ -39,9 +34,9 @@ func HandlerIndex(c *gin.Context) {
 
 	params := QueryParams{
 		//OrderBy: "tg_user_orders_date.date_time",
-		OrderBy: "tg_user_orders_date.delivery_date",
-		//OrderDir: "DESC",
-		OrderDir: "ASC",
+		OrderBy:  "tg_user_orders_date.delivery_date",
+		OrderDir: "DESC",
+		//OrderDir: "ASC",
 	}
 
 	orders, err := GetOrdersWithFilters(db, params)

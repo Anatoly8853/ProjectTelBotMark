@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="RemoteTargetsManager">
+    <targets>
+      <target name="pi@192.168.1.249:22" type="ssh/sftp" uuid="30d47ad6-cf6e-4514-8b4e-37890e6e4fd6">
+        <config>
+          <option name="projectRootOnTarget" value="/home/pi/ProjectTelBotMark" />
+          <option name="serverName" value="pi@192.168.1.249:22 password" />
+        </config>
+        <ContributedStateBase type="GoLanguageRuntime">
+          <config>
+            <option name="compiledExecutablesVolume">
+              <VolumeState>
+                <option name="remotePath" value="/home/pi/Документы" />
+              </VolumeState>
+            </option>
+            <option name="goPath" value="/home/pi/Документы" />
+            <option name="goRoot" value="/home/pi/Документы" />
+            <option name="projectSourcesVolume">
+              <VolumeState>
+                <option name="remotePath" value="/home/pi/Документы" />
+              </VolumeState>
+            </option>
+          </config>
+        </ContributedStateBase>
+      </target>
+      <target name="WSL - Ubuntu" type="wsl" uuid="29d75a4d-1015-4edf-bd47-29c1de7ff910">
+        <config>
+          <option name="distributionMsId" value="Ubuntu" />
+          <option name="projectRootOnTarget" value="{exitCode=0, timeout=false, cancelled=false, stdout=/tmp/tmp.9xLXZdZRYT&#10;, stderr=}/ProjectTelBotMark" />
+        </config>
+        <ContributedStateBase type="GoLanguageRuntime">
+          <config>
+            <option name="compiledExecutablesVolume">
+              <VolumeState>
+                <option name="remotePath" value="/home/avp" />
+              </VolumeState>
+            </option>
+            <option name="goPath" value="/home/avp" />
+            <option name="goRoot" value="/home/avp" />
+            <option name="projectSourcesVolume">
+              <VolumeState>
+                <option name="remotePath" value="/home/avp" />
+              </VolumeState>
+            </option>
+          </config>
+        </ContributedStateBase>
+      </target>
+    </targets>
+  </component>
+</project>

@@ -8,12 +8,12 @@ import (
 	"time"
 )
 
+// logErro Функция для логирования ошибок.
 func logError(message string, err error) {
 	if !EnableLogging {
 		return
 	}
 
-	// Получаем текущее время и дату
 	// Получаем текущее время и дату
 	now := time.Now()
 
@@ -23,13 +23,13 @@ func logError(message string, err error) {
 		message = now.Format("15:04:05 02.01.2006") + " " + file + ":" + fmt.Sprint(line) + " " + message + ": " + err.Error()
 	}
 
-	// Определим путь к файлу лога
-	logFilePath := "error.log"
+	// Определим путь к файлу лога с учетом текущей даты в формате DD-MM-YYYY
+	logFilePath := fmt.Sprintf("log/error-%s.log", now.Format("02-01-2006"))
 
 	// Открываем файл для записи логов
-	logFile, err := os.OpenFile(logFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
-	if err != nil {
-		log.Printf("Error opening log file '%s': %v\n", logFilePath, err)
+	logFile, fileErr := os.OpenFile(logFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	if fileErr != nil {
+		log.Printf("Error opening log file '%s': %v\n", logFilePath, fileErr)
 		return
 	}
 	defer logFile.Close()

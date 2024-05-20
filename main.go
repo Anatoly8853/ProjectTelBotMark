@@ -4,7 +4,6 @@ package main
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"github.com/gin-gonic/gin"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/joho/godotenv"
@@ -13,6 +12,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // EnableLogging Глобальная переменная для включения/отключения записи логов.
@@ -72,10 +72,9 @@ func main() {
 
 	bot.Debug = false //false //true   // выводим лог или нет
 
-	//log.Printf("Authorized on account %s\n", bot.Self.UserName)
-	err = fmt.Errorf("все норм")
-	str := fmt.Sprintf("Authorized on account %s", bot.Self.UserName)
-	logError(str, err)
+	//err = fmt.Errorf("все норм")
+	//str := fmt.Sprintf("Authorized on account %s", bot.Self.UserName)
+	//logError(str, err)
 
 	go UpdateMessage(bot)
 
@@ -160,14 +159,157 @@ func handleMessageText(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 		err := createCategoryMessage(bot, update, pureText)
 
 		if err != nil {
-			// Отправляем сообщение
-			if strings.HasPrefix(pureText, "Номер телефона") {
-				pureText = "Номер телефона:"
+
+			// Получаем и выводим поле DeliveryDate по chatID
+			if field, err := getFieldByChatID(update.Message.Chat.ID, "FullName"); err == nil {
+
+				if field == "ФИО:" {
+					if pureText == "" || len(pureText) < 3 {
+						//Удаляем предыдущие сообщения
+						deletePreviousMessages(bot, update)
+						str := "ФИО: не может быть пустым и имя не может быть короче 3 символов\n"
+						FullName := "ФИО:"
+						instructions := "Пожалуйста, введите " + FullName + "\n" +
+							"Пример:\n" +
+							"Иванов Иван Иванович\n"
+						str += instructions
+						//отправляем сообщение
+						sendMessage(bot, update.Message.Chat.ID, str)
+						return
+					}
+					err = addOrUpdateOrderField(update.Message.Chat.ID, "FullName", pureText)
+					if err != nil {
+						logError("Ошибка при добавлении или обновлении поля:", err)
+						return
+					}
+					pureText = "Номер телефона:"
+				}
 			}
+
+			// Получаем и выводим поле DeliveryDate по chatID
+			if field, err := getFieldByChatID(update.Message.Chat.ID, "DeliveryDate"); err == nil {
+				if field == "Дату доставки:" {
+					formatted, str := formatDateString(pureText)
+					if str != "" {
+						//Удаляем предыдущие сообщения
+						deletePreviousMessages(bot, update)
+						//Получаем текущую дату и добавляем один день
+						tomorrow := time.Now().AddDate(0, 0, 1)
+						// Форматируем дату в строку
+						tomorrowStr := tomorrow.Format("02.01.2006")
+						DeliveryDate := "Дату доставки:"
+						instructions := "\nПожалуйста, введите " + DeliveryDate + "\n" +
+							"Пример:\n" +
+							tomorrowStr + "\n"
+						str += instructions
+						//отправляем сообщение
+						sendMessage(bot, update.Message.Chat.ID, str)
+						return
+					}
+
+					err = addOrUpdateOrderField(update.Message.Chat.ID, "DeliveryDate", formatted)
+					if err != nil {
+						logError("Ошибка при добавлении или обновлении поля:", err)
+						return
+					}
+					FullName := "ФИО:"
+					instructions := "Пожалуйста, введите " + FullName + "\n" +
+						"Пример:\n" +
+						"Иванов Иван Иванович\n"
+
+					err = addOrUpdateOrderField(update.Message.Chat.ID, "FullName", FullName)
+					if err != nil {
+						logError("Ошибка при добавлении или обновлении поля:", err)
+					}
+
+					//отправляем сообщение
+					sendMessage(bot, update.Message.Chat.ID, instructions)
+					pureText = "ok"
+				}
+			}
+
+			// Получаем и выводим поле DeliveryAddress по chatID
+			if field, err := getFieldByChatID(update.Message.Chat.ID, "DeliveryAddress"); err == nil {
+
+				if field == "Адрес доставки:" {
+					if pureText == "" {
+						str := "адрес доставки не может быть пустым\n"
+						DeliveryAddress := "Адрес доставки:"
+						instructions := "Пожалуйста, введите " + DeliveryAddress + "\n" +
+							"Пример:\n" +
+							"г.Будущего ул. Пушкина, д. 12 кв 5\n"
+						str += instructions
+						//отправляем сообщение
+						sendMessage(bot, update.Message.Chat.ID, str)
+						return
+					}
+					err = addOrUpdateOrderField(update.Message.Chat.ID, "DeliveryAddress", pureText)
+					if err != nil {
+						logError("Ошибка при добавлении или обновлении поля:", err)
+					}
+
+					// Получаем текущую дату и добавляем один день
+					tomorrow := time.Now().AddDate(0, 0, 1)
+					// Форматируем дату в строку
+					tomorrowStr := tomorrow.Format("02.01.2006")
+					DeliveryDate := "Дату доставки:"
+					instructions := "Пожалуйста, введите " + DeliveryDate + "\n" +
+						"Пример:\n" +
+						tomorrowStr + "\n"
+
+					err = addOrUpdateOrderField(update.Message.Chat.ID, "DeliveryDate", DeliveryDate)
+					if err != nil {
+						logError("Ошибка при добавлении или обновлении поля:", err)
+					}
+
+					//отправляем сообщение
+					sendMessage(bot, update.Message.Chat.ID, instructions)
+					pureText = "ok"
+				}
+			}
+
+			// Получаем и выводим поле DeliveryAddress по chatID
+			if field, err := getFieldByChatID(update.Message.Chat.ID, "PhoneNumber"); err == nil {
+				if field == "Номер телефона:" {
+					formatted, str := formatPhoneNumber(pureText)
+					if str != "" {
+						// Формирование текста с просьбой ввести номер телефона
+						PhoneNumber := "Номер телефона:"
+						instructions := "\nПожалуйста, введите " + PhoneNumber + "\n" +
+							"Пример:\n" +
+							"+79345678901\n"
+						str += instructions
+						//отправляем сообщение
+						sendMessage(bot, update.Message.Chat.ID, str)
+						return
+					}
+					err = addOrUpdateOrderField(update.Message.Chat.ID, "PhoneNumber", formatted)
+					if err != nil {
+						logError("Ошибка при добавлении или обновлении поля: PhoneNumber ", err)
+					}
+					DeliveryAddress := "Адрес доставки:"
+					instructions := "Пожалуйста, введите " + DeliveryAddress + "\n" +
+						"Пример:\n" +
+						"г.Будущего ул. Пушкина, д. 12 кв 5\n"
+
+					err = addOrUpdateOrderField(update.Message.Chat.ID, "DeliveryAddress", DeliveryAddress)
+					if err != nil {
+						logError("Ошибка при добавлении или обновлении поля:", err)
+					}
+
+					//отправляем сообщение
+					sendMessage(bot, update.Message.Chat.ID, instructions)
+					pureText = "ok"
+				}
+			}
+
 			switch pureText {
 			// Проверяем, соответствует ли сообщение ожидаемому формату
 
+			case "ok":
+				break
 			case "Номер телефона:":
+				//deletePreviousMessages(bot, update)
 				handleDeliveryDetailsMessage(bot, update)
 			case "Мои заказы":
 				//Выводим заказы пользователей

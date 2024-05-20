@@ -14,22 +14,6 @@ import (
 // db одк
 var db *sql.DB
 
-// OrderInfo оснавная структура данных для заказа продуктов.
-type OrderInfo struct {
-	UserID          int64  `json:"user_id"`
-	FullName        string `json:"full_name"`
-	DateTime        string `json:"date_time"`
-	TotalCost       int    `json:"total_cost"`
-	DeliveryDate    string `json:"delivery_date"`
-	PhoneNumber     string `json:"phone_number"`
-	DeliveryAddress string `json:"delivery_address"`
-	ItemName        string `json:"item_name"`
-	Quantity        int    `json:"quantity"`
-	Cost            int    `json:"cost"`
-	Num             int    `json:"num"`
-	CurrentDate     bool   `json:"current_date"`
-}
-
 // InitDB - инициализация базы данных.
 func InitDB() {
 	// Открываем соединение с базой данных SQLite
@@ -145,34 +129,87 @@ func CloseDB() {
 	}
 }
 
+// getOrInsertValues Функция для получения или вставки значений в таблицы базы данных.
 func getOrInsertValues(tx *sql.Tx, tables []string, columns []string, values []interface{}) ([]int64, error) {
 	var ids []int64
-	for i, table := range tables {
-		column := columns[i]
-		value := values[i]
 
+	// Проверяем, вставляем ли данные в одну таблицу
+	if len(tables) == 1 {
+		// Вставка данных в одну таблицу с несколькими колонками
+		table := tables[0]
 		var idd int64
-		err := tx.QueryRow(fmt.Sprintf(`SELECT id FROM %s WHERE %s = ?`, table, column), value).Scan(&idd)
+
+		// Создаем динамический запрос для выбора строки
+		selectQuery := "SELECT id FROM " + table + " WHERE "
+		insertQuery := "INSERT INTO " + table + " ("
+		valuesPlaceholders := "VALUES ("
+
+		for i, column := range columns {
+			if i > 0 {
+				selectQuery += " AND "
+				insertQuery += ", "
+				valuesPlaceholders += ", "
+			}
+			selectQuery += fmt.Sprintf("%s = ?", column)
+			insertQuery += column
+			valuesPlaceholders += "?"
+		}
+		insertQuery += ") " + valuesPlaceholders + ")"
+
+		// Проверяем, существует ли строка
+		err := tx.QueryRow(selectQuery, values...).Scan(&idd)
 		if err != nil && err != sql.ErrNoRows {
-			logError("Error selecting row: ", err)
+			logError("Ошибка при выборе строки: ", err)
 			return nil, err
 		}
 
 		if idd == 0 {
-			res, err := tx.Exec(fmt.Sprintf("INSERT INTO %s (%s) VALUES (?)", table, column), value)
+			// Вставляем новую строку, если она не существует
+			res, err := tx.Exec(insertQuery, values...)
 			if err != nil {
-				logError("Error inserting row:", err)
+				logError("Ошибка при вставке строки:", err)
 				return nil, err
 			}
 
 			idd, err = res.LastInsertId()
 			if err != nil {
-				logError("Error inserting row:", err)
+				logError("Ошибка при вставке строки:", err)
 				return nil, err
 			}
 		}
 
 		ids = append(ids, idd)
+	} else {
+		// Вставка данных в несколько таблиц с одной колонкой в каждой
+		for i, table := range tables {
+			column := columns[i]
+			value := values[i]
+
+			var idd int64
+			query := fmt.Sprintf("SELECT id FROM %s WHERE %s = ?", table, column)
+			err := tx.QueryRow(query, value).Scan(&idd)
+			if err != nil && err != sql.ErrNoRows {
+				logError("Ошибка при выборе строки: ", err)
+				return nil, err
+			}
+
+			if idd == 0 {
+				insertQuery := fmt.Sprintf("INSERT INTO %s (%s) VALUES (?)", table, column)
+				res, err := tx.Exec(insertQuery, value)
+				if err != nil {
+					logError("Ошибка при вставке строки:", err)
+					return nil, err
+				}
+
+				idd, err = res.LastInsertId()
+				if err != nil {
+					logError("Ошибка при вставке строки:", err)
+					return nil, err
+				}
+			}
+
+			ids = append(ids, idd)
+		}
 	}
 
 	return ids, nil
@@ -234,26 +271,22 @@ func ProcessOrder(order string, db *sql.DB, userID int64) error {
 
 	// Вставляем новую запись в tg_orders_date
 	var existingOrdersDateID int64
-	stmt, err := tx.Prepare(`INSERT INTO tg_user_orders_date (user_id, phone_number_id, full_name_id, delivery_address_id, date_time, delivery_date, total_cost) VALUES (?, ?, ?, ?, ?, ?,?)`)
+
+	tables = []string{"tg_user_orders_date"}
+	columns = []string{"user_id", "phone_number_id", "full_name_id", "delivery_address_id", "date_time", "delivery_date", "total_cost"}
+	values = []interface{}{existingUserID, existingPhoneID, existingFullNameID, existingAddressID, formattedDateTime, deliveryDate, totalCost}
+
+	ids, err = getOrInsertValues(tx, tables, columns, values)
 	if err != nil {
+		// Обработать ошибку
 		logError("Error inserting row: ", err)
 		return err
 	}
 
-	res, err := stmt.Exec(existingUserID, existingPhoneID, existingFullNameID, existingAddressID, formattedDateTime, deliveryDate, totalCost)
-	if err != nil {
-		logError("Error inserting row: ", err)
-		return err
-	}
-	// Получение ID вставленной записи
-	existingOrdersDateID, err = res.LastInsertId()
-	if err != nil {
-		logError("Error inserting row: ", err)
-		return err
-	}
+	existingOrdersDateID = ids[0]
 
 	// Вставляем новые записи в tg_user_orders
-	stmt, err = tx.Prepare(`INSERT INTO tg_user_orders (order_id, item_name, quantity, cost) VALUES (?, ?, ?, ?)`)
+	stmt, err := tx.Prepare(`INSERT INTO tg_user_orders (order_id, item_name, quantity, cost) VALUES (?, ?, ?, ?)`)
 	if err != nil {
 		logError("Error inserting row: ", err)
 		return err
@@ -283,6 +316,7 @@ func ProcessOrder(order string, db *sql.DB, userID int64) error {
 			return err
 		}
 	}
+
 	return nil
 }
 
@@ -312,7 +346,7 @@ func GetOrdersByUserID(db *sql.DB, userID int64, limit uint8) ([]OrderInfo, erro
         WHERE
             tg_user_Chat_ID.user_id = ?
         ORDER BY
-            tg_user_orders_date.date_time DESC
+            tg_user_orders_date.delivery_date DESC
         LIMIT ?`, userID, limit)
 	if err != nil {
 		logError("Error preparing query GetOrdersByUserID by user: ", err)
@@ -351,16 +385,6 @@ func GetOrdersByUserID(db *sql.DB, userID int64, limit uint8) ([]OrderInfo, erro
 	}
 
 	return orders, nil
-}
-
-// QueryParams Структура для хранения параметров фильтрации и сортировки.
-type QueryParams struct {
-	OrderBy   string
-	OrderDir  string
-	UserID    int64
-	StartDate time.Time
-	EndDate   time.Time
-	// Добавьте другие необходимые фильтры
 }
 
 // GetOrdersWithFilters Функция для выбора данных из базы данных с фильтрацией и сортировкой.

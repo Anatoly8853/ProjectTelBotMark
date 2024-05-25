@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// logErro Функция для логирования ошибок.
+// logError Функция для логирования ошибок.
 func logError(message string, err error) {
 	if !EnableLogging {
 		return

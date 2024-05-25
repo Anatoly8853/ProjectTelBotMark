@@ -31,9 +31,9 @@
                 <td rowspan="{{.Num}}">{{ .DeliveryAddress }}</td>
                 {{end}}
 
-                <td>{{ .ItemName }}</td>
-                <td>{{ .Quantity }}</td>
-                <td>{{ .Cost }}</td>
+                <td>{{ .Purchase.Item }}</td>
+                <td>{{ .Purchase.Quantity }}</td>
+                <td>{{ .Purchase.Cost }}</td>
 
                 {{ if .Num }}
                 {{ if .TotalCost }}

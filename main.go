@@ -2,6 +2,7 @@
 package main
 
 import (
+	"ProjectTelBotMark/structs"
 	"encoding/json"
 	"errors"
 	"github.com/gin-gonic/gin"
@@ -64,7 +65,7 @@ func main() {
 	}
 
 	// 2. Распаковка данных
-	err = json.Unmarshal(jsonData, &Categories)
+	err = json.Unmarshal(jsonData, &structs.Categories)
 	if err != nil {
 		logError("Ошибка распаковки JSON:", err)
 		return
@@ -114,7 +115,7 @@ func UpdateMessage(bot *tgbotapi.BotAPI) {
 // HandleCommands Обработка команды /start и вывод основного меню.
 func HandleCommands(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	//var err error
-	msg := tgbotapi.NewMessage(update.Message.Chat.ID, "Нет такой каманды")
+	msg := tgbotapi.NewMessage(update.Message.Chat.ID, "Нет такой команды")
 	if update.Message.IsCommand() {
 		// Извлекаем команду из сообщения
 		command := update.Message.Command()
@@ -130,7 +131,6 @@ func HandleCommands(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 			// Другие команды...
 		case "cabbage":
 			//msg.Text = "Hi :)"
-			//fmt.Println("cabbage              ------------------------------------------------")
 		case "status":
 		//msg.Text = "I'm ok."
 		default:
@@ -375,7 +375,7 @@ func handleCallbackQueryData(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 				logError("Ошибка обработки заказа:", err)
 				return
 			} else {
-				//fmt.Println("Заказ успешно обработан и добавлен в базу данных.")
+				//Заказ успешно обработан и добавлен в базу данных.
 				GroupMessagesChatID(bot, update)
 				Baskets[update.CallbackQuery.Message.Chat.ID] = nil
 			}
@@ -395,7 +395,7 @@ func createCategoryMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update, categor
 	chatID := update.Message.Chat.ID
 
 	// Поиск категории в данных
-	categoryData, found := Categories[categoryName]
+	categoryData, found := structs.Categories[categoryName]
 	if !found {
 		er := "категория не найдена в createCategoryMessage"
 		return errors.New(er)

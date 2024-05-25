@@ -2,6 +2,7 @@
 package main
 
 import (
+	"ProjectTelBotMark/structs"
 	"github.com/gin-gonic/gin"
 	"log"
 	"sort"
@@ -32,7 +33,7 @@ func HandlerIndex(c *gin.Context) {
 
 	now := time.Now().Format("02.01.2006") // формат даты в виде DD.MM.YYYY
 
-	params := QueryParams{
+	params := structs.QueryParams{
 		//OrderBy: "tg_user_orders_date.date_time",
 		OrderBy:  "tg_user_orders_date.delivery_date",
 		OrderDir: "DESC",
@@ -47,20 +48,19 @@ func HandlerIndex(c *gin.Context) {
 
 	sort.Sort(ByDeliveryDate(orders))
 
-	var payloads []OrderInfo
-	var webnums []Webnums
+	var payloads []structs.OrderInfo
+	var webnums []structs.Webnums
 
 	if len(orders) > 0 {
 		var currentDeliveryDate string // Объявляем переменную для отслеживания текущей даты доставки
 		var currentUserID int64
-		var currentTotalCost int
 		var currentDateTime string
 		var currentDateTime2 string
 		var num int
 
 		for i, order := range orders {
-			var payload OrderInfo
-			var webnum Webnums
+			var payload structs.OrderInfo
+			var webnum structs.Webnums
 
 			// Парсинг строки времени в тип time.Time
 			t, err := time.Parse("02.01.2006", order.DeliveryDate)
@@ -84,27 +84,22 @@ func HandlerIndex(c *gin.Context) {
 			}
 
 			// Группировка по дате доставки
-			if order.UserID != currentUserID || order.DeliveryDate != currentDeliveryDate || order.DateTime != currentDateTime {
+			if order.UserID.UserID != currentUserID || order.DeliveryDate != currentDeliveryDate || order.DateTime != currentDateTime {
 				payload.DateTime = order.DateTime
 				payload.DeliveryDate = order.DeliveryDate
 				payload.FullName = order.FullName
 				payload.PhoneNumber = order.PhoneNumber
 				payload.DeliveryAddress = order.DeliveryAddress
 				currentDeliveryDate = order.DeliveryDate
-				currentUserID = order.UserID
+				currentUserID = order.UserID.UserID
 				currentDateTime = order.DateTime
-
-				if order.TotalCost != currentTotalCost {
-					currentTotalCost = order.TotalCost
-					payload.TotalCost = order.TotalCost
-
-				}
+				payload.TotalCost = order.TotalCost
 
 			}
 
-			payload.ItemName = order.ItemName
-			payload.Quantity = order.Quantity
-			payload.Cost = order.Cost
+			payload.Purchase.Item = order.Purchase.Item
+			payload.Purchase.Quantity = order.Purchase.Quantity
+			payload.Purchase.Cost = order.Purchase.Cost
 
 			if i == len(orders)-1 || (i+1 < len(orders) && orders[i+1].DateTime != currentDateTime2) {
 				webnum.Num = num
@@ -135,9 +130,9 @@ func HandlerIndex(c *gin.Context) {
 		"payload":  rty})
 }
 
-// MergeSlidesWithDeliveryDate объединяем два слайда для добавление к основному слайду Num.
-func MergeSlidesWithDeliveryDate(orders []OrderInfo, nums []Webnums) []OrderInfo {
-	var result []OrderInfo
+// MergeSlidesWithDeliveryDate объединяем два слайда для добавления к основному слайду Num.
+func MergeSlidesWithDeliveryDate(orders []structs.OrderInfo, nums []structs.Webnums) []structs.OrderInfo {
+	var result []structs.OrderInfo
 	numIndex := 0
 
 	for _, order := range orders {
@@ -151,7 +146,7 @@ func MergeSlidesWithDeliveryDate(orders []OrderInfo, nums []Webnums) []OrderInfo
 	return result
 }
 
-type ByDeliveryDate []OrderInfo
+type ByDeliveryDate []structs.OrderInfo
 
 func (a ByDeliveryDate) Len() int      { return len(a) }
 func (a ByDeliveryDate) Swap(i, j int) { a[i], a[j] = a[j], a[i] }

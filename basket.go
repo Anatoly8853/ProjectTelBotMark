@@ -1,6 +1,7 @@
 package main
 
 import (
+	"ProjectTelBotMark/structs"
 	"errors"
 	"fmt"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -14,7 +15,7 @@ import (
 )
 
 // Baskets Карта для хранения данных о покупках для каждого пользователя.
-var Baskets = make(map[int64][]Purchase)
+var Baskets = make(map[int64][]structs.Purchase)
 
 // BasketMessages Карта для хранения данных о покупках для каждого пользователя.
 var BasketMessages = make(map[int64]int)
@@ -26,14 +27,14 @@ var messagesToDelete = make(map[int64][]int)
 var orderDetails string
 
 // orders Map для хранения данных по chatID.
-var orders = make(map[int64]OrderInfo)
+var orders = make(map[int64]structs.OrderInfo)
 
 // AddToBasket Добавление товаров в корзину.
 func AddToBasket(bot *tgbotapi.BotAPI, update tgbotapi.Update, item string, quantity int, cost int) {
 	chatID := update.CallbackQuery.Message.Chat.ID
 
 	// Добавление покупки в корзину пользователя
-	purchase := Purchase{
+	purchase := structs.Purchase{
 		Item:     item,
 		Quantity: quantity,
 		Cost:     cost,
@@ -67,7 +68,7 @@ func ShowBasket(bot *tgbotapi.BotAPI, chatID int64) {
 	msg := tgbotapi.NewMessage(chatID, "Вы пока ничего не добавили в корзину")
 
 	if len(purchases) > 0 {
-		groupedPurchases := make(map[string]Purchase)
+		groupedPurchases := make(map[string]structs.Purchase)
 		for _, p := range purchases {
 			key := p.Item
 			if existing, found := groupedPurchases[key]; found {
@@ -199,7 +200,7 @@ func handleDeliveryDetailsMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update) 
 	purchases := Baskets[chatID]
 
 	//if len(purchases) > 0 {
-	groupedPurchases := make(map[string]Purchase)
+	groupedPurchases := make(map[string]structs.Purchase)
 	for _, p := range purchases {
 		key := p.Item
 		if existing, found := groupedPurchases[key]; found {
@@ -365,7 +366,7 @@ func MainOrdersByUserID(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 				currentDateTime = order.DateTime
 			}
 
-			msgText += fmt.Sprintf("%v кол-во: %v цена: %v руб.\n", order.ItemName, order.Quantity, order.Cost)
+			msgText += fmt.Sprintf("%v кол-во: %v цена: %v руб.\n", order.Purchase.Item, order.Purchase.Quantity, order.Purchase.Cost)
 
 			if i == len(orders)-1 || (i+1 < len(orders) && orders[i+1].DateTime != currentDateTime) {
 				msgText += fmt.Sprintf("Общая стоимость:  %v руб.\n", order.TotalCost)
@@ -393,7 +394,7 @@ func MainOrdersByUserID(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 func addOrUpdateOrderField(chatID int64, fieldName string, value interface{}) error {
 	order, exists := orders[chatID]
 	if !exists {
-		order = OrderInfo{}
+		order = structs.OrderInfo{}
 	}
 
 	val := reflect.ValueOf(&order).Elem()

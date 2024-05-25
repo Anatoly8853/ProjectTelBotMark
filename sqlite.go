@@ -2,6 +2,7 @@
 package main
 
 import (
+	"ProjectTelBotMark/structs"
 	"database/sql"
 	"fmt"
 	_ "github.com/mattn/go-sqlite3"
@@ -320,101 +321,86 @@ func ProcessOrder(order string, db *sql.DB, userID int64) error {
 	return nil
 }
 
-// GetOrdersByUserID Функция для выбора из базы данных.
-func GetOrdersByUserID(db *sql.DB, userID int64, limit uint8) ([]OrderInfo, error) {
-	// Выполняем запрос к базе данных
-	rows, err := db.Query(`
-        SELECT
-            tg_user_Chat_ID.user_id,
-            tg_user_full_name.full_name,
-            tg_user_orders_date.date_time,
-            tg_user_orders_date.total_cost,
-            tg_user_orders_date.delivery_date,
-            tg_user_phone_number.phone_number,
-            tg_user_delivery_address.delivery_address,
-            tg_user_order_id.item_name,
-            tg_user_orders.quantity,
-            tg_user_orders.cost
-        FROM
-            tg_user_Chat_ID
-                JOIN tg_user_orders_date ON tg_user_Chat_ID.id = tg_user_orders_date.user_id
-                JOIN tg_user_phone_number ON tg_user_orders_date.phone_number_id = tg_user_phone_number.id
-                JOIN tg_user_delivery_address ON tg_user_orders_date.delivery_address_id = tg_user_delivery_address.id
-                JOIN tg_user_orders ON tg_user_orders_date.id = tg_user_orders.order_id
-                JOIN tg_user_full_name ON tg_user_orders_date.full_name_id = tg_user_full_name.id
-                JOIN tg_user_order_id ON tg_user_orders.item_name = tg_user_order_id.id
-        WHERE
-            tg_user_Chat_ID.user_id = ?
-        ORDER BY
-            tg_user_orders_date.delivery_date DESC
-        LIMIT ?`, userID, limit)
-	if err != nil {
-		logError("Error preparing query GetOrdersByUserID by user: ", err)
-		return nil, err
-	}
+// processRows функция для обработки строк результата SQL-запроса.
+func processRows(rows *sql.Rows) ([]structs.OrderInfo, error) {
+	var orders []structs.OrderInfo
 
-	// Создаем слайс для хранения результатов
-	var orders []OrderInfo
-
-	// Обрабатываем каждую строку результата
 	for rows.Next() {
-		var order OrderInfo
-		err = rows.Scan(
-			&order.UserID,
+		var order structs.OrderInfo
+		err := rows.Scan(
+			&order.UserID.UserID,
 			&order.FullName,
 			&order.DateTime,
 			&order.TotalCost,
 			&order.DeliveryDate,
 			&order.PhoneNumber,
 			&order.DeliveryAddress,
-			&order.ItemName,
-			&order.Quantity,
-			&order.Cost,
+			&order.Purchase.Item,
+			&order.Purchase.Quantity,
+			&order.Purchase.Cost,
 		)
 		if err != nil {
-			logError("Error getting orders by user: ", err)
+			logError("Error scanning rows: ", err)
 			return nil, err
 		}
 		orders = append(orders, order)
 	}
 
-	// Проверяем наличие ошибок после rows.Next()
-	if err = rows.Err(); err != nil {
-		logError("Проверяем наличие ошибок после rows.Next():", err)
+	if err := rows.Err(); err != nil {
+		logError("Error after rows.Next():", err)
 		return nil, err
 	}
 
 	return orders, nil
 }
 
-// GetOrdersWithFilters Функция для выбора данных из базы данных с фильтрацией и сортировкой.
-func GetOrdersWithFilters(db *sql.DB, params QueryParams) ([]OrderInfo, error) {
-	// Создаем базовый запрос
-	query := `
-		SELECT
-			tg_user_Chat_ID.user_id,
-			tg_user_full_name.full_name,
-			tg_user_orders_date.date_time,
-			tg_user_orders_date.total_cost,
-			tg_user_orders_date.delivery_date,
-			tg_user_phone_number.phone_number,
-			tg_user_delivery_address.delivery_address,
-			tg_user_order_id.item_name,			
-			tg_user_orders.quantity,
-			tg_user_orders.cost
-		FROM
-			tg_user_Chat_ID
-				JOIN tg_user_orders_date ON tg_user_Chat_ID.id = tg_user_orders_date.user_id
-                JOIN tg_user_phone_number ON tg_user_orders_date.phone_number_id = tg_user_phone_number.id
-                JOIN tg_user_delivery_address ON tg_user_orders_date.delivery_address_id = tg_user_delivery_address.id
-                JOIN tg_user_orders ON tg_user_orders_date.id = tg_user_orders.order_id
-                JOIN tg_user_full_name ON tg_user_orders_date.full_name_id = tg_user_full_name.id
-                JOIN tg_user_order_id ON tg_user_orders.item_name = tg_user_order_id.id
-	`
+// Общая часть запроса
+const baseQuery = `
+	SELECT
+		tg_user_Chat_ID.user_id,
+		tg_user_full_name.full_name,
+		tg_user_orders_date.date_time,
+		tg_user_orders_date.total_cost,
+		tg_user_orders_date.delivery_date,
+		tg_user_phone_number.phone_number,
+		tg_user_delivery_address.delivery_address,
+		tg_user_order_id.item_name,
+		tg_user_orders.quantity,
+		tg_user_orders.cost
+	FROM
+		tg_user_Chat_ID
+			JOIN tg_user_orders_date ON tg_user_Chat_ID.id = tg_user_orders_date.user_id
+			JOIN tg_user_phone_number ON tg_user_orders_date.phone_number_id = tg_user_phone_number.id
+			JOIN tg_user_delivery_address ON tg_user_orders_date.delivery_address_id = tg_user_delivery_address.id
+			JOIN tg_user_orders ON tg_user_orders_date.id = tg_user_orders.order_id
+			JOIN tg_user_full_name ON tg_user_orders_date.full_name_id = tg_user_full_name.id
+			JOIN tg_user_order_id ON tg_user_orders.item_name = tg_user_order_id.id
+`
 
-	// Добавляем фильтры к запросу
+// GetOrdersByUserID Функция для выбора из базы данных.
+func GetOrdersByUserID(db *sql.DB, userID int64, limit uint8) ([]structs.OrderInfo, error) {
+	query := baseQuery + `
+	WHERE
+		tg_user_Chat_ID.user_id = ?
+	ORDER BY
+		tg_user_orders_date.delivery_date DESC
+	LIMIT ?`
+	rows, err := db.Query(query, userID, limit)
+	if err != nil {
+		logError("Error preparing query GetOrdersByUserID by user: ", err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	return processRows(rows)
+}
+
+// GetOrdersWithFilters Функция для выбора данных из базы данных с фильтрацией и сортировкой.
+func GetOrdersWithFilters(db *sql.DB, params structs.QueryParams) ([]structs.OrderInfo, error) {
+	query := baseQuery
+
 	queryArgs := []interface{}{}
-	if params.UserID != 0 {
+	if params.UserID.UserID != 0 {
 		query += " WHERE tg_user_Chat_ID.user_id = ?"
 		queryArgs = append(queryArgs, params.UserID)
 	}
@@ -435,7 +421,6 @@ func GetOrdersWithFilters(db *sql.DB, params QueryParams) ([]OrderInfo, error) {
 		queryArgs = append(queryArgs, params.EndDate)
 	}
 
-	// Добавляем сортировку к запросу
 	if params.OrderBy != "" {
 		query += " ORDER BY " + params.OrderBy
 		if params.OrderDir != "" {
@@ -443,43 +428,12 @@ func GetOrdersWithFilters(db *sql.DB, params QueryParams) ([]OrderInfo, error) {
 		}
 	}
 
-	// Выполняем запрос к базе данных
 	rows, err := db.Query(query, queryArgs...)
 	if err != nil {
-		logError("Error Выполняем запрос к базе данных: ", err)
+		logError("Error executing query GetOrdersWithFilters: ", err)
 		return nil, err
 	}
+	defer rows.Close()
 
-	// Создаем слайс для хранения результатов
-	var orders []OrderInfo
-
-	// Обрабатываем каждую строку результата
-	for rows.Next() {
-		var order OrderInfo
-		err = rows.Scan(
-			&order.UserID,
-			&order.FullName,
-			&order.DateTime,
-			&order.TotalCost,
-			&order.DeliveryDate,
-			&order.PhoneNumber,
-			&order.DeliveryAddress,
-			&order.ItemName,
-			&order.Quantity,
-			&order.Cost,
-		)
-		if err != nil {
-			logError("Проверяем наличие ошибок после rows.Scan(): ", err)
-			return nil, err
-		}
-		orders = append(orders, order)
-	}
-
-	// Проверяем наличие ошибок после rows.Next()
-	if err = rows.Err(); err != nil {
-		logError("Error Проверяем наличие ошибок после rows.Next(): ", err)
-		return nil, err
-	}
-
-	return orders, nil
+	return processRows(rows)
 }

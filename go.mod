@@ -10,10 +10,17 @@ require (
 )
 
 require (
+	github.com/gookit/color v1.5.4 // indirect
+	github.com/gookit/goutil v0.6.15 // indirect
+	github.com/gookit/gsr v0.1.0 // indirect
+	github.com/gookit/slog v0.5.6 // indirect
 	github.com/hashicorp/go-version v1.0.0 // indirect
 	github.com/karalabe/xgo v0.0.0-20191115072854-c5ccff8648a7 // indirect
 	github.com/mitchellh/gox v1.0.1 // indirect
 	github.com/mitchellh/iochan v1.0.0 // indirect
+	github.com/valyala/bytebufferpool v1.0.0 // indirect
+	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
+	golang.org/x/sync v0.5.0 // indirect
 )
 
 require (

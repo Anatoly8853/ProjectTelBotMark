@@ -1,6 +1,7 @@
 package main
 
 import (
+	"ProjectTelBotMark/structs"
 	"errors"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
@@ -8,7 +9,7 @@ import (
 // CreateCategoryKeyboardReply Массив кнопки под меню.
 func CreateCategoryKeyboardReply(categoryName string) ([][]tgbotapi.KeyboardButton, error) {
 	// Получаем данные для выбранной категории
-	categoryData, found := Categories[categoryName]
+	categoryData, found := structs.Categories[categoryName]
 	if !found {
 		return nil, errors.New("категория не найдена в createCategoryKeyboard")
 	}
@@ -45,7 +46,7 @@ func CreateCategoryKeyboardReply(categoryName string) ([][]tgbotapi.KeyboardButt
 // CreateCategoryKeyboard Массив кнопки фасовки продукта InlineKeyboardButtonData.
 func CreateCategoryKeyboard(categoryName string) ([][]tgbotapi.InlineKeyboardButton, error) {
 	// Получаем данные для выбранной категории
-	categoryData, found := Categories[categoryName]
+	categoryData, found := structs.Categories[categoryName]
 	if !found {
 		return nil, errors.New("категория не найдена в createCategoryKeyboard")
 	}

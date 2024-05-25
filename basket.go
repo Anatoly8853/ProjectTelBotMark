@@ -57,7 +57,7 @@ func SendPopupMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update, popupText st
 	callbackConfig := tgbotapi.NewCallback(update.CallbackQuery.ID, popupText)
 	callbackConfig.ShowAlert = true // Для отображения в виде всплывающего уведомления
 	if _, err := bot.Request(callbackConfig); err != nil {
-		logError("не удается создать всплывающее сообщение", err)
+		logger.Errorf("не удается создать всплывающее сообщение %v", err)
 		return
 	}
 }
@@ -101,7 +101,7 @@ func ShowBasket(bot *tgbotapi.BotAPI, chatID int64) {
 
 	sentMsg, err := bot.Send(msg)
 	if err != nil {
-		logError("не удается вывести содержимое корзины", err)
+		logger.Errorf("не удается вывести содержимое корзины %v", err)
 		return
 	}
 	BasketMessages[chatID] = sentMsg.MessageID
@@ -120,7 +120,7 @@ func DeleteBasketContents(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	if messageID != 0 {
 		deleteMsg := tgbotapi.NewDeleteMessage(chatID, messageID)
 		if _, err := bot.Request(deleteMsg); err != nil {
-			logError("Удаление сообщения с содержимым корзины", err)
+			logger.Errorf("Удаление сообщения с содержимым корзины %v", err)
 		}
 		// После успешного удаления сообщения можно обнулить идентификатор сообщения в basketMessages
 		BasketMessages[chatID] = 0
@@ -130,7 +130,7 @@ func DeleteBasketContents(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	confirmationText := "Корзина успешно очищена."
 	confirmMsg := tgbotapi.NewMessage(chatID, confirmationText)
 	if _, err := bot.Send(confirmMsg); err != nil {
-		logError("не удается Отправить подтверждающего сообщения пользователю, что корзина была очищена", err)
+		logger.Errorf("не удается Отправить подтверждающего сообщения пользователю, что корзина была очищена %v", err)
 		return
 	}
 }
@@ -151,7 +151,7 @@ func RequestDeliveryDetails(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	// Добавляем или обновляем поле PhoneNumber
 	err := addOrUpdateOrderField(chatID, "PhoneNumber", PhoneNumber)
 	if err != nil {
-		logError("Ошибка при добавлении или обновлении поля:", err)
+		logger.Errorf("Ошибка при добавлении или обновлении поля: %v", err)
 	}
 
 	// Отправка сообщения с инструкциями и инлайн-клавиатурой
@@ -159,7 +159,7 @@ func RequestDeliveryDetails(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 
 	sentMsg, err := bot.Send(msg)
 	if err != nil {
-		logError("Ошибка при отправке сообщения: ", err)
+		logger.Errorf("Ошибка при отправке сообщения: %v", err)
 		return
 	} else {
 		// Сохраняем идентификатор отправленного сообщения для последующего удаления
@@ -229,7 +229,7 @@ func handleDeliveryDetailsMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update) 
 	// Удаление сообщения с введенными данными
 	deleteMsg := tgbotapi.NewDeleteMessage(chatID, messageID)
 	if _, err := bot.Request(deleteMsg); err != nil {
-		logError("", err)
+		logger.Errorf("%v", err)
 	}
 
 	// Отправляем пользователю подтверждение с деталями заказа и кнопкой "Заказать"
@@ -243,7 +243,7 @@ func handleDeliveryDetailsMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update) 
 	deleteMessages(bot, chatID)
 
 	if sentMsg, err := bot.Send(confirmMsg); err != nil {
-		logError("", err)
+		logger.Errorf("%v", err)
 		return
 	} else {
 		// Сохраняем идентификатор отправленного сообщения для последующего удаления
@@ -300,13 +300,13 @@ func GroupMessagesChatID(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 		groupChatIDStr := os.Getenv("TELEGRAM_GROUPCHATID")
 		groupChatID, err := strconv.ParseInt(groupChatIDStr, 10, 64)
 		if err != nil {
-			logError("Ошибка преобразования ID группового чата: ", err)
+			logger.Errorf("Ошибка преобразования ID группового чата: %v", err)
 			return
 		}
 		message := tgbotapi.NewMessage(groupChatID, orderDetails)
 		_, err = bot.Send(message)
 		if err != nil {
-			logError("groupMessagesChatID err = ", err)
+			logger.Errorf("%v", err)
 			return
 		} else {
 			orderDetails = ""
@@ -314,13 +314,13 @@ func GroupMessagesChatID(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 			deleteMessages(bot, chatID)
 			msg = tgbotapi.NewMessage(chatID, "Ваш заказ успешно отправлен при сборе заказа мы Вас уведомим")
 			if _, err = bot.Send(msg); err != nil {
-				logError("Ошибка отправки сообщения:", err)
+				logger.Errorf("Ошибка отправки сообщения: %v", err)
 				return
 			}
 		}
 	} else {
 		if _, err := bot.Send(msg); err != nil {
-			logError("Ошибка отправки сообщения:", err)
+			logger.Errorf("Ошибка отправки сообщения: %v", err)
 			return
 		}
 	}
@@ -331,7 +331,7 @@ func MainOrdersByUserID(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	userID := update.Message.Chat.ID // Ваш user_id
 	orders, err := GetOrdersByUserID(db, userID, 10)
 	if err != nil {
-		logError("Error getting orders:", err)
+		logger.Errorf("Error getting orders: %v", err)
 		return
 	}
 	//сортируем слайс от наибольшей даты к наименьшей
@@ -347,7 +347,7 @@ func MainOrdersByUserID(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 			// Парсинг строки времени в тип time.Time
 			t, err := time.Parse("15:04 02.01.2006", order.DateTime)
 			if err != nil {
-				logError("Ошибка парсинга строки времени:", err)
+				logger.Errorf("Ошибка парсинга строки времени: %v", err)
 				return
 			}
 
@@ -376,14 +376,14 @@ func MainOrdersByUserID(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 		}
 		msg := tgbotapi.NewMessage(update.Message.Chat.ID, msgText)
 		if _, err = bot.Send(msg); err != nil {
-			logError("Ошибка отправки сообщения:", err)
+			logger.Errorf("Ошибка отправки сообщения: %v", err)
 			return
 		}
 
 	} else {
 		msg := tgbotapi.NewMessage(update.Message.Chat.ID, "Вы ничего у нас не заказывали")
 		if _, err = bot.Send(msg); err != nil {
-			logError("Ошибка отправки сообщения:", err)
+			logger.Errorf("Ошибка отправки сообщения: %v", err)
 			return
 		}
 	}
@@ -444,24 +444,24 @@ func formatDateString(dateStr string) (string, string) {
 	parts := strings.Split(cleaned, ".")
 	if len(parts) != 3 {
 		err := fmt.Errorf("")
-		logError(fmt.Sprintf("неправильный формат даты %v", parts), err)
+		logger.Infof("неправильный формат даты %v ошибка %v", parts, err)
 		return "", "неправильный формат даты"
 	}
 
 	// Приводим день и месяц к формату с ведущим нулем
 	day, err := strconv.Atoi(parts[0])
 	if err != nil {
-		logError(fmt.Sprintf("неправильный формат дня %v", day), err)
+		logger.Infof("неправильный формат дня %v ошибка %v", day, err)
 		return "", "неправильный формат дня"
 	}
 	month, err := strconv.Atoi(parts[1])
 	if err != nil {
-		logError(fmt.Sprintf("неправильный формат месяца %v", month), err)
+		logger.Infof("неправильный формат месяца %v ошибка %v", month, err)
 		return "", "неправильный формат месяца"
 	}
 	year, err := strconv.Atoi(parts[2])
 	if err != nil {
-		logError(fmt.Sprintf("неправильный формат года %v", year), err)
+		logger.Infof("неправильный формат года %v ошибка %v", year, err)
 		return "", "неправильный формат года"
 	}
 
@@ -471,7 +471,7 @@ func formatDateString(dateStr string) (string, string) {
 	// Проверяем правильность формата даты
 	parsedDate, err := time.Parse("02.01.2006", formattedDate)
 	if err != nil {
-		logError("неправильный формат даты ", err)
+		logger.Infof("неправильный формат даты %v ошибка %v", formattedDate, err)
 		return "", "неправильный формат даты"
 	}
 
@@ -483,21 +483,21 @@ func formatDateString(dateStr string) (string, string) {
 	// Проверка, что год совпадает с текущим годом
 	if year != currentYear {
 		err = fmt.Errorf("год должен быть текущим")
-		logError(fmt.Sprintf("год %v", year), err)
+		logger.Infof("год %v ошибка %v", year, err)
 		return "", "год должен быть текущим"
 	}
 
 	// Проверка, что месяц текущий или следующий
 	if month != currentMonth && month != currentMonth+1 {
 		err = fmt.Errorf("месяц должен быть текущим или следующим")
-		logError(fmt.Sprintf("месяц %v", month), err)
+		logger.Infof("месяц %v ошибка %v", month, err)
 		return "", "месяц должен быть текущим или следующим"
 	}
 
 	// Проверка, что дата не прошедшая и не сегодняшняя
 	if parsedDate.Before(currentTime) || parsedDate.Equal(currentTime) {
 		err = fmt.Errorf("дата не должна быть прошедшей или сегодняшней")
-		logError(fmt.Sprintf("дата %v", currentTime), err)
+		logger.Infof("дата %v ошибка %v", currentTime, err)
 		return "", "дата не должна быть прошедшей или сегодняшней"
 	}
 
@@ -524,18 +524,19 @@ func formatPhoneNumber(phone string) (string, string) {
 	if strings.HasPrefix(cleaned, "+7") {
 		if len(cleaned) != 12 {
 			err := fmt.Errorf("номер должен содержать 10 цифр после +7 ")
-			logError(fmt.Sprintf("номер телефона %v ", cleaned), err)
+			logger.Infof("номер телефона %v ошибка %v", cleaned, err)
 			return "", "номер должен содержать 10 цифр после +7"
 		}
 	} else {
 		err := fmt.Errorf("номер должен начинаться с +7 ")
-		logError(fmt.Sprintf("номер телефона %v ", cleaned), err)
+		logger.Infof("номер телефона %v ошибка %v", cleaned, err)
 		return "", "номер должен начинаться с +7"
 	}
 
 	if cleaned == "+79345678901" {
 		err := fmt.Errorf("это номер телефона для примера введите свой номер телефона ")
-		logError("", err)
+		logger.Infof("%v", err)
+
 		return "", "это номер телефона для примера введите свой номер телефона"
 	}
 
@@ -547,7 +548,7 @@ func sendMessage(bot *tgbotapi.BotAPI, chatID int64, text string) {
 	msg := tgbotapi.NewMessage(chatID, text)
 	sentMsg, err := bot.Send(msg)
 	if err != nil {
-		logError("не удается отправить сообщение", err)
+		logger.Errorf("не удается отправить сообщение %v", err)
 		return
 	} else {
 		// Сохраняем идентификатор отправленного сообщения для последующего удаления

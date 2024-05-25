@@ -6,7 +6,6 @@ import (
 	"database/sql"
 	"fmt"
 	_ "github.com/mattn/go-sqlite3"
-	"log"
 	"regexp"
 	"strconv"
 	"time"
@@ -21,8 +20,7 @@ func InitDB() {
 	var err error
 	db, err = sql.Open("sqlite3", "./data.db")
 	if err != nil {
-		logError("Error opening database:", err)
-		log.Fatal("Error opening database:", err)
+		logger.Fatalf("Error opening database: %v", err)
 	}
 
 	_, err = db.Exec(`
@@ -32,8 +30,7 @@ func InitDB() {
 	)		
 	    `)
 	if err != nil {
-		logError("Error creating table:", err)
-		log.Fatal("Error creating reminders table:", err)
+		logger.Fatalf("Error creating reminders table: %v", err)
 	}
 
 	_, err = db.Exec(`
@@ -48,8 +45,7 @@ func InitDB() {
 	)
 	`)
 	if err != nil {
-		logError("Error creating table:", err)
-		log.Fatal("Error creating reminders table:", err)
+		logger.Fatalf("Error creating reminders table: %v", err)
 	}
 
 	_, err = db.Exec(`
@@ -59,8 +55,7 @@ func InitDB() {
 	)
 	`)
 	if err != nil {
-		logError("Error creating table:", err)
-		log.Fatal("Error creating reminders table:", err)
+		logger.Fatalf("Error creating reminders table: %v", err)
 	}
 
 	_, err = db.Exec(`
@@ -70,8 +65,7 @@ func InitDB() {
 	)
 	`)
 	if err != nil {
-		logError("Error creating table:", err)
-		log.Fatal("Error creating reminders table:", err)
+		logger.Fatalf("Error creating reminders table: %v", err)
 	}
 
 	_, err = db.Exec(`
@@ -81,8 +75,7 @@ func InitDB() {
 	)
 	`)
 	if err != nil {
-		logError("Error creating table:", err)
-		log.Fatal("Error creating reminders table:", err)
+		logger.Fatalf("Error creating reminders table: %v", err)
 	}
 
 	_, err = db.Exec(`
@@ -92,8 +85,7 @@ func InitDB() {
 	)
 	`)
 	if err != nil {
-		logError("Error creating table:", err)
-		log.Fatal("Error creating reminders table:", err)
+		logger.Fatalf("Error creating reminders table: %v", err)
 	}
 
 	_, err = db.Exec(`
@@ -113,8 +105,7 @@ func InitDB() {
 	)	
 	`)
 	if err != nil {
-		logError("Error creating table:", err)
-		log.Fatal("Error creating reminders table:", err)
+		logger.Fatalf("Error creating reminders table: %v", err)
 	}
 
 }
@@ -124,7 +115,7 @@ func CloseDB() {
 	if db != nil {
 		err := db.Close()
 		if err != nil {
-			logError("Error closing database:", err)
+			logger.Errorf("Error closing database: %v", err)
 			return
 		}
 	}
@@ -160,7 +151,7 @@ func getOrInsertValues(tx *sql.Tx, tables []string, columns []string, values []i
 		// Проверяем, существует ли строка
 		err := tx.QueryRow(selectQuery, values...).Scan(&idd)
 		if err != nil && err != sql.ErrNoRows {
-			logError("Ошибка при выборе строки: ", err)
+			logger.Errorf("Ошибка при выборе строки: %v", err)
 			return nil, err
 		}
 
@@ -168,13 +159,13 @@ func getOrInsertValues(tx *sql.Tx, tables []string, columns []string, values []i
 			// Вставляем новую строку, если она не существует
 			res, err := tx.Exec(insertQuery, values...)
 			if err != nil {
-				logError("Ошибка при вставке строки:", err)
+				logger.Errorf("Ошибка при вставке строки:", err)
 				return nil, err
 			}
 
 			idd, err = res.LastInsertId()
 			if err != nil {
-				logError("Ошибка при вставке строки:", err)
+				logger.Errorf("Ошибка при вставке строки: %v", err)
 				return nil, err
 			}
 		}
@@ -190,7 +181,7 @@ func getOrInsertValues(tx *sql.Tx, tables []string, columns []string, values []i
 			query := fmt.Sprintf("SELECT id FROM %s WHERE %s = ?", table, column)
 			err := tx.QueryRow(query, value).Scan(&idd)
 			if err != nil && err != sql.ErrNoRows {
-				logError("Ошибка при выборе строки: ", err)
+				logger.Errorf("Ошибка при выборе строки: %v", err)
 				return nil, err
 			}
 
@@ -198,13 +189,13 @@ func getOrInsertValues(tx *sql.Tx, tables []string, columns []string, values []i
 				insertQuery := fmt.Sprintf("INSERT INTO %s (%s) VALUES (?)", table, column)
 				res, err := tx.Exec(insertQuery, value)
 				if err != nil {
-					logError("Ошибка при вставке строки:", err)
+					logger.Errorf("Ошибка при вставке строки:", err)
 					return nil, err
 				}
 
 				idd, err = res.LastInsertId()
 				if err != nil {
-					logError("Ошибка при вставке строки:", err)
+					logger.Errorf("Ошибка при вставке строки: %v", err)
 					return nil, err
 				}
 			}
@@ -238,7 +229,7 @@ func ProcessOrder(order string, db *sql.DB, userID int64) error {
 	// Начало транзакции
 	tx, err := db.Begin()
 	if err != nil {
-		logError("Error starting transaction: ", err)
+		logger.Errorf("Error starting transaction: %v", err)
 		return err
 	}
 	defer func() {
@@ -261,7 +252,7 @@ func ProcessOrder(order string, db *sql.DB, userID int64) error {
 	ids, err := getOrInsertValues(tx, tables, columns, values)
 	if err != nil {
 		// Обработать ошибку
-		logError("Error inserting row: ", err)
+		logger.Errorf("Error inserting row: %v", err)
 		return err
 	}
 
@@ -280,7 +271,7 @@ func ProcessOrder(order string, db *sql.DB, userID int64) error {
 	ids, err = getOrInsertValues(tx, tables, columns, values)
 	if err != nil {
 		// Обработать ошибку
-		logError("Error inserting row: ", err)
+		logger.Errorf("Error inserting row: %v", err)
 		return err
 	}
 
@@ -289,7 +280,7 @@ func ProcessOrder(order string, db *sql.DB, userID int64) error {
 	// Вставляем новые записи в tg_user_orders
 	stmt, err := tx.Prepare(`INSERT INTO tg_user_orders (order_id, item_name, quantity, cost) VALUES (?, ?, ?, ?)`)
 	if err != nil {
-		logError("Error inserting row: ", err)
+		logger.Errorf("Error inserting row: %v", err)
 		return err
 	}
 
@@ -307,13 +298,13 @@ func ProcessOrder(order string, db *sql.DB, userID int64) error {
 		ids, err = getOrInsertValues(tx, tables, columns, values)
 		if err != nil {
 			// Обработать ошибку
-			logError("Error inserting row: ", err)
+			logger.Errorf("Error inserting row: %v", err)
 			return err
 		}
 
 		_, err = stmt.Exec(existingOrdersDateID, ids[0], quantity, cost)
 		if err != nil {
-			logError("Error inserting query: ", err)
+			logger.Errorf("Error inserting row: %v", err)
 			return err
 		}
 	}
@@ -340,14 +331,14 @@ func processRows(rows *sql.Rows) ([]structs.OrderInfo, error) {
 			&order.Purchase.Cost,
 		)
 		if err != nil {
-			logError("Error scanning rows: ", err)
+			logger.Errorf("Error scanning rows: %v", err)
 			return nil, err
 		}
 		orders = append(orders, order)
 	}
 
 	if err := rows.Err(); err != nil {
-		logError("Error after rows.Next():", err)
+		logger.Errorf("Error after rows.Next(): %v", err)
 		return nil, err
 	}
 
@@ -387,7 +378,7 @@ func GetOrdersByUserID(db *sql.DB, userID int64, limit uint8) ([]structs.OrderIn
 	LIMIT ?`
 	rows, err := db.Query(query, userID, limit)
 	if err != nil {
-		logError("Error preparing query GetOrdersByUserID by user: ", err)
+		logger.Errorf("Error preparing query %v ", err)
 		return nil, err
 	}
 	defer rows.Close()
@@ -430,7 +421,7 @@ func GetOrdersWithFilters(db *sql.DB, params structs.QueryParams) ([]structs.Ord
 
 	rows, err := db.Query(query, queryArgs...)
 	if err != nil {
-		logError("Error executing query GetOrdersWithFilters: ", err)
+		logger.Errorf("Error preparing query %v ", err)
 		return nil, err
 	}
 	defer rows.Close()

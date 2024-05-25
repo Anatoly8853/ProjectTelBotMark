@@ -8,7 +8,6 @@ import (
 	"github.com/gin-gonic/gin"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/joho/godotenv"
-	"log"
 	"os"
 	"regexp"
 	"strconv"
@@ -31,12 +30,15 @@ func GinRouter() {
 	router.GET("/", HandlerIndex)
 	err := router.Run(":8090")
 	if err != nil {
-		logError("GinRouter", err)
+		logger.Errorf("GinRouter %v", err)
 		return
 	}
 }
 
 func main() {
+
+	// Настраиваем логгер
+	logger = setupLogger()
 
 	// Открываем соединение с базой данных SQLite
 	var err error
@@ -46,29 +48,24 @@ func main() {
 	// Загружаем токен бота из файла .env
 	err = godotenv.Load()
 	if err != nil {
-		//log.Fatal("Error loading .env file")
-		logError("Не удалось открыть файл .env:", err)
-		panic(err)
+		logger.Fatalf("Не удалось открыть файл .env: %v", err)
 	}
 
 	bot, err := tgbotapi.NewBotAPI(os.Getenv("TELEGRAM_TOKEN"))
 	if err != nil {
-		logError("Неn токена TELEGRAM_TOKEN:", err)
-		panic(err)
+		logger.Fatalf("Неn токена TELEGRAM_TOKEN: %v", err)
 	}
 
 	// 1. Чтение файла JSON
 	jsonData, er := os.ReadFile("data.json")
 	if er != nil {
-		logError("Ошибка чтения файла JSON:", er)
-		panic(er)
+		logger.Fatalf("Ошибка чтения файла JSON: %v", er)
 	}
 
 	// 2. Распаковка данных
 	err = json.Unmarshal(jsonData, &structs.Categories)
 	if err != nil {
-		logError("Ошибка распаковки JSON:", err)
-		return
+		logger.Fatalf("Ошибка распаковки JSON: %v", err)
 	}
 
 	bot.Debug = false //false //true   // выводим лог или нет
@@ -125,7 +122,7 @@ func HandleCommands(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 			// Отправляем главное меню при старте бота или команде /start
 			err := createCategoryMessage(bot, update, "Старт")
 			if err != nil {
-				logError("Ошибка создания сообщения с категорией update.Message.IsCommand() = ", err)
+				logger.Errorf("Ошибка создания сообщения %v ", err)
 				return
 			}
 			// Другие команды...
@@ -136,7 +133,7 @@ func HandleCommands(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 		default:
 			msg.ReplyToMessageID = update.Message.MessageID // Устанавливаем ID сообщения, на которое отвечаем
 			if _, err := bot.Send(msg); err != nil {
-				logError("Ошибка отправки сообщения:", err)
+				logger.Errorf("Ошибка отправки сообщения: %v", err)
 				return
 			}
 		}
@@ -179,7 +176,7 @@ func handleMessageText(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 					}
 					err = addOrUpdateOrderField(update.Message.Chat.ID, "FullName", pureText)
 					if err != nil {
-						logError("Ошибка при добавлении или обновлении поля:", err)
+						logger.Errorf("ошибка при добавлении или обновлении поля FullName: %v", err)
 						return
 					}
 					pureText = "Номер телефона:"
@@ -209,7 +206,7 @@ func handleMessageText(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 
 					err = addOrUpdateOrderField(update.Message.Chat.ID, "DeliveryDate", formatted)
 					if err != nil {
-						logError("Ошибка при добавлении или обновлении поля:", err)
+						logger.Errorf("Ошибка при добавлении или обновлении поля DeliveryDate: %v", err)
 						return
 					}
 					FullName := "ФИО:"
@@ -219,7 +216,8 @@ func handleMessageText(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 
 					err = addOrUpdateOrderField(update.Message.Chat.ID, "FullName", FullName)
 					if err != nil {
-						logError("Ошибка при добавлении или обновлении поля:", err)
+						logger.Errorf("Ошибка при добавлении или обновлении поля FullName: %v", err)
+						return
 					}
 
 					//отправляем сообщение
@@ -245,7 +243,8 @@ func handleMessageText(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 					}
 					err = addOrUpdateOrderField(update.Message.Chat.ID, "DeliveryAddress", pureText)
 					if err != nil {
-						logError("Ошибка при добавлении или обновлении поля:", err)
+						logger.Errorf("Ошибка при добавлении или обновлении поля DeliveryAddress: %v", err)
+						return
 					}
 
 					// Получаем текущую дату и добавляем один день
@@ -259,7 +258,8 @@ func handleMessageText(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 
 					err = addOrUpdateOrderField(update.Message.Chat.ID, "DeliveryDate", DeliveryDate)
 					if err != nil {
-						logError("Ошибка при добавлении или обновлении поля:", err)
+						logger.Errorf("Ошибка при добавлении или обновлении поля DeliveryDate: %v", err)
+						return
 					}
 
 					//отправляем сообщение
@@ -285,7 +285,8 @@ func handleMessageText(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 					}
 					err = addOrUpdateOrderField(update.Message.Chat.ID, "PhoneNumber", formatted)
 					if err != nil {
-						logError("Ошибка при добавлении или обновлении поля: PhoneNumber ", err)
+						logger.Errorf("Ошибка при добавлении или обновлении поля PhoneNumber %v", err)
+						return
 					}
 					DeliveryAddress := "Адрес доставки:"
 					instructions := "Пожалуйста, введите " + DeliveryAddress + "\n" +
@@ -294,7 +295,8 @@ func handleMessageText(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 
 					err = addOrUpdateOrderField(update.Message.Chat.ID, "DeliveryAddress", DeliveryAddress)
 					if err != nil {
-						logError("Ошибка при добавлении или обновлении поля:", err)
+						logger.Errorf("Ошибка при добавлении или обновлении поля DeliveryAddress: %v", err)
+						return
 					}
 
 					//отправляем сообщение
@@ -318,7 +320,7 @@ func handleMessageText(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 				// Возвращаемся в основное меню
 				err = createCategoryMessage(bot, update, "Меню")
 				if err != nil {
-					log.Println("Ошибка создания сообщения с категорией update.Message.Text = ", err)
+					logger.Errorf("Ошибка создания сообщения %v ", err)
 					return
 				}
 			// Другие сценарии...
@@ -328,13 +330,12 @@ func handleMessageText(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 				chatID := update.Message.Chat.ID
 				deleteMsg := tgbotapi.NewDeleteMessage(chatID, messageID)
 				if _, err := bot.Request(deleteMsg); err != nil {
-					logError("Ошибка при удалении сообщения:", err)
+					logger.Infof("Ошибка при удалении сообщения: %v", err)
 				}
 			default:
 				msg.ReplyToMessageID = update.Message.MessageID // Устанавливаем ID сообщения, на которое отвечаем
 				if _, err = bot.Send(msg); err != nil {
-					log.Println("Ошибка отправки сообщения:", err)
-					return
+					logger.Errorf("Ошибка отправки сообщения: %v", err)
 				}
 			}
 		}
@@ -358,13 +359,13 @@ func handleCallbackQueryData(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 			//deletePreviousMessages(bot, update.CallbackQuery.Message.Chat.ID)
 			num1, err := strconv.Atoi(parts[2])
 			if err != nil {
-				logError("Ошибка преобразования числа 1:", err)
+				logger.Errorf("Ошибка преобразования числа 1: %v", err)
 				return
 			}
 
 			num2, er := strconv.Atoi(parts[3])
 			if er != nil {
-				logError("Ошибка преобразования числа 2:", er)
+				logger.Errorf("Ошибка преобразования числа 2: %v", er)
 				return
 			}
 
@@ -372,7 +373,7 @@ func handleCallbackQueryData(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 		case "confirm":
 			err := ProcessOrder(orderDetails, db, update.CallbackQuery.Message.Chat.ID)
 			if err != nil {
-				logError("Ошибка обработки заказа:", err)
+				logger.Errorf("Ошибка обработки заказа: %v", err)
 				return
 			} else {
 				//Заказ успешно обработан и добавлен в базу данных.
@@ -405,7 +406,7 @@ func createCategoryMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update, categor
 		keyboardReply, err := CreateCategoryKeyboardReply(categoryData.CategoryName)
 		if err != nil {
 			// Обработка ошибки
-			logError("ошибка в CreateCategoryKeyboardReply", err)
+			logger.Errorf("ошибка %v", err)
 			return err
 		}
 
@@ -417,7 +418,7 @@ func createCategoryMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update, categor
 		// Отправляем сообщение с клавиатурой
 		sentMsg, err := bot.Send(msg)
 		if err != nil {
-			logError("Ошибка при отправке сообщения:", err)
+			logger.Errorf("Ошибка при отправке сообщения: %v", err)
 			return err
 		} else {
 			// Сохраняем идентификатор сообщения для последующего удаления
@@ -433,7 +434,7 @@ func createCategoryMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update, categor
 
 		// Отправляем медиагруппу
 		if _, err := bot.SendMediaGroup(mediaGroup); err != nil {
-			logError("Ошибка при отправке сообщения медиагруппу:", err)
+			logger.Errorf("Ошибка при отправке сообщения медиагруппу: %v", err)
 			return err
 		}
 
@@ -441,7 +442,7 @@ func createCategoryMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update, categor
 		keyboard, err := CreateCategoryKeyboard(categoryData.CategoryName)
 		if err != nil {
 			// Обработка ошибки
-			logError("Ошибка не удается создать кнопки клавиатуры", err)
+			logger.Errorf("Ошибка не удается создать кнопки клавиатуры %v", err)
 			return err
 		}
 
@@ -452,7 +453,7 @@ func createCategoryMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update, categor
 		// Отправляем сообщение с клавиатурой
 		sentMsg, err := bot.Send(msg)
 		if err != nil {
-			logError("Ошибка при отправке сообщения:", err)
+			logger.Errorf("Ошибка при отправке сообщения: %v", err)
 			return err
 		} else {
 			// Сохраняем идентификатор сообщения для последующего удаления

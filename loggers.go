@@ -11,14 +11,6 @@ import (
 	"time"
 )
 
-var (
-	IsDebugMode = true // Переключатель режима отладки
-	IsInfoMode  = true
-	IsWarnMode  = true
-
-	logger *slog.Logger // Глобальный логгер
-)
-
 // CustomFormatter - кастомный форматтер для изменения формата даты
 type CustomFormatter struct{}
 

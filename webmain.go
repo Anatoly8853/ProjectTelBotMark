@@ -42,7 +42,7 @@ func HandlerIndex(c *gin.Context) {
 
 	orders, err := GetOrdersWithFilters(db, params)
 	if err != nil {
-		log.Println("ошибка в функции handlerIndex запрос к базе GetOrdersWithFilters", err)
+		logger.Errorf("ошибка запрос к базе %v", err)
 		return
 	}
 

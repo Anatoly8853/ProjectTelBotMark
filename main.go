@@ -7,6 +7,7 @@ import (
 	"errors"
 	"github.com/gin-gonic/gin"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/gookit/slog"
 	"github.com/joho/godotenv"
 	"os"
 	"regexp"
@@ -15,8 +16,13 @@ import (
 	"time"
 )
 
-// EnableLogging Глобальная переменная для включения/отключения записи логов.
-var EnableLogging = true
+var (
+	IsDebugMode = true // Переключатель режима отладки
+	IsInfoMode  = true
+	IsWarnMode  = true
+
+	logger *slog.Logger // Глобальный логгер
+)
 
 // router создаем роутер.
 var router *gin.Engine

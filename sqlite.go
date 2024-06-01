@@ -159,7 +159,7 @@ func getOrInsertValues(tx *sql.Tx, tables []string, columns []string, values []i
 			// Вставляем новую строку, если она не существует
 			res, err := tx.Exec(insertQuery, values...)
 			if err != nil {
-				logger.Errorf("Ошибка при вставке строки:", err)
+				logger.Errorf("Ошибка при вставке строки: %v", err)
 				return nil, err
 			}
 
@@ -189,7 +189,7 @@ func getOrInsertValues(tx *sql.Tx, tables []string, columns []string, values []i
 				insertQuery := fmt.Sprintf("INSERT INTO %s (%s) VALUES (?)", table, column)
 				res, err := tx.Exec(insertQuery, value)
 				if err != nil {
-					logger.Errorf("Ошибка при вставке строки:", err)
+					logger.Errorf("Ошибка при вставке строки: %v", err)
 					return nil, err
 				}
 
@@ -381,7 +381,7 @@ func GetOrdersByUserID(db *sql.DB, userID int64, limit uint8) ([]structs.OrderIn
 		logger.Errorf("Error preparing query %v ", err)
 		return nil, err
 	}
-	defer rows.Close()
+	//defer rows.Close()
 
 	return processRows(rows)
 }
@@ -424,7 +424,7 @@ func GetOrdersWithFilters(db *sql.DB, params structs.QueryParams) ([]structs.Ord
 		logger.Errorf("Error preparing query %v ", err)
 		return nil, err
 	}
-	defer rows.Close()
+	//defer rows.Close()
 
 	return processRows(rows)
 }

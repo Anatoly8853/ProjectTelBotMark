@@ -130,7 +130,7 @@ func DeleteBasketContents(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	confirmationText := "Корзина успешно очищена."
 	confirmMsg := tgbotapi.NewMessage(chatID, confirmationText)
 	if _, err := bot.Send(confirmMsg); err != nil {
-		logger.Errorf("не удается Отправить подтверждающего сообщения пользователю, что корзина была очищена %v", err)
+		logger.Errorf("не удаётся отправить подтверждающего сообщения пользователю, что корзина была очищена %v", err)
 		return
 	}
 }

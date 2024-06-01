@@ -1,2 +1,0 @@
-08:30:27 25.05.2024 D:/GitHub/ProjectTelBotMark/sqlite.go:473 Проверяем наличие ошибок после rows.Scan(): : sql: Scan error on column index 0, name "user_id": unsupported Scan, storing driver.Value type int64 into type *structs.User
-08:30:31 25.05.2024 D:/GitHub/ProjectTelBotMark/sqlite.go:473 Проверяем наличие ошибок после rows.Scan(): : sql: Scan error on column index 0, name "user_id": unsupported Scan, storing driver.Value type int64 into type *structs.User

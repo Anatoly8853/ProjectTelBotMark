@@ -53,4 +53,5 @@ type OrderInfo struct {
 	Purchase        Purchase
 	Num             int  `json:"num"`
 	CurrentDate     bool `json:"current_date"`
+	Index           int  `json:"index"`
 }

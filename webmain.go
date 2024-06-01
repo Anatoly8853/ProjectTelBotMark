@@ -57,6 +57,7 @@ func HandlerIndex(c *gin.Context) {
 		var currentDateTime string
 		var currentDateTime2 string
 		var num int
+		var Index int
 
 		for i, order := range orders {
 			var payload structs.OrderInfo
@@ -84,6 +85,7 @@ func HandlerIndex(c *gin.Context) {
 			}
 
 			// Группировка по дате доставки
+
 			if order.UserID.UserID != currentUserID || order.DeliveryDate != currentDeliveryDate || order.DateTime != currentDateTime {
 				payload.DateTime = order.DateTime
 				payload.DeliveryDate = order.DeliveryDate
@@ -94,7 +96,8 @@ func HandlerIndex(c *gin.Context) {
 				currentUserID = order.UserID.UserID
 				currentDateTime = order.DateTime
 				payload.TotalCost = order.TotalCost
-
+				Index++
+				payload.Index = Index
 			}
 
 			payload.Purchase.Item = order.Purchase.Item
@@ -125,7 +128,7 @@ func HandlerIndex(c *gin.Context) {
 	//fmt.Println(rty)
 
 	c.HTML(200, "index.html", gin.H{
-		"Title":    "Телефонный справочник",
+		"Title":    "Заказы Салаты корейские",
 		"Classind": "current",
 		"payload":  rty})
 }

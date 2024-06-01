@@ -11,6 +11,7 @@
         <table class="center">
             <div class="centersH"><h4>{{ if .Message }} {{.Message}} {{end}}</h4></div>
             <thead>
+            <th>№ П/П</th>
             <th>Дата доставки</th>
             <th>Дата заказа</th>
             <th>Заказчик</th>
@@ -24,6 +25,7 @@
             {{ range .payload }}
             <tr {{ if .CurrentDate }} class="highlight" {{end}}>
                 {{ if .Num }}
+                <td rowspan="{{.Num}}">{{ .Index }}</td>
                 <td rowspan="{{.Num}}">{{ .DeliveryDate }}</td>
                 <td rowspan="{{.Num}}">{{ .DateTime }}</td>
                 <td rowspan="{{.Num}}">{{ .FullName }}</td>

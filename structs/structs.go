@@ -43,7 +43,7 @@ type Webnums struct {
 
 // OrderInfo основная структура данных для заказа продуктов.
 type OrderInfo struct {
-	UserID          User   `json:"user_id"`
+	UserID          User   `json:"user_id,omitempty"`
 	FullName        string `json:"full_name"`
 	DateTime        string `json:"date_time"`
 	TotalCost       int    `json:"total_cost"`

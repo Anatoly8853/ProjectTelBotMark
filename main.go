@@ -2,10 +2,12 @@
 package main
 
 import (
+	"ProjectTelBotMark/dataSources"
+	"ProjectTelBotMark/loggers"
+	"ProjectTelBotMark/routers"
 	"ProjectTelBotMark/structs"
 	"encoding/json"
 	"errors"
-	"github.com/gin-gonic/gin"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/gookit/slog"
 	"github.com/joho/godotenv"
@@ -16,40 +18,17 @@ import (
 	"time"
 )
 
-var (
-	IsDebugMode = true // Переключатель режима отладки
-	IsInfoMode  = true
-	IsWarnMode  = true
-
-	logger *slog.Logger // Глобальный логгер
-)
-
-// router создаем роутер.
-var router *gin.Engine
-
-// GinRouter Gin Router функция запускает сервер.
-func GinRouter() {
-	gin.SetMode(gin.ReleaseMode)
-	router = gin.Default()
-	router.Static("/assets/", "front/")
-	router.LoadHTMLGlob("html/templates/*")
-	router.GET("/", HandlerIndex)
-	err := router.Run(":8090")
-	if err != nil {
-		logger.Errorf("GinRouter %v", err)
-		return
-	}
-}
+var logger *slog.Logger // Глобальный логгер
 
 func main() {
 
 	// Настраиваем логгер
-	logger = setupLogger()
+	logger = loggers.SetupLogger()
 
 	// Открываем соединение с базой данных SQLite
 	var err error
-	InitDB()
-	defer CloseDB()
+	dataSources.InitDB()
+	defer dataSources.CloseDB()
 
 	// Загружаем токен бота из файла .env
 	err = godotenv.Load()
@@ -76,14 +55,9 @@ func main() {
 
 	bot.Debug = false //false //true   // выводим лог или нет
 
-	//err = fmt.Errorf("все норм")
-	//str := fmt.Sprintf("Authorized on account %s", bot.Self.UserName)
-	//logError(str, err)
-
 	go UpdateMessage(bot)
 
-	GinRouter()
-
+	routers.GinRouter()
 }
 
 // UpdateMessage Основной обработчик всех данных бота.
@@ -377,7 +351,7 @@ func handleCallbackQueryData(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 
 			AddToBasket(bot, update, parts[1], num1, num2) // Добавление товара с указанием названия, количества и стоимости
 		case "confirm":
-			err := ProcessOrder(orderDetails, db, update.CallbackQuery.Message.Chat.ID)
+			err := dataSources.ProcessOrder(orderDetails, dataSources.DB, update.CallbackQuery.Message.Chat.ID)
 			if err != nil {
 				logger.Errorf("Ошибка обработки заказа: %v", err)
 				return

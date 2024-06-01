@@ -1,6 +1,8 @@
 package main
 
 import (
+	"ProjectTelBotMark/dataSources"
+	"ProjectTelBotMark/routers"
 	"ProjectTelBotMark/structs"
 	"errors"
 	"fmt"
@@ -329,13 +331,13 @@ func GroupMessagesChatID(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 // MainOrdersByUserID Выводим заказы пользователей.
 func MainOrdersByUserID(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	userID := update.Message.Chat.ID // Ваш user_id
-	orders, err := GetOrdersByUserID(db, userID, 10)
+	orders, err := dataSources.GetOrdersByUserID(dataSources.DB, userID, 10)
 	if err != nil {
 		logger.Errorf("Error getting orders: %v", err)
 		return
 	}
 	//сортируем слайс от наибольшей даты к наименьшей
-	sort.Sort(ByDeliveryDate(orders))
+	sort.Sort(routers.ByDeliveryDate(orders))
 
 	if len(orders) > 0 {
 		var msgText string

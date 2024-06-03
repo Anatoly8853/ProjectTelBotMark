@@ -29,7 +29,7 @@ var messagesToDelete = make(map[int64][]int)
 var orderDetails string
 
 // orders Map для хранения данных по chatID.
-var orders = make(map[int64]structs.OrderInfo)
+var orders = make(map[int64]structs.OrderDb)
 
 // AddToBasket Добавление товаров в корзину.
 func AddToBasket(bot *tgbotapi.BotAPI, update tgbotapi.Update, item string, quantity int, cost int) {
@@ -197,7 +197,7 @@ func handleDeliveryDetailsMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update) 
 	}
 	// Объединяем данные заказа с содержимым корзины
 	orderDetails = "Детали заказа:\n" + MsgText // Сообщение с деталями заказа
-	// Здесь можно добавить логику для добавления информации о содержимом корзины к orderDetails
+
 	// Получение содержимого корзины
 	purchases := Baskets[chatID]
 
@@ -396,7 +396,7 @@ func MainOrdersByUserID(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 func addOrUpdateOrderField(chatID int64, fieldName string, value interface{}) error {
 	order, exists := orders[chatID]
 	if !exists {
-		order = structs.OrderInfo{}
+		order = structs.OrderDb{}
 	}
 
 	val := reflect.ValueOf(&order).Elem()

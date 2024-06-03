@@ -1,16 +1,25 @@
 <!--upload.html-->
 <!--Embed the header.html template at this location-->
 {{ template "header.html" .}}
-<div class="container-poisc">
-    <div class="card-poisc">
-        <div class="update">
-            <h2 class="card-title">Импортируем файл справочника</h2>
-            <div class="centersH"><h5>{{ if .Message }} {{.Message}} {{end}}</h5></div>
-<form class="registration-form-poisc" action="/spravochnik/upload" method="post" enctype="multipart/form-data">
-    <input type="file" name="file" id="file">
-    <button type="submit" class="btn-poisc">Импортировать</button>
-</form>
-        </div>
+<div class="container">
+    <div class="card">
+        <h2 class="card-title">Извещение пользователей</h2>
+        <!--If there's an error, display the error-->
+        {{ if .Message}}
+        <h4><p class="centersH">{{.Message}}</p></h4>
+        {{end}}
+        <form class="registration-form" action="/info" method="POST">
+            <div class="form-group">
+                <label for="Info">Тип информации</label>
+                <input type="text" id="Info" name="Info" placeholder="Объявление, Инфо">
+            </div>
+            <div class="form-group">
+                <label for="InfoText">Сообщение для отправки</label>
+                <input type="text" id="InfoText" name="InfoText" placeholder="Текст сообщения">
+            </div>
+            <button type="submit" class="btn">Отправить</button>
+        </form>
+
     </div>
 </div>
 <!--Embed the footer.html template at this location-->

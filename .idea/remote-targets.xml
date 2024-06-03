@@ -14,8 +14,8 @@
                 <option name="remotePath" value="/home/pi/Документы" />
               </VolumeState>
             </option>
-            <option name="goPath" value="/home/pi/Документы" />
-            <option name="goRoot" value="/home/pi/Документы" />
+            <option name="goPath" value="/home/pi/Документы/ProjectTelBotMark" />
+            <option name="goRoot" value="/home/pi/Документы/ProjectTelBotMark" />
             <option name="projectSourcesVolume">
               <VolumeState>
                 <option name="remotePath" value="/home/pi/Документы" />

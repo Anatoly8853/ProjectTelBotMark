@@ -4,6 +4,7 @@ package main
 import (
 	"ProjectTelBotMark/dataSources"
 	"ProjectTelBotMark/loggers"
+	"ProjectTelBotMark/reminders"
 	"ProjectTelBotMark/routers"
 	"ProjectTelBotMark/structs"
 	"encoding/json"
@@ -57,7 +58,10 @@ func main() {
 
 	go UpdateMessage(bot)
 
-	routers.GinRouter()
+	// Запуск ежедневной проверки базы данных
+	reminders.StartDailyCheck(bot)
+
+	routers.GinRouter(bot)
 }
 
 // UpdateMessage Основной обработчик всех данных бота.
@@ -391,7 +395,7 @@ func createCategoryMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update, categor
 		}
 
 		// Создаем сообщение с инлайн-клавиатурой
-		msg := tgbotapi.NewMessage(chatID, "Выбранная категория : "+categoryData.CategoryName)
+		msg := tgbotapi.NewMessage(chatID, "Выбранная категория: "+categoryData.CategoryName)
 
 		msg.ReplyMarkup = tgbotapi.NewReplyKeyboard(keyboardReply...)
 
@@ -427,7 +431,7 @@ func createCategoryMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update, categor
 		}
 
 		// Создаем сообщение с инлайн-клавиатурой
-		msg := tgbotapi.NewMessage(chatID, "Выберите нужное колличество продукта : "+categoryData.CategoryName)
+		msg := tgbotapi.NewMessage(chatID, "Выберите нужное количество продукта: "+categoryData.CategoryName)
 		msg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(keyboard...)
 
 		// Отправляем сообщение с клавиатурой

@@ -5,6 +5,7 @@ import (
 	"ProjectTelBotMark/loggers"
 	"ProjectTelBotMark/structs"
 	"github.com/gin-gonic/gin"
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/gookit/slog"
 	"sort"
 	"time"
@@ -16,7 +17,7 @@ var router *gin.Engine
 var logger *slog.Logger // Глобальный логгер
 
 // GinRouter Gin Router функция запускает сервер.
-func GinRouter() {
+func GinRouter(bot *tgbotapi.BotAPI) {
 	// Настраиваем логгер
 	logger = loggers.SetupLogger()
 	gin.SetMode(gin.ReleaseMode)
@@ -24,10 +25,69 @@ func GinRouter() {
 	router.Static("/assets/", "front/")
 	router.LoadHTMLGlob("html/templates/*")
 	router.GET("/", HandlerIndex)
+	router.GET("/info", HandlerInfo)
+	router.POST("/info", PostHandlerInfo(bot))
 	err := router.Run(":8090")
 	if err != nil {
 		logger.Errorf("GinRouter %v", err)
 		return
+	}
+}
+
+func HandlerInfo(c *gin.Context) {
+
+	c.HTML(200, "upload.html", gin.H{
+		"Title":    "Заказы Салаты корейские",
+		"Classupl": "current"})
+
+}
+
+func PostHandlerInfo(bot *tgbotapi.BotAPI) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var messageInfo structs.MessageInfo
+
+		err := c.Bind(&messageInfo)
+		if err != nil {
+			logger.Errorf("PostHandlerInfo Bind: %v", err)
+			return
+		}
+
+		if messageInfo.Info == "" || messageInfo.InfoText == "" {
+			c.HTML(200, "upload.html", gin.H{
+				"Title":    "Заказы Салаты корейские",
+				"Message":  "Поля Тип информации и Сообщение для отправки не должны быть пустыми ",
+				"Classupl": "current"})
+			return
+		}
+
+		users := dataSources.UserID()
+
+		msgText := messageInfo.Info
+		msgText += "\n" + messageInfo.InfoText + "\n"
+
+		if users != nil {
+			for _, user := range users {
+				message := tgbotapi.NewMessage(user.UserID, msgText)
+				_, err = bot.Send(message)
+				if err != nil {
+					logger.Errorf("%v", err)
+					c.HTML(200, "upload.html", gin.H{
+						"Title":    "Заказы Салаты корейские",
+						"Message":  "Произошла ошибка при отправке попробуйте еще раз ",
+						"Classupl": "current"})
+					return
+				}
+			}
+			c.HTML(200, "upload.html", gin.H{
+				"Title":    "Заказы Салаты корейские",
+				"Message":  "Извещение успешно отправлено ",
+				"Classupl": "current"})
+		} else {
+			c.HTML(200, "upload.html", gin.H{
+				"Title":    "Заказы Салаты корейские",
+				"Message":  "Пока некому отправлять ",
+				"Classupl": "current"})
+		}
 	}
 }
 
@@ -107,26 +167,24 @@ func HandlerIndex(c *gin.Context) {
 			} else {
 				num++
 			}
-
 			// Группировка по дате доставки
-
 			if order.UserID.UserID != currentUserID || order.DeliveryDate != currentDeliveryDate || order.DateTime != currentDateTime {
-				payload.DateTime = order.DateTime
-				payload.DeliveryDate = order.DeliveryDate
-				payload.FullName = order.FullName
-				payload.PhoneNumber = order.PhoneNumber
-				payload.DeliveryAddress = order.DeliveryAddress
+				payload.OrderDb.DateTime = order.DateTime
+				payload.OrderDb.DeliveryDate = order.DeliveryDate
+				payload.OrderDb.FullName = order.FullName
+				payload.OrderDb.PhoneNumber = order.PhoneNumber
+				payload.OrderDb.DeliveryAddress = order.DeliveryAddress
 				currentDeliveryDate = order.DeliveryDate
 				currentUserID = order.UserID.UserID
 				currentDateTime = order.DateTime
-				payload.TotalCost = order.TotalCost
+				payload.OrderDb.TotalCost = order.TotalCost
 				Index++
 				payload.Index = Index
 			}
 
-			payload.Purchase.Item = order.Purchase.Item
-			payload.Purchase.Quantity = order.Purchase.Quantity
-			payload.Purchase.Cost = order.Purchase.Cost
+			payload.OrderDb.Purchase.Item = order.Purchase.Item
+			payload.OrderDb.Purchase.Quantity = order.Purchase.Quantity
+			payload.OrderDb.Purchase.Cost = order.Purchase.Cost
 
 			if i == len(orders)-1 || (i+1 < len(orders) && orders[i+1].DateTime != currentDateTime2) {
 				webnum.Num = num
@@ -163,7 +221,7 @@ func MergeSlidesWithDeliveryDate(orders []structs.OrderInfo, nums []structs.Webn
 	numIndex := 0
 
 	for _, order := range orders {
-		if order.DeliveryDate != "" {
+		if order.OrderDb.DeliveryDate != "" {
 			order.Num = nums[numIndex].Num
 			numIndex++
 		}
@@ -173,7 +231,7 @@ func MergeSlidesWithDeliveryDate(orders []structs.OrderInfo, nums []structs.Webn
 	return result
 }
 
-type ByDeliveryDate []structs.OrderInfo
+type ByDeliveryDate []structs.OrderDb
 
 func (a ByDeliveryDate) Len() int      { return len(a) }
 func (a ByDeliveryDate) Swap(i, j int) { a[i], a[j] = a[j], a[i] }

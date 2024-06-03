@@ -26,20 +26,20 @@
             <tr {{ if .CurrentDate }} class="highlight" {{end}}>
                 {{ if .Num }}
                 <td rowspan="{{.Num}}">{{ .Index }}</td>
-                <td rowspan="{{.Num}}">{{ .DeliveryDate }}</td>
-                <td rowspan="{{.Num}}">{{ .DateTime }}</td>
-                <td rowspan="{{.Num}}">{{ .FullName }}</td>
-                <td rowspan="{{.Num}}">{{ .PhoneNumber }}</td>
-                <td rowspan="{{.Num}}">{{ .DeliveryAddress }}</td>
+                <td rowspan="{{.Num}}">{{ .OrderDb.DeliveryDate }}</td>
+                <td rowspan="{{.Num}}">{{ .OrderDb.DateTime }}</td>
+                <td rowspan="{{.Num}}">{{ .OrderDb.FullName }}</td>
+                <td rowspan="{{.Num}}">{{ .OrderDb.PhoneNumber }}</td>
+                <td rowspan="{{.Num}}">{{ .OrderDb.DeliveryAddress }}</td>
                 {{end}}
 
-                <td>{{ .Purchase.Item }}</td>
-                <td>{{ .Purchase.Quantity }}</td>
-                <td>{{ .Purchase.Cost }}</td>
+                <td>{{ .OrderDb.Purchase.Item }}</td>
+                <td>{{ .OrderDb.Purchase.Quantity }}</td>
+                <td>{{ .OrderDb.Purchase.Cost }}</td>
 
                 {{ if .Num }}
-                {{ if .TotalCost }}
-                <td rowspan="{{.Num}}">{{.TotalCost}}</td>
+                {{ if .OrderDb.TotalCost }}
+                <td rowspan="{{.Num}}">{{ .OrderDb.TotalCost}}</td>
                 {{end}}
                 {{end}}
             </tr>

@@ -1,9 +1,12 @@
 package structs
 
-import "time"
-
 type User struct {
 	UserID int64
+}
+
+type MessageInfo struct {
+	Info     string `json:"info"`
+	InfoText string `json:"info_text"`
 }
 
 // Purchase товары.
@@ -32,8 +35,8 @@ type QueryParams struct {
 	OrderBy   string
 	OrderDir  string
 	UserID    User
-	StartDate time.Time
-	EndDate   time.Time
+	StartDate string
+	EndDate   string
 }
 
 // Webnums структура.
@@ -41,8 +44,7 @@ type Webnums struct {
 	Num int
 }
 
-// OrderInfo основная структура данных для заказа продуктов.
-type OrderInfo struct {
+type OrderDb struct {
 	UserID          User   `json:"user_id,omitempty"`
 	FullName        string `json:"full_name"`
 	DateTime        string `json:"date_time"`
@@ -51,7 +53,12 @@ type OrderInfo struct {
 	PhoneNumber     string `json:"phone_number"`
 	DeliveryAddress string `json:"delivery_address"`
 	Purchase        Purchase
-	Num             int  `json:"num"`
-	CurrentDate     bool `json:"current_date"`
-	Index           int  `json:"index"`
+}
+
+// OrderInfo основная структура данных для заказа продуктов.
+type OrderInfo struct {
+	OrderDb     OrderDb
+	Num         int  `json:"num,omitempty"`
+	CurrentDate bool `json:"current_date,omitempty"`
+	Index       int  `json:"index,omitempty"`
 }

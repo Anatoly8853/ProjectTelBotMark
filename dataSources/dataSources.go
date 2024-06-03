@@ -1,29 +1,32 @@
-// main пакет.
-package main
+package dataSources
 
 import (
 	"ProjectTelBotMark/structs"
 	"database/sql"
 	"fmt"
+	"github.com/gookit/slog"
 	_ "github.com/mattn/go-sqlite3"
 	"regexp"
 	"strconv"
 	"time"
 )
 
-// db одк
-var db *sql.DB
+// Настраиваем логгер
+var logger *slog.Logger // Глобальный логгер
+
+// DB одк
+var DB *sql.DB
 
 // InitDB - инициализация базы данных.
 func InitDB() {
 	// Открываем соединение с базой данных SQLite
 	var err error
-	db, err = sql.Open("sqlite3", "./data.db")
+	DB, err = sql.Open("sqlite3", "./data.db")
 	if err != nil {
 		logger.Fatalf("Error opening database: %v", err)
 	}
 
-	_, err = db.Exec(`
+	_, err = DB.Exec(`
 	CREATE TABLE IF NOT EXISTS tg_user_Chat_ID (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER UNIQUE	
@@ -33,7 +36,7 @@ func InitDB() {
 		logger.Fatalf("Error creating reminders table: %v", err)
 	}
 
-	_, err = db.Exec(`
+	_, err = DB.Exec(`
 	CREATE TABLE IF NOT EXISTS tg_user_orders (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     order_id INTEGER,
@@ -48,7 +51,7 @@ func InitDB() {
 		logger.Fatalf("Error creating reminders table: %v", err)
 	}
 
-	_, err = db.Exec(`
+	_, err = DB.Exec(`
 	CREATE TABLE IF NOT EXISTS tg_user_order_id (
     id INTEGER PRIMARY KEY AUTOINCREMENT,    
     item_name TEXT     
@@ -58,7 +61,7 @@ func InitDB() {
 		logger.Fatalf("Error creating reminders table: %v", err)
 	}
 
-	_, err = db.Exec(`
+	_, err = DB.Exec(`
 	CREATE TABLE IF NOT EXISTS tg_user_phone_number (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	phone_number TEXT UNIQUE
@@ -68,7 +71,7 @@ func InitDB() {
 		logger.Fatalf("Error creating reminders table: %v", err)
 	}
 
-	_, err = db.Exec(`
+	_, err = DB.Exec(`
 	CREATE TABLE IF NOT EXISTS tg_user_full_name (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
     full_name TEXT UNIQUE
@@ -78,7 +81,7 @@ func InitDB() {
 		logger.Fatalf("Error creating reminders table: %v", err)
 	}
 
-	_, err = db.Exec(`
+	_, err = DB.Exec(`
 	CREATE TABLE IF NOT EXISTS tg_user_delivery_address (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	delivery_address TEXT UNIQUE
@@ -88,7 +91,7 @@ func InitDB() {
 		logger.Fatalf("Error creating reminders table: %v", err)
 	}
 
-	_, err = db.Exec(`
+	_, err = DB.Exec(`
 	CREATE TABLE IF NOT EXISTS tg_user_orders_date (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER,
@@ -112,8 +115,8 @@ func InitDB() {
 
 // CloseDB - закрытие соединения с базой данных.
 func CloseDB() {
-	if db != nil {
-		err := db.Close()
+	if DB != nil {
+		err := DB.Close()
 		if err != nil {
 			logger.Errorf("Error closing database: %v", err)
 			return
@@ -121,8 +124,30 @@ func CloseDB() {
 	}
 }
 
+func UserID() []structs.User {
+	row, err := DB.Query(`SELECT user_id FROM tg_user_Chat_ID`)
+	if err != nil {
+		logger.Errorf("Error getting user id: %v", err)
+		return nil
+	}
+
+	var user []structs.User
+
+	for row.Next() {
+		u := structs.User{}
+		err = row.Scan(&u.UserID)
+		if err != nil {
+			logger.Errorf("Error getting user id: %v", err)
+			return nil
+		}
+		user = append(user, u)
+	}
+	return user
+}
+
 // getOrInsertValues Функция для получения или вставки значений в таблицы базы данных.
 func getOrInsertValues(tx *sql.Tx, tables []string, columns []string, values []interface{}) ([]int64, error) {
+
 	var ids []int64
 
 	// Проверяем, вставляем ли данные в одну таблицу
@@ -313,11 +338,11 @@ func ProcessOrder(order string, db *sql.DB, userID int64) error {
 }
 
 // processRows функция для обработки строк результата SQL-запроса.
-func processRows(rows *sql.Rows) ([]structs.OrderInfo, error) {
-	var orders []structs.OrderInfo
+func processRows(rows *sql.Rows) ([]structs.OrderDb, error) {
+	var orders []structs.OrderDb
 
 	for rows.Next() {
-		var order structs.OrderInfo
+		var order structs.OrderDb
 		err := rows.Scan(
 			&order.UserID.UserID,
 			&order.FullName,
@@ -369,25 +394,25 @@ const baseQuery = `
 `
 
 // GetOrdersByUserID Функция для выбора из базы данных.
-func GetOrdersByUserID(db *sql.DB, userID int64, limit uint8) ([]structs.OrderInfo, error) {
+func GetOrdersByUserID(db *sql.DB, userID int64, limit uint8) ([]structs.OrderDb, error) {
 	query := baseQuery + `
 	WHERE
 		tg_user_Chat_ID.user_id = ?
 	ORDER BY
 		tg_user_orders_date.delivery_date DESC
 	LIMIT ?`
+
 	rows, err := db.Query(query, userID, limit)
 	if err != nil {
 		logger.Errorf("Error preparing query %v ", err)
 		return nil, err
 	}
-	//defer rows.Close()
 
 	return processRows(rows)
 }
 
 // GetOrdersWithFilters Функция для выбора данных из базы данных с фильтрацией и сортировкой.
-func GetOrdersWithFilters(db *sql.DB, params structs.QueryParams) ([]structs.OrderInfo, error) {
+func GetOrdersWithFilters(db *sql.DB, params structs.QueryParams) ([]structs.OrderDb, error) {
 	query := baseQuery
 
 	queryArgs := []interface{}{}
@@ -395,7 +420,8 @@ func GetOrdersWithFilters(db *sql.DB, params structs.QueryParams) ([]structs.Ord
 		query += " WHERE tg_user_Chat_ID.user_id = ?"
 		queryArgs = append(queryArgs, params.UserID)
 	}
-	if !params.StartDate.IsZero() {
+
+	if params.StartDate != "" {
 		if len(queryArgs) > 0 {
 			query += " AND tg_user_orders_date.date_time >= ?"
 		} else {
@@ -403,7 +429,8 @@ func GetOrdersWithFilters(db *sql.DB, params structs.QueryParams) ([]structs.Ord
 		}
 		queryArgs = append(queryArgs, params.StartDate)
 	}
-	if !params.EndDate.IsZero() {
+
+	if params.EndDate != "" {
 		if len(queryArgs) > 0 {
 			query += " AND tg_user_orders_date.date_time <= ?"
 		} else {

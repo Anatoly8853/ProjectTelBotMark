@@ -1,0 +1,2 @@
+[23:06:07 03.06.3036] [application] [ERROR] [routers.go:73,func1] Bad Request: chat_id is empty
+[23:07:00 03.06.3037] [application] [ERROR] [routers.go:73,func1] Bad Request: chat_id is empty

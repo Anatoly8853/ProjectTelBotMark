@@ -2,7 +2,6 @@ package main
 
 import (
 	"ProjectTelBotMark/dataSources"
-	"ProjectTelBotMark/routers"
 	"ProjectTelBotMark/structs"
 	"errors"
 	"fmt"
@@ -11,7 +10,6 @@ import (
 	"reflect"
 	"regexp"
 	"runtime"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -153,9 +151,9 @@ func DeleteBasketContents(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 // RequestDeliveryDetails Пример ввода данных заказа.
 func RequestDeliveryDetails(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	chatID := update.CallbackQuery.Message.Chat.ID
-	//TODO
+
 	// Удаление сообщения
-	//deleteMessages(bot, chatID)
+	deleteMessages(bot, chatID)
 
 	// Формирование текста с просьбой ввести данные для доставки
 	PhoneNumber := "Номер телефона:"
@@ -357,9 +355,6 @@ func MainOrdersByUserID(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 		return
 	}
 
-	//сортируем слайс от наибольшей даты к наименьшей
-	sort.Sort(routers.ByDeliveryDate(orders))
-
 	if len(orders) > 0 {
 
 		var msgText string
@@ -370,24 +365,24 @@ func MainOrdersByUserID(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 
 			// Форматирование даты заказа
 			// Парсинг строки времени в тип time.Time
-			t, err := time.Parse("15:04 02.01.2006", order.DateTime)
+			t, err := time.Parse(time.RFC3339, order.DeliveryDate)
 			if err != nil {
 				logger.Errorf("Ошибка парсинга строки времени: %v", err)
 				return
 			}
 
 			// Форматирование времени в нужный формат
-			formattedDate := t.Format("02.01.2006")
+			formattedDeliveryDate := t.Format("02.01.2006")
 
 			// Группировка по дате доставки
-			if order.DeliveryDate != currentDeliveryDate || order.DateTime != currentDateTime {
-				msgText += fmt.Sprintf("Дата заказа: %v\n", formattedDate)
-				msgText += fmt.Sprintf("Дата доставки: %v\n", order.DeliveryDate)
+			if formattedDeliveryDate != currentDeliveryDate || order.DateTime != currentDateTime {
+				msgText += fmt.Sprintf("Дата заказа: %v\n", order.DateTime)
+				msgText += fmt.Sprintf("Дата доставки: %v\n", formattedDeliveryDate)
 				msgText += fmt.Sprintf("Заказчик: %v\n", order.FullName)
 				msgText += fmt.Sprintf("Телефон для связи: %v\n", order.PhoneNumber)
 				msgText += fmt.Sprintf("Адрес доставки: %v\n", order.DeliveryAddress)
 				msgText += "Список заказанных товаров :\n"
-				currentDeliveryDate = order.DeliveryDate
+				currentDeliveryDate = formattedDeliveryDate
 				currentDateTime = order.DateTime
 			}
 

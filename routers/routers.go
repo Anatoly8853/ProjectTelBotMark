@@ -7,7 +7,6 @@ import (
 	"github.com/gin-gonic/gin"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/gookit/slog"
-	"sort"
 	"time"
 )
 
@@ -129,8 +128,8 @@ func HandlerIndex(c *gin.Context) {
 		logger.Errorf("ошибка запрос к базе %v", err)
 		return
 	}
-
-	sort.Sort(ByDeliveryDate(orders))
+	//fmt.Println("orders", orders)
+	//sort.Sort(ByDeliveryDate(orders))
 
 	var payloads []structs.OrderInfo
 	var webnums []structs.Webnums
@@ -148,16 +147,16 @@ func HandlerIndex(c *gin.Context) {
 			var webnum structs.Webnums
 
 			// Парсинг строки времени в тип time.Time
-			t, err := time.Parse("02.01.2006", order.DeliveryDate)
+			t, err := time.Parse(time.RFC3339, order.DeliveryDate)
 			if err != nil {
 				logger.Errorf("Ошибка парсинга строки времени: %v", err)
 				return
 			}
 
 			// Форматирование времени в нужный формат
-			formattedDate := t.Format("02.01.2006")
+			formattedDeliveryDate := t.Format("02.01.2006")
 
-			if formattedDate == now {
+			if formattedDeliveryDate == now {
 				payload.CurrentDate = true
 			}
 
@@ -168,13 +167,13 @@ func HandlerIndex(c *gin.Context) {
 				num++
 			}
 			// Группировка по дате доставки
-			if order.UserID.UserID != currentUserID || order.DeliveryDate != currentDeliveryDate || order.DateTime != currentDateTime {
+			if order.UserID.UserID != currentUserID || formattedDeliveryDate != currentDeliveryDate || order.DateTime != currentDateTime {
 				payload.OrderDb.DateTime = order.DateTime
-				payload.OrderDb.DeliveryDate = order.DeliveryDate
+				payload.OrderDb.DeliveryDate = formattedDeliveryDate
 				payload.OrderDb.FullName = order.FullName
 				payload.OrderDb.PhoneNumber = order.PhoneNumber
 				payload.OrderDb.DeliveryAddress = order.DeliveryAddress
-				currentDeliveryDate = order.DeliveryDate
+				currentDeliveryDate = formattedDeliveryDate
 				currentUserID = order.UserID.UserID
 				currentDateTime = order.DateTime
 				payload.OrderDb.TotalCost = order.TotalCost
@@ -229,15 +228,4 @@ func MergeSlidesWithDeliveryDate(orders []structs.OrderInfo, nums []structs.Webn
 	}
 
 	return result
-}
-
-type ByDeliveryDate []structs.OrderDb
-
-func (a ByDeliveryDate) Len() int      { return len(a) }
-func (a ByDeliveryDate) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
-func (a ByDeliveryDate) Less(i, j int) bool {
-	layout := "02.01.2006"
-	dateTime1, _ := time.Parse(layout, a[i].DeliveryDate)
-	dateTime2, _ := time.Parse(layout, a[j].DeliveryDate)
-	return dateTime1.After(dateTime2)
 }

@@ -4,6 +4,7 @@ import (
 	"ProjectTelBotMark/loggers"
 	"ProjectTelBotMark/structs"
 	"database/sql"
+	"errors"
 	"fmt"
 	"github.com/gookit/slog"
 	_ "github.com/mattn/go-sqlite3"
@@ -102,7 +103,7 @@ func InitDB() {
     full_name_id INTEGER,
     delivery_address_id INTEGER,
     date_time TEXT,
-    delivery_date TEXT,
+    delivery_date DATE,
     total_cost INTEGER,
     FOREIGN KEY (user_id) REFERENCES tg_user_Chat_ID(id),
     FOREIGN KEY (phone_number_id) REFERENCES tg_user_phone_number(id),
@@ -161,6 +162,7 @@ func getOrInsertValues(tx *sql.Tx, tables []string, columns []string, values []i
 
 	// Проверяем, вставляем ли данные в одну таблицу
 	if len(tables) == 1 {
+
 		// Вставка данных в одну таблицу с несколькими колонками
 		table := tables[0]
 		var idd int64
@@ -171,36 +173,47 @@ func getOrInsertValues(tx *sql.Tx, tables []string, columns []string, values []i
 		valuesPlaceholders := "VALUES ("
 
 		for i, column := range columns {
+
 			if i > 0 {
+
 				selectQuery += " AND "
 				insertQuery += ", "
 				valuesPlaceholders += ", "
+
 			}
+
 			selectQuery += fmt.Sprintf("%s = ?", column)
 			insertQuery += column
 			valuesPlaceholders += "?"
 		}
+
 		insertQuery += ") " + valuesPlaceholders + ")"
 
 		// Проверяем, существует ли строка
 		err := tx.QueryRow(selectQuery, values...).Scan(&idd)
+
 		if err != nil && err != sql.ErrNoRows {
 			logger.Errorf("Ошибка при выборе строки: %v", err)
 			return nil, err
 		}
 
 		if idd == 0 {
+
 			// Вставляем новую строку, если она не существует
 			res, err := tx.Exec(insertQuery, values...)
 			if err != nil {
+
 				logger.Errorf("Ошибка при вставке строки: %v", err)
 				return nil, err
+
 			}
 
 			idd, err = res.LastInsertId()
 			if err != nil {
+
 				logger.Errorf("Ошибка при вставке строки: %v", err)
 				return nil, err
+
 			}
 		}
 
@@ -246,91 +259,85 @@ func ProcessOrder(order string, db *sql.DB, userID int64) error {
 	// Настраиваем логгер
 	logger = loggers.SetupLogger()
 
-	// Регулярные выражения для извлечения информации
-	phoneRegex := regexp.MustCompile(`Номер телефона: (\+\d+)`)
-	addressRegex := regexp.MustCompile(`Адрес доставки: (.+)`)
-	dateRegex := regexp.MustCompile(`Дата доставки: (\d{2}\.\d{2}\.\d{4})`)
-	nameRegex := regexp.MustCompile(`ФИО: (.+)`)
-	itemRegex := regexp.MustCompile(`Товар: (.+?) кол-во: (\d+) цена: (\d+)\s*руб\.`)
-	totalCostRegex := regexp.MustCompile(`Общая стоимость: (\d+)\sруб\.`)
+	if order != "" {
 
-	// Извлечение основной информации о заказе
-	phoneNumber := phoneRegex.FindStringSubmatch(order)[1]
-	deliveryAddress := addressRegex.FindStringSubmatch(order)[1]
-	deliveryDate := dateRegex.FindStringSubmatch(order)[1]
-	fullName := nameRegex.FindStringSubmatch(order)[1]
-	totalCost, _ := strconv.Atoi(totalCostRegex.FindStringSubmatch(order)[1])
-	// Извлечение информации о товарах
-	items := itemRegex.FindAllStringSubmatch(order, -1)
+		// Регулярные выражения для извлечения информации
+		phoneRegex := regexp.MustCompile(`Номер телефона: (\+\d+)`)
+		addressRegex := regexp.MustCompile(`Адрес доставки: (.+)`)
+		dateRegex := regexp.MustCompile(`Дата доставки: (\d{2}\.\d{2}\.\d{4})`)
+		nameRegex := regexp.MustCompile(`ФИО: (.+)`)
+		itemRegex := regexp.MustCompile(`Товар: (.+?) кол-во: (\d+) цена: (\d+)\s*руб\.`)
+		totalCostRegex := regexp.MustCompile(`Общая стоимость: (\d+)\sруб\.`)
 
-	// Начало транзакции
-	tx, err := db.Begin()
-	if err != nil {
-		logger.Errorf("Error starting transaction: %v", err)
-		return err
-	}
-	defer func() {
+		// Извлечение основной информации о заказе
+		phoneNumber := phoneRegex.FindStringSubmatch(order)[1]
+		deliveryAddress := addressRegex.FindStringSubmatch(order)[1]
+		deliveryDate := dateRegex.FindStringSubmatch(order)[1]
+		// Парсинг строки времени в тип time.Time
+		t, err := time.Parse("02.01.2006", deliveryDate)
 		if err != nil {
-			tx.Rollback()
-		} else {
-			tx.Commit()
+			logger.Errorf("Ошибка парсинга строки времени: %v", err)
+			return err
 		}
-	}()
 
-	// Форматирование текущей даты и времени в указанный формат
-	formattedDateTime := time.Now().Format("15:04 02.01.2006")
+		// Преобразуем дату в строку формата "YYYY-MM-DD" для вставки в базу данных
+		formattedDeliveryDate := t.Format("2006-01-02")
 
-	// Вставка новой записи в tg_user_Chat_ID
-	// Проверяем, существует ли пользователь с таким user_id
-	tables := []string{"tg_user_Chat_ID", "tg_user_full_name", "tg_user_phone_number", "tg_user_delivery_address"}
-	columns := []string{"user_id", "full_name", "phone_number", "delivery_address"}
-	values := []interface{}{userID, fullName, phoneNumber, deliveryAddress}
+		fullName := nameRegex.FindStringSubmatch(order)[1]
+		totalCost, _ := strconv.Atoi(totalCostRegex.FindStringSubmatch(order)[1])
+		// Извлечение информации о товарах
+		items := itemRegex.FindAllStringSubmatch(order, -1)
 
-	ids, err := getOrInsertValues(tx, tables, columns, values)
-	if err != nil {
-		// Обработать ошибку
-		logger.Errorf("Error inserting row: %v", err)
-		return err
-	}
+		// Начало транзакции
+		tx, err := db.Begin()
+		if err != nil {
+			logger.Errorf("Error starting transaction: %v", err)
+			return err
+		}
 
-	existingUserID := ids[0]
-	existingFullNameID := ids[1]
-	existingPhoneID := ids[2]
-	existingAddressID := ids[3]
+		defer func() {
+			if err != nil {
 
-	// Вставляем новую запись в tg_orders_date
-	var existingOrdersDateID int64
+				if rbErr := tx.Rollback(); rbErr != nil {
+					logger.Errorf("tx.Rollback() failed: %v", rbErr)
+				}
 
-	tables = []string{"tg_user_orders_date"}
-	columns = []string{"user_id", "phone_number_id", "full_name_id", "delivery_address_id", "date_time", "delivery_date", "total_cost"}
-	values = []interface{}{existingUserID, existingPhoneID, existingFullNameID, existingAddressID, formattedDateTime, deliveryDate, totalCost}
+			} else {
 
-	ids, err = getOrInsertValues(tx, tables, columns, values)
-	if err != nil {
-		// Обработать ошибку
-		logger.Errorf("Error inserting row: %v", err)
-		return err
-	}
+				if cmErr := tx.Commit(); cmErr != nil {
+					logger.Errorf("tx.Commit() failed: %v", cmErr)
+				}
 
-	existingOrdersDateID = ids[0]
+			}
+		}()
 
-	// Вставляем новые записи в tg_user_orders
-	stmt, err := tx.Prepare(`INSERT INTO tg_user_orders (order_id, item_name, quantity, cost) VALUES (?, ?, ?, ?)`)
-	if err != nil {
-		logger.Errorf("Error inserting row: %v", err)
-		return err
-	}
-
-	for _, item := range items {
-		itemName := item[1]
-		quantity, _ := strconv.Atoi(item[2])
-		cost, _ := strconv.Atoi(item[3])
+		// Форматирование текущей даты и времени в указанный формат
+		formattedDateTime := time.Now().Format("15:04 02.01.2006")
 
 		// Вставка новой записи в tg_user_Chat_ID
 		// Проверяем, существует ли пользователь с таким user_id
-		tables = []string{"tg_user_order_id"}
-		columns = []string{"item_name"}
-		values = []interface{}{itemName}
+		tables := []string{"tg_user_Chat_ID", "tg_user_full_name", "tg_user_phone_number", "tg_user_delivery_address"}
+		columns := []string{"user_id", "full_name", "phone_number", "delivery_address"}
+		values := []interface{}{userID, fullName, phoneNumber, deliveryAddress}
+
+		ids, err := getOrInsertValues(tx, tables, columns, values)
+		if err != nil {
+			// Обработать ошибку
+			logger.Errorf("Error inserting row: %v", err)
+			return err
+		}
+
+		existingUserID := ids[0]
+		existingFullNameID := ids[1]
+		existingPhoneID := ids[2]
+		existingAddressID := ids[3]
+
+		// Вставляем новую запись в tg_orders_date
+		var existingOrdersDateID int64
+
+		tables = []string{"tg_user_orders_date"}
+		columns = []string{"user_id", "phone_number_id", "full_name_id", "delivery_address_id", "date_time", "delivery_date", "total_cost"}
+		values = []interface{}{existingUserID, existingPhoneID, existingFullNameID, existingAddressID, formattedDateTime, formattedDeliveryDate, totalCost}
 
 		ids, err = getOrInsertValues(tx, tables, columns, values)
 		if err != nil {
@@ -339,13 +346,44 @@ func ProcessOrder(order string, db *sql.DB, userID int64) error {
 			return err
 		}
 
-		_, err = stmt.Exec(existingOrdersDateID, ids[0], quantity, cost)
+		existingOrdersDateID = ids[0]
+
+		// Вставляем новые записи в tg_user_orders
+		stmt, err := tx.Prepare(`INSERT INTO tg_user_orders (order_id, item_name, quantity, cost) VALUES (?, ?, ?, ?)`)
 		if err != nil {
 			logger.Errorf("Error inserting row: %v", err)
 			return err
 		}
-	}
 
+		for _, item := range items {
+			itemName := item[1]
+			quantity, _ := strconv.Atoi(item[2])
+			cost, _ := strconv.Atoi(item[3])
+
+			// Вставка новой записи в tg_user_Chat_ID
+			// Проверяем, существует ли пользователь с таким user_id
+			tables = []string{"tg_user_order_id"}
+			columns = []string{"item_name"}
+			values = []interface{}{itemName}
+
+			ids, err = getOrInsertValues(tx, tables, columns, values)
+			if err != nil {
+				// Обработать ошибку
+				logger.Errorf("Error inserting row: %v", err)
+				return err
+			}
+
+			_, err = stmt.Exec(existingOrdersDateID, ids[0], quantity, cost)
+			if err != nil {
+				logger.Errorf("Error inserting row: %v", err)
+				return err
+			}
+		}
+	} else {
+
+		logger.Error("нет данных для бд")
+		return errors.New("нет данных для бд")
+	}
 	return nil
 }
 
@@ -468,7 +506,9 @@ func GetOrdersWithFilters(db *sql.DB, params structs.QueryParams) ([]structs.Ord
 
 	query := baseQuery
 
-	queryArgs := []interface{}{}
+	// Инициализация пустого среза с помощью make
+	queryArgs := make([]interface{}, 0)
+
 	if params.UserID.UserID != 0 {
 		query += " WHERE tg_user_Chat_ID.user_id = ?"
 		queryArgs = append(queryArgs, params.UserID)
@@ -476,18 +516,18 @@ func GetOrdersWithFilters(db *sql.DB, params structs.QueryParams) ([]structs.Ord
 
 	if params.StartDate != "" {
 		if len(queryArgs) > 0 {
-			query += " AND tg_user_orders_date.date_time >= ?"
+			query += " AND tg_user_orders_date.delivery_date >= ?"
 		} else {
-			query += " WHERE tg_user_orders_date.date_time >= ?"
+			query += " WHERE tg_user_orders_date.delivery_date >= ?"
 		}
 		queryArgs = append(queryArgs, params.StartDate)
 	}
 
 	if params.EndDate != "" {
 		if len(queryArgs) > 0 {
-			query += " AND tg_user_orders_date.date_time <= ?"
+			query += " AND tg_user_orders_date.delivery_date <= ?"
 		} else {
-			query += " WHERE tg_user_orders_date.date_time <= ?"
+			query += " WHERE tg_user_orders_date.delivery_date <= ?"
 		}
 		queryArgs = append(queryArgs, params.EndDate)
 	}

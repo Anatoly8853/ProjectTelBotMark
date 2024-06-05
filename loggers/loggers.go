@@ -34,24 +34,30 @@ func (f *CustomFormatter) Format(record *slog.Record) ([]byte, error) {
 
 // getFunctionName возвращает короткое имя функции по Program Counter (PC)
 func getFunctionName(pc uintptr) string {
+
 	fn := runtime.FuncForPC(pc)
 	if fn == nil {
 		return "unknown"
 	}
+
 	// Извлекаем только короткое имя функции
 	fullName := fn.Name()
 	parts := strings.Split(fullName, "/")
 	shortName := parts[len(parts)-1]
+
 	if dotIndex := strings.LastIndex(shortName, "."); dotIndex != -1 {
 		shortName = shortName[dotIndex+1:]
 	}
+
 	return shortName
 }
 
 // SetupLogger настраивает и возвращает логгер
 func SetupLogger() *slog.Logger {
+
 	// Получаем текущее время и дату
 	now := time.Now()
+
 	// Определим путь к файлу лога с учетом текущей даты в формате DD-MM-YYYY
 	logFilePath := fmt.Sprintf("log/error-%s.log", now.Format("02-01-2006"))
 

@@ -33,8 +33,6 @@ func CheckDatabase(bot *tgbotapi.BotAPI) {
 		return
 	}
 
-	//sort.Sort(routers.ByDeliveryDate(orders))
-
 	if len(orders) > 0 {
 		var currentDeliveryDate string // Объявляем переменную для отслеживания текущей даты доставки
 		var currentUserID int64
@@ -44,26 +42,26 @@ func CheckDatabase(bot *tgbotapi.BotAPI) {
 		for i, order := range orders {
 
 			// Парсинг строки времени в тип time.Time
-			t, err := time.Parse("02.01.2006", order.DeliveryDate)
+			t, err := time.Parse(time.RFC3339, order.DeliveryDate)
 			if err != nil {
 				logger.Errorf("Ошибка парсинга строки времени: %v", err)
 				return
 			}
 
 			// Форматирование времени в нужный формат
-			formattedDate := t.Format("02.01.2006")
+			formattedDeliveryDate := t.Format("02.01.2006")
 
-			if formattedDate == now {
+			if formattedDeliveryDate == now {
 
 				// Группировка по дате доставки
-				if order.UserID.UserID != currentUserID || order.DeliveryDate != currentDeliveryDate || order.DateTime != currentDateTime {
+				if order.UserID.UserID != currentUserID || formattedDeliveryDate != currentDeliveryDate || order.DateTime != currentDateTime {
 					//msgText += fmt.Sprintf("Дата заказа: %v\n", formattedDate)
-					msgText += fmt.Sprintf("Дата доставки: %v\n", order.DeliveryDate)
+					msgText += fmt.Sprintf("Дата доставки: %v\n", formattedDeliveryDate)
 					msgText += fmt.Sprintf("Заказчик: %v\n", order.FullName)
 					msgText += fmt.Sprintf("Телефон для связи: %v\n", order.PhoneNumber)
 					msgText += fmt.Sprintf("Адрес доставки: %v\n", order.DeliveryAddress)
 					msgText += "Список заказанных товаров :\n"
-					currentDeliveryDate = order.DeliveryDate
+					currentDeliveryDate = formattedDeliveryDate
 					currentDateTime = order.DateTime
 				}
 
@@ -77,10 +75,12 @@ func CheckDatabase(bot *tgbotapi.BotAPI) {
 					// Получите ID группового чата из переменной окружения
 					groupChatIDStr := os.Getenv("TELEGRAM_GROUPCHATID")
 					groupChatID, err := strconv.ParseInt(groupChatIDStr, 10, 64)
+
 					if err != nil {
 						logger.Errorf("Ошибка преобразования ID группового чата: %v", err)
 						return
 					}
+
 					message := tgbotapi.NewMessage(groupChatID, msgText)
 					_, err = bot.Send(message)
 					if err != nil {
@@ -101,10 +101,12 @@ func CheckDatabase(bot *tgbotapi.BotAPI) {
 		// Получите ID группового чата из переменной окружения
 		groupChatIDStr := os.Getenv("TELEGRAM_GROUPCHATID")
 		groupChatID, err := strconv.ParseInt(groupChatIDStr, 10, 64)
+
 		if err != nil {
 			logger.Errorf("Ошибка преобразования ID группового чата: %v", err)
 			return
 		}
+
 		message := tgbotapi.NewMessage(groupChatID, msgText)
 		_, err = bot.Send(message)
 		if err != nil {

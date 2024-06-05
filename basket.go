@@ -10,6 +10,7 @@ import (
 	"os"
 	"reflect"
 	"regexp"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -26,7 +27,7 @@ var BasketMessages = make(map[int64]int)
 var messagesToDelete = make(map[int64][]int)
 
 // orderDetails содержание корзины.
-var orderDetails string
+var orderDetails = make(map[int64]string)
 
 // orders Map для хранения данных по chatID.
 var orders = make(map[int64]structs.OrderDb)
@@ -51,6 +52,7 @@ func AddToBasket(bot *tgbotapi.BotAPI, update tgbotapi.Update, item string, quan
 
 	// Отправка всплывающего сообщения пользователю
 	popupText := fmt.Sprintf("Добавлено в корзину:\n %s, кол-во: %d, цена: %d руб.\n Общая стоимость: %d руб", item, quantity, cost, totalCost)
+
 	SendPopupMessage(bot, update, popupText)
 }
 
@@ -58,6 +60,7 @@ func AddToBasket(bot *tgbotapi.BotAPI, update tgbotapi.Update, item string, quan
 func SendPopupMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update, popupText string) {
 	callbackConfig := tgbotapi.NewCallback(update.CallbackQuery.ID, popupText)
 	callbackConfig.ShowAlert = true // Для отображения в виде всплывающего уведомления
+
 	if _, err := bot.Request(callbackConfig); err != nil {
 		logger.Errorf("не удается создать всплывающее сообщение %v", err)
 		return
@@ -70,24 +73,34 @@ func ShowBasket(bot *tgbotapi.BotAPI, chatID int64) {
 	msg := tgbotapi.NewMessage(chatID, "Вы пока ничего не добавили в корзину")
 
 	if len(purchases) > 0 {
+
 		groupedPurchases := make(map[string]structs.Purchase)
+
 		for _, p := range purchases {
+
 			key := p.Item
+
 			if existing, found := groupedPurchases[key]; found {
+
 				existing.Quantity += p.Quantity
 				existing.Cost += p.Cost
 				groupedPurchases[key] = existing
+
 			} else {
+
 				groupedPurchases[key] = p
 			}
 		}
 
 		var msgText string
 		totalCost := 0
+
 		for _, p := range groupedPurchases {
+
 			itemTotalCost := p.Cost // Общая стоимость для этой группы товаров
 			msgText += fmt.Sprintf("Товар: %s кол-во: %d цена: %d руб.\n", p.Item, p.Quantity, itemTotalCost)
 			totalCost += itemTotalCost
+
 		}
 
 		msgText += fmt.Sprintf("Общая стоимость: %d руб.\n", totalCost)
@@ -95,6 +108,7 @@ func ShowBasket(bot *tgbotapi.BotAPI, chatID int64) {
 
 		btnSend := tgbotapi.NewInlineKeyboardButtonData("Оформить заказ", "send_basket_1_1")
 		btnDelete := tgbotapi.NewInlineKeyboardButtonData("Очистить корзину", "delete_basket_1_1")
+
 		row := tgbotapi.NewInlineKeyboardRow(btnSend, btnDelete)
 		inlineKeyboard := tgbotapi.NewInlineKeyboardMarkup(row)
 		msg.ReplyMarkup = inlineKeyboard
@@ -103,9 +117,12 @@ func ShowBasket(bot *tgbotapi.BotAPI, chatID int64) {
 
 	sentMsg, err := bot.Send(msg)
 	if err != nil {
+
 		logger.Errorf("не удается вывести содержимое корзины %v", err)
 		return
+
 	}
+
 	BasketMessages[chatID] = sentMsg.MessageID
 }
 
@@ -129,20 +146,16 @@ func DeleteBasketContents(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	}
 
 	// Отправка подтверждающего сообщения пользователю, что корзина была очищена
-	confirmationText := "Корзина успешно очищена."
-	confirmMsg := tgbotapi.NewMessage(chatID, confirmationText)
-	if _, err := bot.Send(confirmMsg); err != nil {
-		logger.Errorf("не удаётся отправить подтверждающего сообщения пользователю, что корзина была очищена %v", err)
-		return
-	}
+	sendMessage(bot, chatID, "Корзина успешно очищена.")
+
 }
 
 // RequestDeliveryDetails Пример ввода данных заказа.
 func RequestDeliveryDetails(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	chatID := update.CallbackQuery.Message.Chat.ID
-
+	//TODO
 	// Удаление сообщения
-	deleteMessages(bot, chatID)
+	//deleteMessages(bot, chatID)
 
 	// Формирование текста с просьбой ввести данные для доставки
 	PhoneNumber := "Номер телефона:"
@@ -173,30 +186,35 @@ func RequestDeliveryDetails(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 // Объединяем данные заказа с содержимым корзины.
 func handleDeliveryDetailsMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	chatID := update.Message.Chat.ID
-	messageID := update.Message.MessageID
-	//MsgText := update.Message.Text
+	//messageID := update.Message.MessageID
+
 	var MsgText string
+
 	if field, err := getFieldByChatID(update.Message.Chat.ID, "PhoneNumber"); err == nil {
 		str, _ := field.(string)
 		MsgText += "Номер телефона: " + str + "\n"
 	}
+
 	//"Адрес доставки: [ваш адрес]\n" +
 	if field, err := getFieldByChatID(update.Message.Chat.ID, "DeliveryAddress"); err == nil {
 		str, _ := field.(string)
 		MsgText += "Адрес доставки: " + str + "\n"
 	}
+
 	//"Дата доставки: [желаемая дата]\n" +
 	if field, err := getFieldByChatID(update.Message.Chat.ID, "DeliveryDate"); err == nil {
 		str, _ := field.(string)
 		MsgText += "Дата доставки: " + str + "\n"
 	}
+
 	//"ФИО: [ваше имя и фамилия]\n\n" +
 	if field, err := getFieldByChatID(update.Message.Chat.ID, "FullName"); err == nil {
 		str, _ := field.(string)
 		MsgText += "ФИО: " + str + "\n"
 	}
+
 	// Объединяем данные заказа с содержимым корзины
-	orderDetails = "Детали заказа:\n" + MsgText // Сообщение с деталями заказа
+	orderDetails[chatID] = "Детали заказа:\n" + MsgText // Сообщение с деталями заказа
 
 	// Получение содержимого корзины
 	purchases := Baskets[chatID]
@@ -226,23 +244,25 @@ func handleDeliveryDetailsMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update) 
 	// Очищаем данные заказа
 	clearOrder(chatID)
 
-	orderDetails += MsgTexts
+	orderDetails[chatID] += MsgTexts
 
+	//TODO
 	// Удаление сообщения с введенными данными
-	deleteMsg := tgbotapi.NewDeleteMessage(chatID, messageID)
-	if _, err := bot.Request(deleteMsg); err != nil {
-		logger.Errorf("%v", err)
-	}
+	//deleteMsg := tgbotapi.NewDeleteMessage(chatID, messageID)
+	//if _, err := bot.Request(deleteMsg); err != nil {
+	//logger.Errorf("%v", err)
+	//}
 
 	// Отправляем пользователю подтверждение с деталями заказа и кнопкой "Заказать"
 	btnOrder := tgbotapi.NewInlineKeyboardButtonData("Заказать", "confirm_order")
 	inlineKeyboard := tgbotapi.NewInlineKeyboardMarkup(tgbotapi.NewInlineKeyboardRow(btnOrder))
 
-	confirmMsg := tgbotapi.NewMessage(chatID, orderDetails)
+	confirmMsg := tgbotapi.NewMessage(chatID, orderDetails[chatID])
 	confirmMsg.ReplyMarkup = inlineKeyboard
 
+	//TODO
 	// Удаление сообщения
-	deleteMessages(bot, chatID)
+	//deleteMessages(bot, chatID)
 
 	if sentMsg, err := bot.Send(confirmMsg); err != nil {
 		logger.Errorf("%v", err)
@@ -295,56 +315,59 @@ func deleteMessages(bot *tgbotapi.BotAPI, chatID int64) {
 // GroupMessagesChatID отправляем заказ.
 func GroupMessagesChatID(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	chatID := update.CallbackQuery.Message.Chat.ID
-	msg := tgbotapi.NewMessage(chatID, "Нет данных для отправки")
-	if orderDetails != "" {
-		// Отправляем сообщение в групповой чат
+
+	if orderDetails[chatID] != "" {
+
 		// Получите ID группового чата из переменной окружения
 		groupChatIDStr := os.Getenv("TELEGRAM_GROUPCHATID")
 		groupChatID, err := strconv.ParseInt(groupChatIDStr, 10, 64)
+
 		if err != nil {
 			logger.Errorf("Ошибка преобразования ID группового чата: %v", err)
 			return
 		}
-		message := tgbotapi.NewMessage(groupChatID, orderDetails)
-		_, err = bot.Send(message)
-		if err != nil {
-			logger.Errorf("%v", err)
-			return
-		} else {
-			orderDetails = ""
-			// Удаление сообщения
-			deleteMessages(bot, chatID)
-			msg = tgbotapi.NewMessage(chatID, "Ваш заказ успешно отправлен при сборе заказа мы Вас уведомим")
-			if _, err = bot.Send(msg); err != nil {
-				logger.Errorf("Ошибка отправки сообщения: %v", err)
-				return
-			}
-		}
+
+		// Отправляем сообщение в групповой чат.
+		sendMessage(bot, groupChatID, orderDetails[chatID])
+		delete(orderDetails, groupChatID)
+
+		// Удаление сообщения
+		deleteMessages(bot, chatID)
+
+		//отправляем сообщение.
+		sendMessage(bot, chatID, "Ваш заказ успешно отправлен при сборе заказа мы Вас уведомим")
+		delete(orderDetails, chatID)
+
+		delete(BasketMessages, chatID)
+
 	} else {
-		if _, err := bot.Send(msg); err != nil {
-			logger.Errorf("Ошибка отправки сообщения: %v", err)
-			return
-		}
+		//отправляем сообщение.
+		sendMessage(bot, chatID, "Нет данных для отправки")
 	}
 }
 
 // MainOrdersByUserID Выводим заказы пользователей.
 func MainOrdersByUserID(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	userID := update.Message.Chat.ID // Ваш user_id
-	orders, err := dataSources.GetOrdersByUserID(dataSources.DB, userID, 10)
+
+	orders, err := dataSources.GetOrdersByUserID(dataSources.DB, userID, 6)
+
 	if err != nil {
 		logger.Errorf("Error getting orders: %v", err)
 		return
 	}
+
 	//сортируем слайс от наибольшей даты к наименьшей
 	sort.Sort(routers.ByDeliveryDate(orders))
 
 	if len(orders) > 0 {
+
 		var msgText string
 		var currentDeliveryDate string // Объявляем переменную для отслеживания текущей даты доставки
 		var currentDateTime string
 
 		for i, order := range orders {
+
 			// Форматирование даты заказа
 			// Парсинг строки времени в тип time.Time
 			t, err := time.Parse("15:04 02.01.2006", order.DateTime)
@@ -376,20 +399,13 @@ func MainOrdersByUserID(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 
 			}
 		}
-		msg := tgbotapi.NewMessage(update.Message.Chat.ID, msgText)
-		if _, err = bot.Send(msg); err != nil {
-			logger.Errorf("Ошибка отправки сообщения: %v", err)
-			return
-		}
+		//отправляем сообщение
+		sendMessage(bot, userID, msgText)
 
 	} else {
-		msg := tgbotapi.NewMessage(update.Message.Chat.ID, "Вы ничего у нас не заказывали")
-		if _, err = bot.Send(msg); err != nil {
-			logger.Errorf("Ошибка отправки сообщения: %v", err)
-			return
-		}
+		//отправляем сообщение
+		sendMessage(bot, userID, "Вы ничего у нас не заказывали")
 	}
-
 }
 
 // addOrUpdateOrderField Функция для добавления или обновления конкретного поля заказа.
@@ -401,13 +417,16 @@ func addOrUpdateOrderField(chatID int64, fieldName string, value interface{}) er
 
 	val := reflect.ValueOf(&order).Elem()
 	fieldVal := val.FieldByName(fieldName)
+
 	if !fieldVal.IsValid() {
+		logger.Error("такого поля не существует")
 		return errors.New("такого поля не существует")
 	}
 
 	if fieldVal.CanSet() {
 		fieldVal.Set(reflect.ValueOf(value))
 	} else {
+		logger.Error("не удалось установить значение поля")
 		return errors.New("не удалось установить значение поля")
 	}
 
@@ -422,14 +441,19 @@ func clearOrder(chatID int64) {
 
 // getFieldByChatID Функция для получения значения поля по chatID и имени поля.
 func getFieldByChatID(chatID int64, fieldName string) (interface{}, error) {
+
 	order, exists := orders[chatID]
+
 	if !exists {
+		logger.Error("заказ с таким chatID не найден")
 		return nil, errors.New("заказ с таким chatID не найден")
 	}
 
 	val := reflect.ValueOf(order)
 	fieldVal := val.FieldByName(fieldName)
+
 	if !fieldVal.IsValid() {
+		logger.Error("такого поля не существует")
 		return nil, errors.New("такого поля не существует")
 	}
 
@@ -547,10 +571,23 @@ func formatPhoneNumber(phone string) (string, string) {
 
 // Функция для отправки сообщения и добавления его в BasketMessages
 func sendMessage(bot *tgbotapi.BotAPI, chatID int64, text string) {
+
 	msg := tgbotapi.NewMessage(chatID, text)
 	sentMsg, err := bot.Send(msg)
+
 	if err != nil {
-		logger.Errorf("не удается отправить сообщение %v", err)
+
+		// Получаем имя вызывающей функции и номер строки
+		pc, file, line, ok := runtime.Caller(1)
+
+		if ok {
+			funcName := runtime.FuncForPC(pc).Name()
+			funcName = trimFuncName(funcName) // Укорачиваем имя функции
+			file = trimFilePath(file)         // Укорачиваем путь к файлу
+			logger.Errorf("не удается отправить сообщение в функции %s (строка %d, файл %s): %v", funcName, line, file, err)
+		} else {
+			logger.Errorf("не удается отправить сообщение: %v", err)
+		}
 		return
 	} else {
 		// Сохраняем идентификатор отправленного сообщения для последующего удаления
@@ -559,4 +596,20 @@ func sendMessage(bot *tgbotapi.BotAPI, chatID int64, text string) {
 	}
 	// Удаляем предыдущие сообщения, если их больше 3
 	//deleteMessages(bot, chatID)
+}
+
+// trimFuncName Функция для укорачивания полного имени функции.
+func trimFuncName(fullFuncName string) string {
+	parts := strings.Split(fullFuncName, "/")
+	shortName := parts[len(parts)-1]
+	return shortName
+}
+
+// trimFilePath Функция для укорачивания пути к файлу.
+func trimFilePath(fullFilePath string) string {
+	parts := strings.Split(fullFilePath, "/")
+	if len(parts) > 2 {
+		return strings.Join(parts[len(parts)-2:], "/")
+	}
+	return fullFilePath
 }

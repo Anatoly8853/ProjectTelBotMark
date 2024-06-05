@@ -3,13 +3,11 @@ package reminders
 import (
 	"ProjectTelBotMark/dataSources"
 	"ProjectTelBotMark/loggers"
-	"ProjectTelBotMark/routers"
 	"ProjectTelBotMark/structs"
 	"fmt"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/gookit/slog"
 	"os"
-	"sort"
 	"strconv"
 	"time"
 )
@@ -24,10 +22,8 @@ func CheckDatabase(bot *tgbotapi.BotAPI) {
 	now := time.Now().Format("02.01.2006") // формат даты в виде DD.MM.YYYY
 
 	params := structs.QueryParams{
-		StartDate: now,
-		EndDate:   now,
-		OrderBy:   "tg_user_orders_date.delivery_date",
-		OrderDir:  "DESC",
+		OrderBy:  "tg_user_orders_date.delivery_date",
+		OrderDir: "DESC",
 		//OrderDir: "ASC",
 	}
 
@@ -37,7 +33,7 @@ func CheckDatabase(bot *tgbotapi.BotAPI) {
 		return
 	}
 
-	sort.Sort(routers.ByDeliveryDate(orders))
+	//sort.Sort(routers.ByDeliveryDate(orders))
 
 	if len(orders) > 0 {
 		var currentDeliveryDate string // Объявляем переменную для отслеживания текущей даты доставки

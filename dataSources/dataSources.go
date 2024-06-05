@@ -1,6 +1,7 @@
 package dataSources
 
 import (
+	"ProjectTelBotMark/loggers"
 	"ProjectTelBotMark/structs"
 	"database/sql"
 	"fmt"
@@ -19,6 +20,8 @@ var DB *sql.DB
 
 // InitDB - инициализация базы данных.
 func InitDB() {
+	// Настраиваем логгер
+	logger = loggers.SetupLogger()
 	// Открываем соединение с базой данных SQLite
 	var err error
 	DB, err = sql.Open("sqlite3", "./data.db")
@@ -115,6 +118,8 @@ func InitDB() {
 
 // CloseDB - закрытие соединения с базой данных.
 func CloseDB() {
+	// Настраиваем логгер
+	logger = loggers.SetupLogger()
 	if DB != nil {
 		err := DB.Close()
 		if err != nil {
@@ -125,6 +130,8 @@ func CloseDB() {
 }
 
 func UserID() []structs.User {
+	// Настраиваем логгер
+	logger = loggers.SetupLogger()
 	row, err := DB.Query(`SELECT user_id FROM tg_user_Chat_ID`)
 	if err != nil {
 		logger.Errorf("Error getting user id: %v", err)
@@ -147,6 +154,8 @@ func UserID() []structs.User {
 
 // getOrInsertValues Функция для получения или вставки значений в таблицы базы данных.
 func getOrInsertValues(tx *sql.Tx, tables []string, columns []string, values []interface{}) ([]int64, error) {
+	// Настраиваем логгер
+	logger = loggers.SetupLogger()
 
 	var ids []int64
 
@@ -234,6 +243,9 @@ func getOrInsertValues(tx *sql.Tx, tables []string, columns []string, values []i
 
 // ProcessOrder Функция для парсинга деталей заказа и добавления в базу данных.
 func ProcessOrder(order string, db *sql.DB, userID int64) error {
+	// Настраиваем логгер
+	logger = loggers.SetupLogger()
+
 	// Регулярные выражения для извлечения информации
 	phoneRegex := regexp.MustCompile(`Номер телефона: (\+\d+)`)
 	addressRegex := regexp.MustCompile(`Адрес доставки: (.+)`)
@@ -339,6 +351,9 @@ func ProcessOrder(order string, db *sql.DB, userID int64) error {
 
 // processRows функция для обработки строк результата SQL-запроса.
 func processRows(rows *sql.Rows) ([]structs.OrderDb, error) {
+	// Настраиваем логгер
+	logger = loggers.SetupLogger()
+
 	var orders []structs.OrderDb
 
 	for rows.Next() {
@@ -392,27 +407,65 @@ const baseQuery = `
 			JOIN tg_user_full_name ON tg_user_orders_date.full_name_id = tg_user_full_name.id
 			JOIN tg_user_order_id ON tg_user_orders.item_name = tg_user_order_id.id
 `
+const limitedOrdersQuery = `
+    WITH LimitedOrders AS (
+        SELECT
+            tg_user_orders_date.id AS order_id
+        FROM
+            tg_user_orders_date
+            JOIN tg_user_Chat_ID ON tg_user_orders_date.user_id = tg_user_Chat_ID.id
+        WHERE
+            tg_user_Chat_ID.user_id = ?
+        ORDER BY
+            tg_user_orders_date.delivery_date DESC
+        LIMIT ?
+    )
+    SELECT
+        tg_user_Chat_ID.user_id,
+        tg_user_full_name.full_name,
+        tg_user_orders_date.date_time,
+        tg_user_orders_date.total_cost,
+        tg_user_orders_date.delivery_date,
+        tg_user_phone_number.phone_number,
+        tg_user_delivery_address.delivery_address,
+        tg_user_order_id.item_name,
+        tg_user_orders.quantity,
+        tg_user_orders.cost
+    FROM
+        tg_user_Chat_ID
+        JOIN tg_user_orders_date ON tg_user_Chat_ID.id = tg_user_orders_date.user_id
+        JOIN tg_user_phone_number ON tg_user_orders_date.phone_number_id = tg_user_phone_number.id
+        JOIN tg_user_delivery_address ON tg_user_orders_date.delivery_address_id = tg_user_delivery_address.id
+        JOIN tg_user_orders ON tg_user_orders_date.id = tg_user_orders.order_id
+        JOIN tg_user_full_name ON tg_user_orders_date.full_name_id = tg_user_full_name.id
+        JOIN tg_user_order_id ON tg_user_orders.item_name = tg_user_order_id.id
+    WHERE
+        tg_user_orders_date.id IN (SELECT order_id FROM LimitedOrders)
+    ORDER BY
+        tg_user_orders_date.delivery_date DESC;
+`
 
 // GetOrdersByUserID Функция для выбора из базы данных.
 func GetOrdersByUserID(db *sql.DB, userID int64, limit uint8) ([]structs.OrderDb, error) {
-	query := baseQuery + `
-	WHERE
-		tg_user_Chat_ID.user_id = ?
-	ORDER BY
-		tg_user_orders_date.delivery_date DESC
-	LIMIT ?`
+	// Настраиваем логгер
+	logger = loggers.SetupLogger()
 
-	rows, err := db.Query(query, userID, limit)
+	// Выполняем запрос для получения заказов
+	rows, err := db.Query(limitedOrdersQuery, userID, limit)
 	if err != nil {
-		logger.Errorf("Error preparing query %v ", err)
+		logger.Printf("Error preparing query: %v", err)
 		return nil, err
 	}
+	//defer rows.Close()
 
 	return processRows(rows)
 }
 
 // GetOrdersWithFilters Функция для выбора данных из базы данных с фильтрацией и сортировкой.
 func GetOrdersWithFilters(db *sql.DB, params structs.QueryParams) ([]structs.OrderDb, error) {
+	// Настраиваем логгер
+	logger = loggers.SetupLogger()
+
 	query := baseQuery
 
 	queryArgs := []interface{}{}

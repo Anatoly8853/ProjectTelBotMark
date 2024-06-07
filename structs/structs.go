@@ -5,8 +5,9 @@ type User struct {
 }
 
 type MessageInfo struct {
-	Info     string `json:"info"`
-	InfoText string `json:"info_text"`
+	Info      string `json:"info" form:"Info"`
+	InfoText  string `json:"info_text" form:"InfoText"`
+	ImagePath string `json:"image_path" form:"ImagePath"`
 }
 
 // Purchase товары.
@@ -25,6 +26,7 @@ type ButtonData struct {
 // Categories Распаковка данных.
 var Categories map[string]struct {
 	CategoryName string       `json:"categoryName"`
+	CategoryMsg  string       `json:"categoryMsg"`
 	Photo        string       `json:"photo"`
 	Buttons      []ButtonData `json:"buttons"`
 	ButtonsM     []ButtonData `json:"buttonsM"`
@@ -61,4 +63,9 @@ type OrderInfo struct {
 	Num         int  `json:"num,omitempty"`
 	CurrentDate bool `json:"current_date,omitempty"`
 	Index       int  `json:"index,omitempty"`
+}
+
+type Order struct {
+	DeliveryDate string `json:"delivery_date,omitempty"`
+	TotalCost    int    `json:"total_cost,omitempty"`
 }

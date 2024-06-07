@@ -34,24 +34,32 @@ func main() {
 	// Загружаем токен бота из файла .env
 	err = godotenv.Load()
 	if err != nil {
+
 		logger.Fatalf("Не удалось открыть файл .env: %v", err)
+
 	}
 
 	bot, err := tgbotapi.NewBotAPI(os.Getenv("TELEGRAM_TOKEN"))
 	if err != nil {
+
 		logger.Fatalf("Неn токена TELEGRAM_TOKEN: %v", err)
+
 	}
 
 	// 1. Чтение файла JSON
 	jsonData, er := os.ReadFile("data.json")
 	if er != nil {
+
 		logger.Fatalf("Ошибка чтения файла JSON: %v", er)
+
 	}
 
 	// 2. Распаковка данных
 	err = json.Unmarshal(jsonData, &structs.Categories)
 	if err != nil {
+
 		logger.Fatalf("Ошибка распаковки JSON: %v", err)
+
 	}
 
 	bot.Debug = false //false //true   // выводим лог или нет
@@ -354,8 +362,10 @@ func handleMessageText(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 // handleCallbackQueryData Разбор callbackData для определения действия.
 func handleCallbackQueryData(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	if update.CallbackQuery != nil {
+
 		// Разбор callbackData для определения действия
 		callbackData := update.CallbackQuery.Data
+
 		// Примеры callbackData: "add_1", "remove", "change_1_3" (изменить количество первого товара на 3)
 		parts := strings.Split(callbackData, "_")
 
@@ -378,18 +388,24 @@ func handleCallbackQueryData(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 			}
 
 			AddToBasket(bot, update, parts[1], num1, num2) // Добавление товара с указанием названия, количества и стоимости
+
 		case "confirm":
 			if orderDetails[update.CallbackQuery.Message.Chat.ID] != "" {
+
 				err := dataSources.ProcessOrder(orderDetails[update.CallbackQuery.Message.Chat.ID], dataSources.DB, update.CallbackQuery.Message.Chat.ID)
 				if err != nil {
 					logger.Errorf("Ошибка обработки заказа: %v", err)
 					return
+
 				} else {
+
 					//Заказ успешно обработан и добавлен в базу данных.
 					GroupMessagesChatID(bot, update)
 					Baskets[update.CallbackQuery.Message.Chat.ID] = nil
 				}
+
 			} else {
+
 				//отправляем сообщение
 				sendMessage(bot, update.CallbackQuery.Message.Chat.ID, "Время заказа истекло, пожалуйста добавьте в корзину продукты и оформите заказ повторно.")
 			}
@@ -398,13 +414,10 @@ func handleCallbackQueryData(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 			if Baskets[update.CallbackQuery.Message.Chat.ID] != nil {
 				// Пример ввода данных заказа
 				RequestDeliveryDetails(bot, update)
+
 			} else {
 
-				err := addOrUpdateOrderField(update.CallbackQuery.Message.Chat.ID, "PhoneNumber", "")
-				if err != nil {
-					logger.Errorf("Ошибка при добавлении или обновлении поля PhoneNumber %v", err)
-					return
-				}
+				delete(orders, update.CallbackQuery.Message.Chat.ID)
 
 				//отправляем сообщение
 				sendMessage(bot, update.CallbackQuery.Message.Chat.ID, "Время заказа истекло, пожалуйста добавьте в корзину продукты и оформите заказ повторно.")
@@ -423,16 +436,22 @@ func createCategoryMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update, categor
 	// Поиск категории в данных
 	categoryData, found := structs.Categories[categoryName]
 	if !found {
+
 		er := "категория не найдена в createCategoryMessage"
 		return errors.New(er)
+
 	}
 
 	if categoryData.Photo == "" {
+
 		keyboardReply, err := CreateCategoryKeyboardReply(categoryData.CategoryName)
+
 		if err != nil {
+
 			// Обработка ошибки
 			logger.Errorf("ошибка %v", err)
 			return err
+
 		}
 
 		// Создаем сообщение с инлайн-клавиатурой
@@ -443,14 +462,19 @@ func createCategoryMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update, categor
 		// Отправляем сообщение с клавиатурой
 		sentMsg, err := bot.Send(msg)
 		if err != nil {
+
 			logger.Errorf("Ошибка при отправке сообщения: %v", err)
 			return err
+
 		} else {
+
 			// Сохраняем идентификатор сообщения для последующего удаления
 			messagesToDelete[chatID] = append(messagesToDelete[chatID], sentMsg.MessageID)
+
 		}
 
 	} else {
+
 		// Создаем медиа-объект для изображения
 		photo := tgbotapi.NewInputMediaPhoto(tgbotapi.FilePath(categoryData.Photo))
 
@@ -459,30 +483,38 @@ func createCategoryMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update, categor
 
 		// Отправляем медиагруппу
 		if _, err := bot.SendMediaGroup(mediaGroup); err != nil {
+
 			logger.Errorf("Ошибка при отправке сообщения медиагруппу: %v", err)
 			return err
+
 		}
 
 		// Создаем кнопки клавиатуры
 		keyboard, err := CreateCategoryKeyboard(categoryData.CategoryName)
 		if err != nil {
+
 			// Обработка ошибки
 			logger.Errorf("Ошибка не удается создать кнопки клавиатуры %v", err)
 			return err
+
 		}
 
 		// Создаем сообщение с инлайн-клавиатурой
-		msg := tgbotapi.NewMessage(chatID, "Выберите нужное количество продукта: "+categoryData.CategoryName)
+		msg := tgbotapi.NewMessage(chatID, "Выберите нужное количество продукта: "+categoryData.CategoryMsg)
 		msg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(keyboard...)
 
 		// Отправляем сообщение с клавиатурой
 		sentMsg, err := bot.Send(msg)
 		if err != nil {
+
 			logger.Errorf("Ошибка при отправке сообщения: %v", err)
 			return err
+
 		} else {
+
 			// Сохраняем идентификатор сообщения для последующего удаления
 			messagesToDelete[chatID] = append(messagesToDelete[chatID], sentMsg.MessageID)
+
 		}
 	}
 	deletePreviousMessages(bot, update)

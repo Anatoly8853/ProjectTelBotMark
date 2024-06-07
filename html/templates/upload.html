@@ -8,7 +8,7 @@
         {{ if .Message}}
         <h4><p class="centersH">{{.Message}}</p></h4>
         {{end}}
-        <form class="registration-form" action="/info" method="POST">
+        <form class="registration-form" action="/info" method="POST" enctype="multipart/form-data">
             <div class="form-group">
                 <label for="Info">Тип информации</label>
                 <input type="text" id="Info" name="Info" placeholder="Объявление, Инфо">
@@ -17,9 +17,12 @@
                 <label for="InfoText">Сообщение для отправки</label>
                 <input type="text" id="InfoText" name="InfoText" placeholder="Текст сообщения">
             </div>
+            <div class="form-group">
+                <label for="Image">Изображение</label>
+                <input type="file" id="Image" name="Image">
+            </div>
             <button type="submit" class="btn">Отправить</button>
         </form>
-
     </div>
 </div>
 <!--Embed the footer.html template at this location-->

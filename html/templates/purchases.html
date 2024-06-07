@@ -1,0 +1,33 @@
+<!--purchases.html-->
+<!--Embed the header.html template at this location-->
+{{ template "header.html" .}}
+<div class="container-poisc">
+<div class="containers">
+    <h1>Статистика покупок</h1>
+    <div class="filter-container">
+        <label for="timePeriod">Выберите период времени: </label>
+        <select id="timePeriod">
+            <option value="day">День</option>
+            <option value="week">Неделя</option>
+            <option value="month">Месяц</option>
+            <option value="year">Год</option>
+        </select>
+
+        <label for="chartType">Выберите тип графика: </label>
+        <select id="chartType">
+            <option value="line">Линейный</option>
+            <option value="bar">Столбчатый</option>
+            <option value="pie">Круговой</option>
+            <option value="doughnut">Кольцевой</option>
+        </select>
+    </div>
+    <div class="chart-container">
+        <canvas id="purchasesChart"></canvas>
+    </div>
+</div>
+</div>
+
+<script src="/assets/js/main.js"></script>
+
+<!--Embed the footer.html template at this location-->
+{{ template "footer.html" .}}

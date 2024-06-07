@@ -4,9 +4,23 @@ body {
     background: #f0f0f0;
     justify-content: center;
     align-items: center;
-    height: 100vh;
+    height: 100%;
 }
 
+.containers {
+    width: 90%;
+    height: 50%;
+    margin: auto;
+    text-align: center;
+}
+.chart-container {
+    position: relative;
+    height: 40%;
+    width: 80%;
+}
+.filter-container {
+    margin: 20px 0;
+}
 .container {
     margin-left: auto;
     margin-right: auto;

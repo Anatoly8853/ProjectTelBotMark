@@ -321,8 +321,10 @@ func GroupMessagesChatID(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 		groupChatID, err := strconv.ParseInt(groupChatIDStr, 10, 64)
 
 		if err != nil {
+
 			logger.Errorf("Ошибка преобразования ID группового чата: %v", err)
 			return
+
 		}
 
 		// Отправляем сообщение в групповой чат.
@@ -336,11 +338,15 @@ func GroupMessagesChatID(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 		sendMessage(bot, chatID, "Ваш заказ успешно отправлен при сборе заказа мы Вас уведомим")
 		delete(orderDetails, chatID)
 
+		delete(orders, chatID)
+
 		delete(BasketMessages, chatID)
 
 	} else {
+
 		//отправляем сообщение.
 		sendMessage(bot, chatID, "Нет данных для отправки")
+
 	}
 }
 
@@ -405,24 +411,34 @@ func MainOrdersByUserID(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 
 // addOrUpdateOrderField Функция для добавления или обновления конкретного поля заказа.
 func addOrUpdateOrderField(chatID int64, fieldName string, value interface{}) error {
+
 	order, exists := orders[chatID]
+
 	if !exists {
+
 		order = structs.OrderDb{}
+
 	}
 
 	val := reflect.ValueOf(&order).Elem()
 	fieldVal := val.FieldByName(fieldName)
 
 	if !fieldVal.IsValid() {
+
 		logger.Error("такого поля не существует")
 		return errors.New("такого поля не существует")
+
 	}
 
 	if fieldVal.CanSet() {
+
 		fieldVal.Set(reflect.ValueOf(value))
+
 	} else {
+
 		logger.Error("не удалось установить значение поля")
 		return errors.New("не удалось установить значение поля")
+
 	}
 
 	orders[chatID] = order
@@ -440,7 +456,7 @@ func getFieldByChatID(chatID int64, fieldName string) (interface{}, error) {
 	order, exists := orders[chatID]
 
 	if !exists {
-		logger.Error("заказ с таким chatID не найден")
+		//logger.Error("заказ с таким chatID не найден")
 		return nil, errors.New("заказ с таким chatID не найден")
 	}
 

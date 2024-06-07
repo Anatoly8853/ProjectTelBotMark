@@ -22,8 +22,10 @@ func CheckDatabase(bot *tgbotapi.BotAPI) {
 	now := time.Now().Format("02.01.2006") // формат даты в виде DD.MM.YYYY
 
 	params := structs.QueryParams{
-		OrderBy:  "tg_user_orders_date.delivery_date",
-		OrderDir: "DESC",
+		StartDate: time.Now().Format("2006-01-02"),
+		EndDate:   time.Now().Format("2006-01-02"),
+		OrderBy:   "tg_user_orders_date.delivery_date",
+		OrderDir:  "DESC",
 		//OrderDir: "ASC",
 	}
 

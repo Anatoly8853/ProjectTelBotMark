@@ -70,24 +70,27 @@
     ]
   },
   "Острый": {
+    "categoryMsg": "Перец острый",
     "categoryName": "Острый",
     "photo": "./jpeg/Hot pepper.jpeg",
     "buttons": [
-      {"text": "⚖1 кг.\n\uD83D\uDCB5260 рублей", "callback": "add_Перец острый 1 кг._1_260"}
+      {"text": "⚖1 кг.\uD83D\uDCB5260 рублей", "callback": "add_Перец острый 1 кг._1_260"}
+    ]
+  },
+  "Фаршированный": {
+    "categoryMsg": "Перец фаршированный",
+    "categoryName": "Фаршированный",
+    "photo": "./jpeg/Stuffed pepper.jpeg",
+    "buttons": [
+      {"text": "⚖1кг.\uD83D\uDCB5400 рублей", "callback": "add_Перец фаршированный 1кг._1_400"}
     ]
   },
   "Маринованный чеснок": {
     "categoryName": "Маринованный чеснок",
+    "categoryMsg": "Маринованный чеснок",
     "photo": "./jpeg/Pickled garlic.jpeg",
     "buttons": [
-      {"text": "⚖1 кг.\n\uD83D\uDCB5260 рублей", "callback": "add_Маринованный чеснок 1 кг._1_260"}
-    ]
-  },
-  "Фаршированный": {
-    "categoryName": "Фаршированный",
-    "photo": "./jpeg/Stuffed pepper.jpeg",
-    "buttons": [
-      {"text": "⚖1кг.\n\uD83D\uDCB5400 рублей", "callback": "add_Перец фаршированный 1кг._1_400"}
+      {"text": "⚖1 кг.\uD83D\uDCB5260 рублей", "callback": "add_Маринованный чеснок 1 кг._1_260"}
     ]
   },
   "Баклажаны": {
@@ -103,6 +106,7 @@
     ]
   },
   "Соломка": {
+    "categoryMsg": "Баклажаны соломка",
     "categoryName": "Соломка",
     "photo": "./jpeg/Eggplant strips.jpg",
     "buttons": [
@@ -110,28 +114,8 @@
       {"text": "⚖ведёрко 0,5\n\uD83D\uDCB5150 рублей", "callback": "add_Баклажаны соломка 0,5_1_150"}
     ]
   },
-  "Спаржа": {
-    "categoryName": "Спаржа",
-    "photo": "./jpeg/asparagus.jpg",
-    "buttons": [
-      {"text": "⚖ведёрко 0,9\n\uD83D\uDCB5350 рублей", "callback": "add_Спаржа ведёрко 0,9_1_350"}
-    ]
-  },
-  "Морские гребешки": {
-    "categoryName": "Морские гребешки",
-    "photo": "./jpeg/Scallops.jpeg",
-    "buttons": [
-      {"text": "⚖ведёрко 0,5\n\uD83D\uDCB5300 рублей", "callback": "add_Морские гребешки ведёрко 0,5_1_300"}
-    ]
-  },
-  "Кукурузные початки": {
-    "categoryName": "Кукурузные початки",
-    "photo": "./jpeg/Corn cobs.jpeg",
-    "buttons": [
-      {"text": "⚖ведёрко 0,9\n\uD83D\uDCB5320 рублей", "callback": "add_Кукурузные початки ведёрко 0,9_1_320"}
-    ]
-  },
   "Рулетики": {
+    "categoryMsg": "Баклажаны рулетики",
     "categoryName": "Рулетики",
     "photo": "./jpeg/Eggplant rolls.jpeg",
     "buttons": [
@@ -140,8 +124,33 @@
       {"text": "⚖250 гр.\n\uD83D\uDCB5200 рублей", "callback": "add_Баклажаны рулетики 250 грамм_1_200"}
     ]
   },
+  "Спаржа": {
+    "categoryName": "Спаржа",
+    "categoryMsg": "Спаржа",
+    "photo": "./jpeg/asparagus.jpg",
+    "buttons": [
+      {"text": "⚖ведёрко 0,9\n\uD83D\uDCB5350 рублей", "callback": "add_Спаржа ведёрко 0,9_1_350"}
+    ]
+  },
+  "Морские гребешки": {
+    "categoryName": "Морские гребешки",
+    "categoryMsg": "Морские гребешки",
+    "photo": "./jpeg/Scallops.jpeg",
+    "buttons": [
+      {"text": "⚖ведёрко 0,5\n\uD83D\uDCB5300 рублей", "callback": "add_Морские гребешки ведёрко 0,5_1_300"}
+    ]
+  },
+  "Кукурузные початки": {
+    "categoryName": "Кукурузные початки",
+    "categoryMsg": "Кукурузные початки",
+    "photo": "./jpeg/Corn cobs.jpeg",
+    "buttons": [
+      {"text": "⚖ведёрко 0,9\n\uD83D\uDCB5320 рублей", "callback": "add_Кукурузные початки ведёрко 0,9_1_320"}
+    ]
+  },
   "Грибы": {
     "categoryName": "Грибы",
+    "categoryMsg": "Грибы",
     "buttons": [
       {"text": "\uD83C\uDF44Шиитаке\uD83C\uDF44"},
       {"text": "\uD83C\uDF44Шампиньоны\uD83C\uDF44"}
@@ -153,6 +162,7 @@
     ]
   },
   "Шиитаке": {
+    "categoryMsg": "Грибы шиитаке",
     "categoryName": "Шиитаке",
     "photo": "./jpeg/Shiitake.jpeg",
     "buttons": [
@@ -160,6 +170,7 @@
     ]
   },
   "Шампиньоны": {
+    "categoryMsg": "Грибы шампиньоны",
     "categoryName": "Шампиньоны",
     "photo": "./jpeg/Champignons.jpeg",
     "buttons": [
@@ -183,13 +194,15 @@
   },
   "Морковь": {
     "categoryName": "Морковь",
+    "categoryMsg": "Морковь",
     "photo": "./jpeg/Carrot.jpeg",
     "buttons": [
-      {"text": "⚖\uFE0F1кг\n\uD83D\uDCB5200 рублей", "callback": "add_Морковь 1кг_1_200"},
+      {"text": "⚖\uFE0F1кг\n\uD83D\uDCB5200 рублей", "callback": "add_Морковь 1кг._1_200"},
       {"text": "⚖ведёрко 0,9\n\uD83D\uDCB5110 рублей", "callback": "add_Морковь ведёрко 0,9_1_110"}
     ]
   },
   "Пекинская": {
+    "categoryMsg": "Капуста пекинская",
     "categoryName": "Пекинская",
     "photo": "./jpeg/Chinese cabbage.jpg",
     "buttons": [
@@ -197,6 +210,7 @@
     ]
   },
   "Цветная": {
+    "categoryMsg": "Капуста цветная",
     "categoryName": "Цветная",
     "photo": "./jpeg/Cauliflower.jpg",
     "buttons": [
@@ -204,6 +218,7 @@
     ]
   },
   "Красная": {
+    "categoryMsg": "Капуста красная",
     "categoryName": "Красная",
     "photo": "./jpeg/red Cabbage.jpeg",
     "buttons": [
@@ -211,6 +226,7 @@
     ]
   },
   "Желтая": {
+    "categoryMsg": "Капуста желтая",
     "categoryName": "Желтая",
     "photo": "./jpeg/Yellow cabbage.jpeg",
     "buttons": [
@@ -218,6 +234,7 @@
     ]
   },
   "Квашеная": {
+    "categoryMsg": "Капуста квашеная",
     "categoryName": "Квашеная",
     "photo": "./jpeg/Sauerkraut.jpg",
     "buttons": [
@@ -226,6 +243,7 @@
   },
   "Лобио": {
     "categoryName": "Лобио",
+    "categoryMsg": "Лобио",
     "photo": "./jpeg/Lobio.jpg",
     "buttons": [
       {"text": "⚖ведёрко 0,9\n\uD83D\uDCB5150 рублей", "callback": "add_Лобио ведёрко 0,9_1_150"}
@@ -233,6 +251,7 @@
   },
   "Черемша": {
     "categoryName": "Черемша",
+    "categoryMsg": "Черемша",
     "photo": "./jpeg/cheremcha.jpg",
     "buttons": [
       {"text": "⚖ведёрко 0,9\n\uD83D\uDCB5220 рублей", "callback": "add_Черемша ведёрко 0,9_1_220"},

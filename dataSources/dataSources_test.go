@@ -1,6 +1,7 @@
 package dataSources
 
 import (
+	"ProjectTelBotMark/loggers"
 	"database/sql"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
@@ -9,6 +10,8 @@ import (
 
 // setupTestDB создает тестовую базу данных и заполняет ее необходимыми таблицами.
 func setupTestDB() (*sql.DB, error) {
+	// Настраиваем логгер
+	logger = loggers.SetupLogger()
 	db, err := sql.Open("sqlite3", ":memory:")
 	if err != nil {
 		return nil, err
@@ -104,6 +107,9 @@ func setupTestDB() (*sql.DB, error) {
 
 // TestProcessOrder тестирует функцию ProcessOrder.
 func TestProcessOrder(t *testing.T) {
+	// Настраиваем логгер
+	logger = loggers.SetupLogger()
+
 	db, err := setupTestDB()
 	if err != nil {
 		t.Fatalf("Failed to setup test database: %v", err)

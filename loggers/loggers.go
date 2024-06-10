@@ -2,13 +2,14 @@ package loggers
 
 import (
 	"fmt"
-	"github.com/gookit/slog"
-	"github.com/gookit/slog/handler"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/gookit/slog"
+	"github.com/gookit/slog/handler"
 )
 
 // глобальные переменные
@@ -29,7 +30,7 @@ func (f *CustomFormatter) Format(record *slog.Record) ([]byte, error) {
 	caller := record.Caller
 	fileName := filepath.Base(caller.File) // Получаем только имя файла
 	funcName := getFunctionName(caller.PC) // Получаем имя функции
-	logMessage := fmt.Sprintf("[%s] [application] [%s] [%s:%d,%s] %s\n", formattedTime, record.Level.String(), fileName, caller.Line, funcName, record.Message)
+	logMessage := fmt.Sprintf("[%s] [%s] [%s:%d,%s] %s\n", record.Level.String(), formattedTime, fileName, caller.Line, funcName, record.Message)
 	return []byte(logMessage), nil
 }
 

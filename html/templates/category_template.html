@@ -1,0 +1,18 @@
+<!--upload.html-->
+<!--Embed the header.html template at this location-->
+{{ template "header.html" .}}
+
+{{range $key, $category := .}}
+<h2>{{ $category.CategoryName }}</h2>
+{{if $category.CategoryMsg}}
+<p>{{ $category.CategoryMsg }}</p>
+{{end}}
+<ul>
+    {{range $category.Buttons}}
+    <li>{{ .Text }}</li>
+    {{end}}
+</ul>
+{{end}}
+
+<!--Embed the footer.html template at this location-->
+{{ template "footer.html" .}}

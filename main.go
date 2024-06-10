@@ -9,25 +9,27 @@ import (
 	"ProjectTelBotMark/structs"
 	"encoding/json"
 	"errors"
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"github.com/gookit/slog"
-	"github.com/joho/godotenv"
 	"os"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
+
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/gookit/slog"
+	"github.com/joho/godotenv"
 )
 
-var logger *slog.Logger // Глобальный логгер
+var logger *slog.Logger // Глобальный логгер docs.
 
 func main() {
 
-	// Настраиваем логгер
+	// Настраиваем логгер.
 	logger = loggers.SetupLogger()
 
-	// Открываем соединение с базой данных SQLite
+	// Открываем соединение с базой данных SQLite.
 	var err error
+
 	dataSources.InitDB()
 	defer dataSources.CloseDB()
 
@@ -66,29 +68,50 @@ func main() {
 
 	UpdateMessage(bot)
 
+	routers.LoadCategories()
+
 	// Запуск ежедневной проверки базы данных
 	reminders.StartDailyCheck(bot)
 
 	routers.GinRouter(bot)
 }
 
-// UpdateMessage Основной обработчик всех данных бота.
+// UpdateMessage Основной обработчик всех данных бота docs.
 func UpdateMessage(bot *tgbotapi.BotAPI) {
 	go func() {
 		u := tgbotapi.NewUpdate(0)
-		u.Timeout = 3
+		u.Timeout = 10
 
 		updates := bot.GetUpdatesChan(u)
 
 		for update := range updates {
 
 			if update.CallbackQuery != nil {
+
+				// Проверяем статус user_black
+				if dataSources.UserBlack(dataSources.DB, update.CallbackQuery.Message.Chat.ID) {
+					//отправляем сообщение
+					sendMessage(bot, update.CallbackQuery.Message.Chat.ID, "Вам мы ничего продать не можем.")
+					logger.Infof("Юзер из черного списка %v имя %v", update.CallbackQuery.Message.Chat.ID, update.CallbackQuery.Message.From.UserName)
+					continue // Прерываем выполнение, если user_black != 0
+				}
+
 				// Обработка CallbackQuery
 				handleCallbackQueryData(bot, update)
 				continue // Переход к следующему обновлению после обработки CallbackQuery
 			}
 
 			if update.Message != nil {
+
+				// Проверяем статус user_black
+				if dataSources.UserBlack(dataSources.DB, update.Message.Chat.ID) {
+					deletePreviousMessages(bot, update)
+					//отправляем сообщение
+					sendMessage(bot, update.Message.Chat.ID, "Вам мы ничего продать не можем.")
+					logger.Infof("Юзер из черного списка %v имя %v", update.Message.Chat.ID, update.Message.From.UserName)
+					continue // Прерываем выполнение, если user_black != 0
+				}
+
 				// В этом месте обрабатываем все сообщения, включая команды
 				if update.Message.IsCommand() {
 					// Обработка команд пользователя
@@ -99,11 +122,21 @@ func UpdateMessage(bot *tgbotapi.BotAPI) {
 				}
 				continue
 			}
+
+			// Проверяем, что сообщение содержит изменение таймера авто удаление
+			if update.Message.MessageAutoDeleteTimerChanged != nil {
+				timerChange := update.Message.MessageAutoDeleteTimerChanged
+				chatID := update.Message.Chat.ID
+				newTimerDuration := timerChange.MessageAutoDeleteTime
+
+				// Логируем изменение таймера авто удаления
+				logger.Infof("Auto-delete timer changed in chat %d: new duration is %d seconds", chatID, newTimerDuration)
+			}
 		}
 	}()
 }
 
-// HandleCommands Обработка команды /start и вывод основного меню.
+// HandleCommands Обработка команды /start и вывод основного меню docs.
 func HandleCommands(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	//var err error
 	msg := tgbotapi.NewMessage(update.Message.Chat.ID, "Нет такой команды")
@@ -121,7 +154,7 @@ func HandleCommands(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 			}
 			// Другие команды...
 		case "cabbage":
-			//msg.Text = "Hi :)"
+
 		case "status":
 		//msg.Text = "I'm ok."
 		default:
@@ -285,6 +318,9 @@ func handleMessageText(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 
 					if str != "" {
 
+						//Удаляем предыдущие сообщения
+						deletePreviousMessages(bot, update)
+
 						// Формирование текста с просьбой ввести номер телефона
 						PhoneNumber := "Номер телефона:"
 
@@ -327,27 +363,27 @@ func handleMessageText(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 			case "ok":
 				break
 			case "Номер телефона:":
-				//deletePreviousMessages(bot, update)
+
 				handleDeliveryDetailsMessage(bot, update)
+
 			case "Мои заказы":
+
 				//Выводим заказы пользователей
 				MainOrdersByUserID(bot, update)
+
 			case "Назад":
+
 				// Возвращаемся в основное меню
 				err = createCategoryMessage(bot, update, "Меню")
 				if err != nil {
 					logger.Errorf("Ошибка создания сообщения %v ", err)
 					return
 				}
-			// Другие сценарии...
+
 			case "Корзина":
+
 				ShowBasket(bot, update.Message.Chat.ID)
-				messageID := update.Message.MessageID
-				chatID := update.Message.Chat.ID
-				deleteMsg := tgbotapi.NewDeleteMessage(chatID, messageID)
-				if _, err := bot.Request(deleteMsg); err != nil {
-					logger.Infof("Ошибка при удалении сообщения: %v", err)
-				}
+
 			default:
 				msg.ReplyToMessageID = update.Message.MessageID // Устанавливаем ID сообщения, на которое отвечаем
 				if _, err = bot.Send(msg); err != nil {
@@ -392,10 +428,13 @@ func handleCallbackQueryData(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 		case "confirm":
 			if orderDetails[update.CallbackQuery.Message.Chat.ID] != "" {
 
-				err := dataSources.ProcessOrder(orderDetails[update.CallbackQuery.Message.Chat.ID], dataSources.DB, update.CallbackQuery.Message.Chat.ID)
+				err := dataSources.ProcessOrder(orderDetails[update.CallbackQuery.Message.Chat.ID], dataSources.DB, update)
 				if err != nil {
+
+					//отправляем сообщение
+					sendMessage(bot, update.CallbackQuery.Message.Chat.ID, "Время заказа истекло, пожалуйста добавьте в корзину продукты и оформите заказ повторно.")
+					Baskets[update.CallbackQuery.Message.Chat.ID] = nil
 					logger.Errorf("Ошибка обработки заказа: %v", err)
-					return
 
 				} else {
 
@@ -431,6 +470,11 @@ func handleCallbackQueryData(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 
 // createCategoryMessage Вывод изображения продуктов и кнопки фасовки продукта.
 func createCategoryMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update, categoryName string) error {
+	if update.Message.Chat.ID == 0 {
+		logger.Errorf("нет данных для обработки update.Message.Chat.ID = %v ", update.Message.Chat.ID)
+		er := "нет данных для обработки update.Message.Chat.ID"
+		return errors.New(er)
+	}
 	chatID := update.Message.Chat.ID
 
 	// Поиск категории в данных

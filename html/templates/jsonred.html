@@ -1,0 +1,171 @@
+<!--index.html-->
+<!--Embed the header.html template at this location-->
+{{ template "header.html" .}}
+<style>
+    .container {
+        max-width: 40%;
+        padding: 15%;
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        flex-wrap: wrap;
+        justify-content: center;
+        align-items: center;
+    }
+    .category { margin-bottom: 80px; }
+    .category img { width: 100%; height: auto; }
+    .buttons {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        padding: 5px;
+    }
+    button.button{
+        width: 180px;
+        height: 50px;
+    }
+    .button {
+        padding: 10px 20px;
+        background-color: #007bff;
+        color: #fff;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        text-align: center;
+        flex: 1 1 calc(33.333% - 20px);
+        box-sizing: border-box;
+    }
+    .button:hover { background-color: #0056b3; }
+    .back-button { background-color: #6c757d; }
+    .back-button:hover {  background-color: #5a6268; }
+    .error { color: red; }
+    div#photo.photo{width: 350px; height: 250px; display: flex; flex-wrap: nowrap; flex-direction: column-reverse;}
+    div#menu{width: 540px; height: 180px; display: flex; flex-wrap: nowrap; flex-direction: column-reverse;}
+    div#photo-button{height: 30px;display: flex; flex-wrap: nowrap; padding: inherit;}
+</style>
+
+<div class="container">
+    <div class="photo" id="photo" ></div>
+    <div id="photo-button"></div>
+    <div id="menu"></div>
+</div>
+<script>
+    // Преобразование JSON данных, полученных из шаблона, в объект JavaScript
+    const data = JSON.parse('{{ .categories | toJSON }}');
+
+    // Получение элементов для отображения категорий и фотографий
+    const menu = document.getElementById('menu');
+    const photo = document.getElementById('photo');
+    const photoButton = document.getElementById('photo-button');
+
+    // Функция для отделения эмотиконов от текста
+    function separateEmojiAndText(text) {
+        const emojiPattern = /[\p{Emoji_Presentation}\uFE0F]/gu;
+        const emojis = text.match(emojiPattern) || [];
+        const cleanText = text.replace(emojiPattern, '').trim().replace(/\s+/g, ' ');
+        return {emojis: emojis.join(''), cleanText: cleanText};
+    }
+
+    // Функция для создания и отображения категории
+    function createCategory(category, clearPhoto = true) {
+        if (clearPhoto) {
+            photo.innerHTML = ''; // Очистка содержимого фото-контейнера
+            photoButton.innerHTML = ''; // Очистка содержимого кнопок для фото
+        }
+
+        const categoryDiv = document.createElement('div');
+        categoryDiv.className = 'category';
+
+        const buttonsDiv = document.createElement('div');
+        buttonsDiv.className = 'buttons';
+
+        category.buttons.forEach(button => {
+            const btn = document.createElement('button');
+            btn.className = 'button';
+            btn.innerText = button.text;
+            btn.onclick = () => navigate(separateEmojiAndText(button.text).cleanText);
+            buttonsDiv.appendChild(btn);
+        });
+
+        categoryDiv.appendChild(buttonsDiv);
+
+        if (category.buttonsM) {
+            const backButtonDiv = document.createElement('div');
+            backButtonDiv.className = 'buttons';
+
+            category.buttonsM.forEach(button => {
+                const btn = document.createElement('button');
+                btn.className = 'button back-button';
+                btn.innerText = button.text;
+                btn.onclick = () => {
+                    if (button.text === '🔙Назад🔙') {
+                        navigate('Меню');
+                    } else {
+                        navigate(separateEmojiAndText(button.text).cleanText);
+                    }
+                };
+                backButtonDiv.appendChild(btn);
+            });
+
+            categoryDiv.appendChild(backButtonDiv);
+        }
+
+        menu.appendChild(categoryDiv);
+    }
+
+    // Функция для отображения подкатегории с фото и кнопками
+    function createSubcategory(category) {
+        photo.innerHTML = ''; // Очистка фото-контейнера
+        photoButton.innerHTML = ''; // Очистка кнопок для фото
+
+        if (category.photo) {
+            const img = document.createElement('img');
+            img.src = category.photo;
+            photo.appendChild(img);
+        }
+
+        const buttonsDiv = document.createElement('div');
+        buttonsDiv.className = 'buttons';
+
+        category.buttons.forEach(button => {
+            const btn = document.createElement('button');
+            btn.className = 'button';
+            btn.innerText = button.text;
+            buttonsDiv.appendChild(btn);
+        });
+
+        photoButton.appendChild(buttonsDiv);
+    }
+
+    // Функция для навигации по категориям
+    function navigate(categoryName) {
+        const cleanCategoryName = separateEmojiAndText(categoryName).cleanText;
+        let foundCategory = null;
+
+        Object.keys(data).forEach(key => {
+            if (separateEmojiAndText(key).cleanText === cleanCategoryName) {
+                foundCategory = data[key];
+            }
+        });
+
+        if (foundCategory) {
+            if (foundCategory.photo) {
+                createSubcategory(foundCategory);
+            } else {
+                menu.innerHTML = ''; // Очистка меню-контейнера
+                createCategory(foundCategory);
+            }
+        } else {
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'error';
+            errorDiv.innerText = `Category "${categoryName}" not found.`;
+            menu.appendChild(errorDiv);
+        }
+    }
+
+    // Инициализация отображения с категории "Старт"
+    createCategory(data["Старт"]);
+</script>
+
+<!--Embed the footer.html template at this location-->
+{{ template "footer.html" .}}

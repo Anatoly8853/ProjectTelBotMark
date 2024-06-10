@@ -6,11 +6,13 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"github.com/gookit/slog"
-	_ "github.com/mattn/go-sqlite3"
 	"regexp"
 	"strconv"
 	"time"
+
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/gookit/slog"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 // Настраиваем логгер
@@ -33,7 +35,9 @@ func InitDB() {
 	_, err = DB.Exec(`
 	CREATE TABLE IF NOT EXISTS tg_user_Chat_ID (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER UNIQUE	
+    user_id INTEGER UNIQUE,
+    user_name TEXT,
+    user_black INTEGER    	
 	)		
 	    `)
 	if err != nil {
@@ -255,9 +259,12 @@ func getOrInsertValues(tx *sql.Tx, tables []string, columns []string, values []i
 }
 
 // ProcessOrder Функция для парсинга деталей заказа и добавления в базу данных.
-func ProcessOrder(order string, db *sql.DB, userID int64) error {
+func ProcessOrder(order string, db *sql.DB, update tgbotapi.Update) error {
 	// Настраиваем логгер
 	logger = loggers.SetupLogger()
+
+	userID := update.CallbackQuery.Message.Chat.ID
+	userName := update.CallbackQuery.From.UserName
 
 	if order == "" {
 		logger.Error("нет данных для бд")
@@ -354,6 +361,13 @@ func ProcessOrder(order string, db *sql.DB, userID int64) error {
 	existingFullNameID := ids[1]
 	existingPhoneID := ids[2]
 	existingAddressID := ids[3]
+
+	userBlack := 0
+
+	err = UpsertUser(tx, userID, userName, userBlack)
+	if err != nil {
+		logger.Errorf("Error upserting user: %v", err)
+	}
 
 	// Вставляем новую запись в tg_orders_date
 	var existingOrdersDateID int64
@@ -591,4 +605,73 @@ func GetOrdersByDeliveryDateRange(db *sql.DB, startDate, endDate string) ([]stru
 	}
 
 	return orders, nil
+}
+
+func UpsertUser(tx *sql.Tx, userID int64, userName string, userBlack int) error {
+
+	// Вставляем запись, если её нет
+	_, err := tx.Exec(`
+		INSERT OR IGNORE INTO tg_user_Chat_ID (user_id, user_name, user_black)
+		VALUES (?, ?, ?)`, userID, userName, userBlack)
+	if err != nil {
+		logger.Errorf("error inserting record: %v", err)
+		return fmt.Errorf("error inserting record: %v", err)
+	}
+
+	// Обновляем user_name, если он отличается
+	_, err = tx.Exec(`
+		UPDATE tg_user_Chat_ID
+		SET user_name = ?
+		WHERE user_id = ?
+		  AND user_name != ?`, userName, userID, userName)
+	if err != nil {
+		logger.Errorf("error updating user_name: %v", err)
+		return fmt.Errorf("error updating user_name: %v", err)
+	}
+
+	// Обновляем user_black, если он отличается
+	_, err = tx.Exec(`
+		UPDATE tg_user_Chat_ID
+		SET user_black = ?
+		WHERE user_id = ?
+		  AND user_black != ?`, userBlack, userID, userBlack)
+	if err != nil {
+		logger.Errorf("error updating user_black: %v", err)
+		return fmt.Errorf("error updating user_black: %v", err)
+	}
+
+	return nil
+}
+
+func GetUsers(db *sql.DB) ([]structs.User, error) {
+	rows, err := db.Query("SELECT user_id, user_name, user_black FROM tg_user_Chat_ID")
+	if err != nil {
+		return nil, err
+	}
+
+	var users []structs.User
+	for rows.Next() {
+		var user structs.User
+		err := rows.Scan(&user.UserID, &user.UserBlack.UserName, &user.UserBlack.UserBlack)
+		if err != nil {
+			logger.Errorf("Error scanning rows: %v", err)
+			return nil, err
+		}
+		users = append(users, user)
+	}
+
+	return users, nil
+}
+
+func UpdateUserBlack(db *sql.DB, userID, userBlack int) error {
+	_, err := db.Exec("UPDATE tg_user_Chat_ID SET user_black = ? WHERE user_id = ?", userBlack, userID)
+	return err
+}
+
+func UserBlack(db *sql.DB, userID int64) bool {
+	var userBlack int
+	query := `SELECT user_black FROM tg_user_Chat_ID WHERE user_id = ?`
+	_ = db.QueryRow(query, userID).Scan(&userBlack)
+
+	return userBlack != 0
 }

@@ -4,43 +4,198 @@ import (
 	"ProjectTelBotMark/dataSources"
 	"ProjectTelBotMark/loggers"
 	"ProjectTelBotMark/structs"
-	"github.com/gin-gonic/gin"
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"github.com/gookit/slog"
+	"fmt"
+	"html/template"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"time"
+
+	"github.com/gin-gonic/gin"
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/goccy/go-json"
+	"github.com/gookit/slog"
 )
+
+var logger *slog.Logger // Глобальный логгер
 
 // router создаем роутер.
 var router *gin.Engine
 
-var logger *slog.Logger // Глобальный логгер
-
 // GinRouter Gin Router функция запускает сервер.
 func GinRouter(bot *tgbotapi.BotAPI) {
+
 	// Настраиваем логгер
 	logger = loggers.SetupLogger()
 	gin.SetMode(gin.ReleaseMode)
 	router = gin.Default()
+	router.SetFuncMap(template.FuncMap{
+		"toJSON": func(v interface{}) string {
+			a, _ := json.Marshal(v)
+			return string(a)
+		},
+	})
 	router.Static("/assets/", "front/")
+	router.Static("/jpeg", "./jpeg") // Новый маршрут для папки jpeg
+
 	router.LoadHTMLGlob("html/templates/*")
 	router.GET("/", HandlerIndex)
 	router.GET("/info", HandlerInfo)
 	router.POST("/info", PostHandlerInfo(bot))
 	router.GET("/purchases", PurchasesHandler)
-	router.GET("/purchase", func(c *gin.Context) {
-		c.HTML(http.StatusOK, "purchases.html", gin.H{
+	router.GET("/highcharts", func(c *gin.Context) {
+		c.HTML(http.StatusOK, "highcharts.html", gin.H{
 			"Title":    "Заказы Салаты корейские",
 			"Classreg": "current"})
 	})
+	router.GET("/data", func(c *gin.Context) {
 
+		params := structs.QueryParams{
+			//StartDate: time.Now().AddDate(0, 0, -1).Format("2006-01-02"),
+			//EndDate:   time.Now().Format("2006-01-02"),
+			OrderBy: "tg_user_orders_date.delivery_date",
+			//OrderDir: "DESC",
+			OrderDir: "ASC",
+		}
+
+		orders, err := dataSources.GetOrdersWithFilters(dataSources.DB, params)
+		if err != nil {
+			logger.Errorf("ошибка запрос к базе %v", err)
+			return
+		}
+		var data [][]int64
+		dateSums := make(map[int64]int)
+		var DateTime string
+
+		for _, order := range orders {
+			t, err := time.Parse(time.RFC3339, order.DeliveryDate)
+			if err != nil {
+				log.Printf("Error parsing date: %v", err)
+				continue
+			}
+			timestamp := t.Unix() * 1000
+			if order.DateTime != DateTime {
+				dateSums[timestamp] += order.TotalCost
+				DateTime = order.DateTime
+			}
+		}
+
+		// Создаем массив с ключами и сортируем их
+		var keys []int64
+		for k := range dateSums {
+			keys = append(keys, k)
+		}
+		sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
+
+		for _, k := range keys {
+			data = append(data, []int64{k, int64(dateSums[k])})
+		}
+
+		c.JSON(http.StatusOK, data)
+	})
+	router.GET("/categories", categoryLoadData)
+	router.GET("/black", BlackList)
+	router.POST("/black/update", UpdateBlackList)
+	router.GET("/jsonred", func(c *gin.Context) {
+		c.HTML(http.StatusOK, "jsonred.html", gin.H{
+			"categories": categories,
+		})
+	})
+
+	router.POST("/jsonred/save", saveCategories)
 	err := router.Run(":8090")
 	if err != nil {
 		logger.Errorf("GinRouter %v", err)
 		return
 	}
+}
+
+func UpdateBlackList(c *gin.Context) {
+
+	userID, err := strconv.Atoi(c.PostForm("user_id"))
+	if err != nil {
+		c.String(http.StatusBadRequest, fmt.Sprintf("Invalid user ID: %v", err))
+		logger.Errorf("Invalid user ID: %v", c.PostForm("user_id"))
+		return
+	}
+
+	userBlackStr := c.PostForm(fmt.Sprintf("user_black_%d", userID))
+	userBlack := 0
+	if userBlackStr == "1" {
+		userBlack = 1
+	}
+
+	err = dataSources.UpdateUserBlack(dataSources.DB, userID, userBlack)
+	if err != nil {
+		c.String(http.StatusInternalServerError, fmt.Sprintf("Error updating user: %v", err))
+		logger.Errorf("Error updating user: %v", err)
+		return
+	}
+
+	users, err := dataSources.GetUsers(dataSources.DB)
+	if err != nil {
+		logger.Errorf("Error getting users: %v", err)
+		return
+	}
+
+	c.HTML(200, "user_black.html", gin.H{
+		"Title":      "Заказы Салаты корейские",
+		"Users":      users,
+		"Message":    "Данные успешно изменены",
+		"Classblack": "current",
+	})
+
+}
+
+func BlackList(c *gin.Context) {
+
+	users, err := dataSources.GetUsers(dataSources.DB)
+	if err != nil {
+		logger.Errorf("Error getting users: %v", err)
+		return
+	}
+
+	c.HTML(http.StatusOK, "user_black.html", gin.H{
+		"Users":      users,
+		"Title":      "Заказы Салаты корейские",
+		"Classblack": "current",
+	})
+}
+
+// Data представляет все данные из JSON файла
+type Data map[string]structs.Category
+
+// loadData Функция для загрузки данных из JSON файла.
+func loadData(filename string) (Data, error) {
+
+	file, err := os.Open(filename)
+	if err != nil {
+		return nil, err
+	}
+	//defer file.Close()
+
+	var data Data
+	decoder := json.NewDecoder(file)
+	err = decoder.Decode(&data)
+	if err != nil {
+		return nil, err
+	}
+
+	return data, nil
+}
+
+// categoryLoadData для загрузки категорий.
+func categoryLoadData(c *gin.Context) {
+
+	data, err := loadData("./data.json")
+	if err != nil {
+		log.Fatalf("Error loading data: %v", err)
+	}
+
+	c.HTML(http.StatusOK, "category_template.html", data)
 }
 
 // HandlerInfo код страницы инфо.
@@ -52,7 +207,7 @@ func HandlerInfo(c *gin.Context) {
 
 }
 
-// PostHandlerInfo отправка сообщений в телеграмм инфо.
+// PostHandlerInfo отправка сообщения, в телеграм инфо.
 func PostHandlerInfo(bot *tgbotapi.BotAPI) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var messageInfo structs.MessageInfo
@@ -253,9 +408,12 @@ func HandlerIndex(c *gin.Context) {
 			}
 
 			if order.DateTime != currentDateTime2 {
+
 				currentDateTime2 = order.DateTime
 				num = 1
+
 			} else {
+
 				num++
 			}
 			// Группировка по дате доставки
@@ -341,18 +499,32 @@ func PurchasesHandler(c *gin.Context) {
 
 	labels := []string{}
 	amounts := []int{}
+	//var DeliveryDate string
+	//var TotalCost int
+	// Карта для хранения суммированных значений
+	dateSums := make(map[string]int)
 	for _, order := range orders {
+
 		// Парсинг строки времени в тип time.Time
 		t, err := time.Parse(time.RFC3339, order.DeliveryDate)
 		if err != nil {
+
 			logger.Errorf("Ошибка парсинга строки времени: %v", err)
 			return
+
 		}
 
 		// Форматирование времени в нужный формат
 		formattedDeliveryDate := t.Format("2006-01-02")
-		labels = append(labels, formattedDeliveryDate)
-		amounts = append(amounts, order.TotalCost)
+
+		dateSums[formattedDeliveryDate] += order.TotalCost
+	}
+
+	for date, sum := range dateSums {
+
+		labels = append(labels, date)
+		amounts = append(amounts, sum)
+
 	}
 
 	c.JSON(http.StatusOK, gin.H{

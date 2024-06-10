@@ -1,0 +1,20 @@
+<!--index.html-->
+<!--Embed the header.html template at this location-->
+{{ template "header.html" .}}
+<script src="/assets/js/highstock.js"></script>
+<script src="/assets/js/exporting.js"></script>
+<script src="/assets/js/export-data.js"></script>
+<script src="/assets/js/accessibility.js"></script>
+<style>
+#containerq {
+height: 400px;
+min-width: 310px;
+}
+</style>
+
+<div id="containerq"></div>
+
+<script src="/assets/js/maim_highcharts.js"></script>
+
+<!--Embed the footer.html template at this location-->
+{{ template "footer.html" .}}

@@ -1,7 +1,13 @@
 package structs
 
+type UserBlack struct {
+	UserName  string `json:"user_name,omitempty"`
+	UserBlack int    `json:"user_black,omitempty"`
+}
+
 type User struct {
-	UserID int64
+	UserID    int64     `json:"user_id,omitempty"`
+	UserBlack UserBlack `json:"user_blacks,omitempty"`
 }
 
 type MessageInfo struct {
@@ -23,14 +29,17 @@ type ButtonData struct {
 	Callback string `json:"callback"`
 }
 
-// Categories Распаковка данных.
-var Categories map[string]struct {
-	CategoryName string       `json:"categoryName"`
-	CategoryMsg  string       `json:"categoryMsg"`
+// Category представляет категорию с именем и кнопками.
+type Category struct {
+	CategoryName string       `json:"categoryName,omitempty"`
+	CategoryMsg  string       `json:"categoryMsg,omitempty"`
 	Photo        string       `json:"photo"`
 	Buttons      []ButtonData `json:"buttons"`
-	ButtonsM     []ButtonData `json:"buttonsM"`
+	ButtonsM     []ButtonData `json:"buttonsM,omitempty"`
 }
+
+// Categories Распаковка данных.
+var Categories map[string]Category
 
 // QueryParams Структура для хранения параметров фильтрации и сортировки.
 type QueryParams struct {

@@ -22,6 +22,8 @@ var Baskets = make(map[int64][]structs.Purchase)
 // BasketMessages Карта для хранения данных о покупках для каждого пользователя.
 var BasketMessages = make(map[int64]int)
 
+var DeliveryDateChatID = make(map[int64]int)
+
 // messagesToDelete удаление сообщений.
 var messagesToDelete = make(map[int64][]int)
 
@@ -139,13 +141,11 @@ func ShowBasket(bot *tgbotapi.BotAPI, chatID int64) {
 }
 
 // DeleteBasketContents Очищаем корзину.
-func DeleteBasketContents(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
-	if update.CallbackQuery.Message.Chat.ID == 0 {
-		logger.Errorf("нет данных для обработки update.CallbackQuery.Message.Chat.ID = %v", update.CallbackQuery.Message.Chat.ID)
+func DeleteBasketContents(bot *tgbotapi.BotAPI, chatID int64) {
+	if chatID == 0 {
+		logger.Errorf("нет данных для обработки chatID = %v", chatID)
 		return
 	}
-
-	chatID := update.CallbackQuery.Message.Chat.ID
 
 	// Очистка содержимого корзины пользователя
 	Baskets[chatID] = nil // Или 	baskets[chatID] = []Purchase{} //для обнуления без удаления ключа
@@ -172,43 +172,44 @@ func DeleteBasketContents(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 
 }
 
-// RequestDeliveryDetails Пример ввода данных заказа.
-func RequestDeliveryDetails(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
-	if update.CallbackQuery.Message.Chat.ID == 0 {
-		logger.Errorf("нет данных для обработки update.CallbackQuery.Message.Chat.ID = %v", update.CallbackQuery.Message.Chat.ID)
+// RequestDeliveryDetails Пример ввода данных заказа дата доставки.
+func RequestDeliveryDetails(bot *tgbotapi.BotAPI, chatID int64) {
+	if chatID == 0 {
+		logger.Errorf("нет данных для обработки chatID = %v", chatID)
 		return
 	}
-
-	chatID := update.CallbackQuery.Message.Chat.ID
 
 	// Удаление сообщения
 	deleteMessages(bot, chatID)
 
-	// Формирование текста с просьбой ввести данные для доставки
-	PhoneNumber := "Номер телефона:"
-	instructions := "Пожалуйста, введите " + PhoneNumber + "\n" +
-		"Пример:\n" +
-		"+79345678901\n"
+	DeliveryDate := "Дату доставки:"
 
-	// Добавляем или обновляем поле PhoneNumber
-	err := addOrUpdateOrderField(chatID, "PhoneNumber", PhoneNumber)
+	err := addOrUpdateOrderField(chatID, "DeliveryDate", DeliveryDate)
 	if err != nil {
-		logger.Errorf("Ошибка при добавлении или обновлении поля: %v", err)
+		logger.Errorf("Ошибка при добавлении или обновлении поля DeliveryDate: %v", err)
+		return
 	}
 
-	// Отправка сообщение
-	sendMessage(bot, chatID, instructions)
+	msg := tgbotapi.NewMessage(chatID, "Выберите дату доставки:")
+	now := time.Now()
+	msg.ReplyMarkup = createCalendarKeyboard(now)
 
+	_, err = bot.Send(msg)
+	if err != nil {
+		logger.Errorf("не удается вывести содержимое корзины %v", err)
+		return
+	}
+
+	DeliveryDateChatID[chatID] = 1
 }
 
 // handleDeliveryDetailsMessage Анализируем и извлекаем данные из сообщения.
 // Объединяем данные заказа с содержимым корзины.
-func handleDeliveryDetailsMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
-	if update.Message.Chat.ID == 0 {
-		logger.Errorf("нет данных для обработки update.Message.Chat.ID = %v", update.Message.Chat.ID)
+func handleDeliveryDetailsMessage(bot *tgbotapi.BotAPI, chatID int64) {
+	if chatID == 0 {
+		logger.Errorf("нет данных для обработки chatID = %v", chatID)
 		return
 	}
-	chatID := update.Message.Chat.ID
 
 	var MsgText string
 
@@ -293,13 +294,11 @@ func handleDeliveryDetailsMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update) 
 }
 
 // deletePreviousMessages Удаляем сообщения.
-func deletePreviousMessages(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
-	if update.Message.Chat.ID == 0 || update.Message.MessageID == 0 {
-		logger.Errorf("нет данных для обработки update.Message.Chat.ID = %v update.Message.MessageID = %v", update.Message.Chat.ID, update.Message.MessageID)
+func deletePreviousMessages(bot *tgbotapi.BotAPI, chatID int64, messageID int) {
+	if chatID == 0 || messageID == 0 {
+		logger.Errorf("нет данных для обработки chatID = %v messageID = %v", chatID, messageID)
 		return
 	}
-	messageID := update.Message.MessageID
-	chatID := update.Message.Chat.ID
 
 	// Проверяем, есть ли сообщения для удаления в этом чате
 	if _, found := messagesToDelete[chatID]; found {
@@ -340,13 +339,11 @@ func deleteMessages(bot *tgbotapi.BotAPI, chatID int64) {
 }
 
 // GroupMessagesChatID отправляем заказ.
-func GroupMessagesChatID(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
-	if update.CallbackQuery.Message.Chat.ID == 0 {
-		logger.Errorf("нет данных для обработки update.CallbackQuery.Message.Chat.ID = %v", update.CallbackQuery.Message.Chat.ID)
+func GroupMessagesChatID(bot *tgbotapi.BotAPI, chatID int64) {
+	if chatID == 0 {
+		logger.Errorf("нет данных для обработки chatID = %v", chatID)
 		return
 	}
-
-	chatID := update.CallbackQuery.Message.Chat.ID
 
 	if orderDetails[chatID] != "" {
 
@@ -384,14 +381,12 @@ func GroupMessagesChatID(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	}
 }
 
-// MainOrdersByUserID Выводим заказы пользователей.
-func MainOrdersByUserID(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
-	if update.Message.Chat.ID == 0 {
-		logger.Errorf("нет данных для обработки update.Message.Chat.ID = %v", update.Message.Chat.ID)
+// MainOrdersByUserID Выводим заказы пользователя в телеграмм.
+func MainOrdersByUserID(bot *tgbotapi.BotAPI, userID int64) {
+	if userID == 0 {
+		logger.Errorf("нет данных для обработки userID = %v", userID)
 		return
 	}
-
-	userID := update.Message.Chat.ID // Ваш user_id
 
 	orders, err := dataSources.GetOrdersByUserID(dataSources.DB, userID, 6)
 
@@ -506,7 +501,7 @@ func getFieldByChatID(chatID int64, fieldName string) (interface{}, error) {
 	order, exists := orders[chatID]
 
 	if !exists {
-		//logger.Error("заказ с таким chatID не найден")
+		logger.Errorf("заказ с таким chatID = %v не найден", chatID)
 		return nil, errors.New("заказ с таким chatID не найден")
 	}
 
@@ -678,7 +673,7 @@ func sendMessage(bot *tgbotapi.BotAPI, chatID int64, text string) {
 			funcName := runtime.FuncForPC(pc).Name()
 			funcName = trimFuncName(funcName) // Укорачиваем имя функции
 			file = trimFilePath(file)         // Укорачиваем путь к файлу
-			logger.Errorf("не удается отправить сообщение в функции %s (строка %d, файл %s): %v", funcName, line, file, err)
+			logger.Errorf("не удается отправить сообщение chatID = %v в функции %s (строка %d, файл %s): %v", chatID, funcName, line, file, err)
 		} else {
 			logger.Errorf("не удается отправить сообщение: %v", err)
 		}

@@ -7,6 +7,7 @@
         <h4 class="card-title">Люди от которых мы не хоти принимать заказы</h4>
         <!--If there's an error, display the error-->
         <p class="centersH">{{.Message}}</p>
+        {{ if not .Message }}
 <form method="POST" action="/black/update">
     <table>
         <tr>
@@ -26,6 +27,7 @@
                 <button type="submit" name="user_id" value="{{ .UserID }}">Сохранить</button>
             </td>
         </tr>
+        {{ end }}
         {{ end }}
     </table>
 </form>

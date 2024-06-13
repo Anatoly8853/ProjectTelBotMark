@@ -3,9 +3,10 @@ package dataSources
 import (
 	"ProjectTelBotMark/loggers"
 	"database/sql"
+	"testing"
+
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
-	"testing"
 )
 
 // setupTestDB создает тестовую базу данных и заполняет ее необходимыми таблицами.
@@ -114,7 +115,7 @@ func TestProcessOrder(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to setup test database: %v", err)
 	}
-	defer db.Close()
+	//defer db.Close()
 
 	order := `ФИО: Иван Иванов
 Номер телефона: +79991234567
@@ -163,7 +164,7 @@ func TestProcessOrder(t *testing.T) {
 	WHERE order_id = (SELECT id FROM tg_user_orders_date WHERE user_id = (SELECT id FROM tg_user_Chat_ID WHERE user_id = 367922775))
 	`)
 	assert.NoError(t, err)
-	defer rows.Close()
+	//defer rows.Close()
 
 	var actualItems []struct {
 		Name     string

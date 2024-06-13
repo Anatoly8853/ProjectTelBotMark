@@ -5,11 +5,12 @@ import (
 	"ProjectTelBotMark/loggers"
 	"ProjectTelBotMark/structs"
 	"fmt"
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"github.com/gookit/slog"
 	"os"
 	"strconv"
 	"time"
+
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/gookit/slog"
 )
 
 var logger *slog.Logger // Глобальный логгер
@@ -65,6 +66,7 @@ func CheckDatabase(bot *tgbotapi.BotAPI) {
 					msgText += "Список заказанных товаров :\n"
 					currentDeliveryDate = formattedDeliveryDate
 					currentDateTime = order.DateTime
+					currentUserID = order.UserID.UserID
 				}
 
 				msgText += fmt.Sprintf("%v кол-во: %v цена: %v руб.\n", order.Purchase.Item, order.Purchase.Quantity, order.Purchase.Cost)
@@ -125,7 +127,7 @@ func StartDailyCheck(bot *tgbotapi.BotAPI) {
 			now := time.Now()
 
 			// Устанавливаем время следующего запуска на 8:00 утра текущего дня
-			next := time.Date(now.Year(), now.Month(), now.Day(), 13, 30, 0, 0, now.Location())
+			next := time.Date(now.Year(), now.Month(), now.Day(), 13, 42, 0, 0, now.Location())
 
 			// Если текущее время уже после 8:00 утра, то устанавливаем следующий запуск на 8:00 утра следующего дня
 			if now.After(next) {
@@ -140,9 +142,6 @@ func StartDailyCheck(bot *tgbotapi.BotAPI) {
 			// Выполняем проверку базы данных
 			CheckDatabase(bot)
 
-			// Останавливаем таймер и переустанавливаем его на следующие 24 часа
-			timer.Stop()
-			timer.Reset(24 * time.Hour)
 		}
 	}()
 }

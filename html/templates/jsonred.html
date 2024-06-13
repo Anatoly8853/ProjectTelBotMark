@@ -2,80 +2,53 @@
 <!--Embed the header.html template at this location-->
 {{ template "header.html" .}}
 <style>
-    .container {
-        max-width: 40%;
-        padding: 15%;
-        width: 100%;
+    .edit-button {
+        background-color: #28a745;
+    }
+    .edit-button:hover {
+        background-color: #218838;
+    }
+    .edit-interface {
+        position: relative;
         display: flex;
         flex-direction: column;
-        flex-wrap: wrap;
-        justify-content: center;
-        align-items: center;
-    }
-    .category { margin-bottom: 80px; }
-    .category img { width: 100%; height: auto; }
-    .buttons {
-        display: flex;
-        flex-wrap: wrap;
         gap: 10px;
+        right: -261px;
+    }
+    .edit-interface input {
         padding: 5px;
+        font-size: 16px;
     }
-    button.button{
-        width: 180px;
-        height: 50px;
-    }
-    .button {
-        padding: 10px 20px;
-        background-color: #007bff;
-        color: #fff;
-        border: none;
-        border-radius: 5px;
-        cursor: pointer;
-        text-align: center;
-        flex: 1 1 calc(33.333% - 20px);
-        box-sizing: border-box;
-    }
-    .button:hover { background-color: #0056b3; }
-    .back-button { background-color: #6c757d; }
-    .back-button:hover {  background-color: #5a6268; }
-    .error { color: red; }
-    div#photo.photo{width: 350px; height: 250px; display: flex; flex-wrap: nowrap; flex-direction: column-reverse;}
-    div#menu{width: 540px; height: 180px; display: flex; flex-wrap: nowrap; flex-direction: column-reverse;}
-    div#photo-button{height: 30px;display: flex; flex-wrap: nowrap; padding: inherit;}
 </style>
-
-<div class="container">
-    <div class="photo" id="photo" ></div>
-    <div id="photo-button"></div>
-    <div id="menu"></div>
+<div class="container-poisc">
+    <div class="containerjson">
+        <div class="photo" id="photo"></div>
+        <div id="photo-button"></div>
+        <div id="menu"></div>
+        <div id="edit-interface" class="edit-interface"></div>
+    </div>
 </div>
 <script>
-    // Преобразование JSON данных, полученных из шаблона, в объект JavaScript
     const data = JSON.parse('{{ .categories | toJSON }}');
-
-    // Получение элементов для отображения категорий и фотографий
     const menu = document.getElementById('menu');
     const photo = document.getElementById('photo');
     const photoButton = document.getElementById('photo-button');
+    const editInterface = document.getElementById('edit-interface');
 
-    // Функция для отделения эмотиконов от текста
     function separateEmojiAndText(text) {
         const emojiPattern = /[\p{Emoji_Presentation}\uFE0F]/gu;
         const emojis = text.match(emojiPattern) || [];
         const cleanText = text.replace(emojiPattern, '').trim().replace(/\s+/g, ' ');
-        return {emojis: emojis.join(''), cleanText: cleanText};
+        return { emojis: emojis.join(''), cleanText: cleanText };
     }
 
-    // Функция для создания и отображения категории
     function createCategory(category, clearPhoto = true) {
         if (clearPhoto) {
-            photo.innerHTML = ''; // Очистка содержимого фото-контейнера
-            photoButton.innerHTML = ''; // Очистка содержимого кнопок для фото
+            photo.innerHTML = '';
+            photoButton.innerHTML = '';
         }
-
         const categoryDiv = document.createElement('div');
         categoryDiv.className = 'category';
-
         const buttonsDiv = document.createElement('div');
         buttonsDiv.className = 'buttons';
 
@@ -110,13 +83,18 @@
             categoryDiv.appendChild(backButtonDiv);
         }
 
+        const editBtn = document.createElement('button');
+        editBtn.className = 'button edit-button';
+        editBtn.innerText = 'Редактировать';
+        editBtn.onclick = () => showEditInterface(category);
+        categoryDiv.appendChild(editBtn);
+
         menu.appendChild(categoryDiv);
     }
 
-    // Функция для отображения подкатегории с фото и кнопками
     function createSubcategory(category) {
-        photo.innerHTML = ''; // Очистка фото-контейнера
-        photoButton.innerHTML = ''; // Очистка кнопок для фото
+        photo.innerHTML = '';
+        photoButton.innerHTML = '';
 
         if (category.photo) {
             const img = document.createElement('img');
@@ -137,7 +115,6 @@
         photoButton.appendChild(buttonsDiv);
     }
 
-    // Функция для навигации по категориям
     function navigate(categoryName) {
         const cleanCategoryName = separateEmojiAndText(categoryName).cleanText;
         let foundCategory = null;
@@ -152,7 +129,7 @@
             if (foundCategory.photo) {
                 createSubcategory(foundCategory);
             } else {
-                menu.innerHTML = ''; // Очистка меню-контейнера
+                menu.innerHTML = '';
                 createCategory(foundCategory);
             }
         } else {
@@ -163,9 +140,48 @@
         }
     }
 
-    // Инициализация отображения с категории "Старт"
+    function showEditInterface(category) {
+        editInterface.innerHTML = '';
+        const title = document.createElement('h3');
+        title.innerText = `Редактирование: ${category.categoryName}`;
+        editInterface.appendChild(title);
+
+        category.buttons.forEach((button, index) => {
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.value = button.text;
+            input.oninput = (e) => {
+                category.buttons[index].text = e.target.value;
+            };
+            editInterface.appendChild(input);
+        });
+
+        const saveBtn = document.createElement('button');
+        saveBtn.className = 'button edit-button';
+        saveBtn.innerText = 'Сохранить';
+        saveBtn.onclick = () => saveChanges();
+        editInterface.appendChild(saveBtn);
+    }
+
+    function saveChanges() {
+        const updatedData = JSON.stringify(data);
+        fetch('/jsonred/save', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: updatedData,
+        }).then(response => {
+            if (response.ok) {
+                alert('Изменения сохранены!');
+                editInterface.innerHTML = '';
+                navigate('Старт');
+            } else {
+                alert('Ошибка при сохранении.');
+            }
+        });
+    }
+
     createCategory(data["Старт"]);
 </script>
-
-<!--Embed the footer.html template at this location-->
 {{ template "footer.html" .}}

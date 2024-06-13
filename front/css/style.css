@@ -7,6 +7,48 @@ body {
     height: 100%;
 }
 
+.containerjson {
+    width: 600px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background-color: #ffffff;
+    border-radius: 20px;
+    height: 700px;
+    margin-top: 10px;
+}
+.category { margin-bottom: 80px; }
+.buttons {
+    max-width: 540px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 5px;
+}
+button.button{
+    width: 180px;
+    height: 50px;
+}
+.button {
+    padding: 10px 20px;
+    background-color: #007bff;
+    color: #fff;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    text-align: center;
+    flex: 1 1 calc(33.333% - 20px);
+    box-sizing: border-box;
+}
+.button:hover { background-color: #0056b3; }
+.back-button { background-color: #6c757d; }
+.back-button:hover {  background-color: #5a6268; }
+.error { color: red; }
+div#photo.photo{position: relative; width: 400px; height: 400px; display: flex; flex-direction: column-reverse; margin-top: -225px; left: 100px;}
+div#menu{position: absolute; width: 540px; height: 180px; margin-top: 500px;}
+div#photo-button{position: absolute; height: 20px; margin-top: 215px; display: flex; flex-direction: row; flex-wrap: nowrap;}
+img{width: 400px; height: 400px;}
+
 .containers {
     width: 90%;
     height: 50%;

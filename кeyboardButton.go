@@ -3,6 +3,9 @@ package main
 import (
 	"ProjectTelBotMark/structs"
 	"errors"
+	"fmt"
+	"time"
+
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
@@ -61,4 +64,71 @@ func CreateCategoryKeyboard(categoryName string) ([][]tgbotapi.InlineKeyboardBut
 	inlineKeyboard = append(inlineKeyboard, row)
 
 	return inlineKeyboard, nil
+}
+
+// createCalendarKeyboard календать рлавиатура
+func createCalendarKeyboard(month time.Time) tgbotapi.InlineKeyboardMarkup {
+	currentYear, currentMonth, _ := month.Date()
+	currentLocation := month.Location()
+
+	// Первый день месяца
+	firstOfMonth := time.Date(currentYear, currentMonth, 1, 0, 0, 0, 0, currentLocation)
+	// Последний день месяца
+	lastOfMonth := firstOfMonth.AddDate(0, 1, -1)
+
+	var buttons [][]tgbotapi.InlineKeyboardButton
+	var row []tgbotapi.InlineKeyboardButton
+
+	// Заголовок с названием месяца
+	monthYear := month.Format("January 2006")
+	row = append(row, tgbotapi.NewInlineKeyboardButtonData(monthYear, "ignore"))
+	buttons = append(buttons, row)
+
+	row = []tgbotapi.InlineKeyboardButton{}
+
+	// Заголовок дней недели
+	daysOfWeek := []string{"Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"}
+	for _, day := range daysOfWeek {
+		row = append(row, tgbotapi.NewInlineKeyboardButtonData(day, "ignore"))
+	}
+	buttons = append(buttons, row)
+
+	row = []tgbotapi.InlineKeyboardButton{}
+
+	// Добавить пустые кнопки до первого дня месяца
+	for i := 1; i < int(firstOfMonth.Weekday()); i++ {
+		row = append(row, tgbotapi.NewInlineKeyboardButtonData(" ", "ignore"))
+	}
+	if firstOfMonth.Weekday() == time.Sunday {
+		row = append(row, tgbotapi.NewInlineKeyboardButtonData(" ", "ignore"))
+	}
+
+	for day := 1; day <= lastOfMonth.Day(); day++ {
+		date := time.Date(currentYear, currentMonth, day, 0, 0, 0, 0, currentLocation)
+		dateStr := date.Format("02.01.2006")
+		callbackData := fmt.Sprintf("deliverydate_%s", dateStr)
+		row = append(row, tgbotapi.NewInlineKeyboardButtonData(fmt.Sprintf("%02d", day), callbackData))
+
+		if date.Weekday() == time.Sunday {
+			buttons = append(buttons, row)
+			row = []tgbotapi.InlineKeyboardButton{}
+		}
+	}
+
+	// Добавить оставшиеся кнопки
+	if len(row) > 0 {
+		buttons = append(buttons, row)
+	}
+
+	// Кнопка для перехода на следующий месяц
+	nextMonth := month.AddDate(0, 1, 0)
+	nextMonthStr := nextMonth.Format("01-2006")
+	row = []tgbotapi.InlineKeyboardButton{
+		tgbotapi.NewInlineKeyboardButtonData("Next Month", "nextmonth_"+nextMonthStr),
+	}
+	buttons = append(buttons, row)
+
+	return tgbotapi.InlineKeyboardMarkup{
+		InlineKeyboard: buttons,
+	}
 }

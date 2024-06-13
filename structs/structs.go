@@ -11,9 +11,9 @@ type User struct {
 }
 
 type MessageInfo struct {
-	Info      string `json:"info" form:"Info"`
-	InfoText  string `json:"info_text" form:"InfoText"`
-	ImagePath string `json:"image_path" form:"ImagePath"`
+	Info      string `json:"info,omitempty" form:"Info"`
+	InfoText  string `json:"info_text,omitempty" form:"InfoText"`
+	ImagePath string `json:"image_path,omitempty" form:"ImagePath"`
 }
 
 // Purchase товары.
@@ -25,16 +25,16 @@ type Purchase struct {
 
 // ButtonData Кнопки.
 type ButtonData struct {
-	Text     string `json:"text"`
-	Callback string `json:"callback"`
+	Text     string `json:"text,omitempty"`
+	Callback string `json:"callback,omitempty"`
 }
 
 // Category представляет категорию с именем и кнопками.
 type Category struct {
 	CategoryName string       `json:"categoryName,omitempty"`
 	CategoryMsg  string       `json:"categoryMsg,omitempty"`
-	Photo        string       `json:"photo"`
-	Buttons      []ButtonData `json:"buttons"`
+	Photo        string       `json:"photo,omitempty"`
+	Buttons      []ButtonData `json:"buttons,omitempty"`
 	ButtonsM     []ButtonData `json:"buttonsM,omitempty"`
 }
 
@@ -43,35 +43,35 @@ var Categories map[string]Category
 
 // QueryParams Структура для хранения параметров фильтрации и сортировки.
 type QueryParams struct {
-	OrderBy   string
-	OrderDir  string
-	UserID    User
-	StartDate string
-	EndDate   string
+	OrderBy   string `json:"order_by,omitempty"`
+	OrderDir  string `json:"order_dir,omitempty"`
+	UserID    int64  `json:"user_id,omitempty"`
+	StartDate string `json:"start_date,omitempty"`
+	EndDate   string `json:"end_date,omitempty"`
 }
 
 // Webnums структура.
 type Webnums struct {
-	Num int
+	Num int `json:"num,omitempty"`
 }
 
 type OrderDb struct {
 	UserID          User   `json:"user_id,omitempty"`
-	FullName        string `json:"full_name"`
-	DateTime        string `json:"date_time"`
-	TotalCost       int    `json:"total_cost"`
-	DeliveryDate    string `json:"delivery_date"`
-	PhoneNumber     string `json:"phone_number"`
-	DeliveryAddress string `json:"delivery_address"`
+	FullName        string `json:"full_name,omitempty"`
+	DateTime        string `json:"date_time,omitempty"`
+	TotalCost       int    `json:"total_cost,omitempty"`
+	DeliveryDate    string `json:"delivery_date,omitempty"`
+	PhoneNumber     string `json:"phone_number,omitempty"`
+	DeliveryAddress string `json:"delivery_address,omitempty"`
 	Purchase        Purchase
 }
 
 // OrderInfo основная структура данных для заказа продуктов.
 type OrderInfo struct {
-	OrderDb     OrderDb
-	Num         int  `json:"num,omitempty"`
-	CurrentDate bool `json:"current_date,omitempty"`
-	Index       int  `json:"index,omitempty"`
+	OrderDb     OrderDb `json:"order_db"`
+	Num         int     `json:"num,omitempty"`
+	CurrentDate bool    `json:"current_date,omitempty"`
+	Index       int     `json:"index,omitempty"`
 }
 
 type Order struct {

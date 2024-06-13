@@ -45,7 +45,6 @@ func GinRouter(bot *tgbotapi.BotAPI) {
 	router.GET("/", HandlerIndex)
 	router.GET("/info", HandlerInfo)
 	router.POST("/info", PostHandlerInfo(bot))
-	router.GET("/purchases", PurchasesHandler)
 	router.GET("/highcharts", func(c *gin.Context) {
 		c.HTML(http.StatusOK, "highcharts.html", gin.H{
 			"Title":    "Заказы Салаты корейские",
@@ -96,15 +95,14 @@ func GinRouter(bot *tgbotapi.BotAPI) {
 
 		c.JSON(http.StatusOK, data)
 	})
-	router.GET("/categories", categoryLoadData)
 	router.GET("/black", BlackList)
 	router.POST("/black/update", UpdateBlackList)
 	router.GET("/jsonred", func(c *gin.Context) {
 		c.HTML(http.StatusOK, "jsonred.html", gin.H{
-			"categories": categories,
+			"categories":   categories,
+			"Classjsonred": "current",
 		})
 	})
-
 	router.POST("/jsonred/save", saveCategories)
 	err := router.Run(":8090")
 	if err != nil {
@@ -155,6 +153,11 @@ func BlackList(c *gin.Context) {
 	users, err := dataSources.GetUsers(dataSources.DB)
 	if err != nil {
 		logger.Errorf("Error getting users: %v", err)
+		c.HTML(http.StatusOK, "user_black.html", gin.H{
+			"Title":      "Заказы Салаты корейские",
+			"Message":    "Ошибка обработки формы",
+			"Classblack": "current",
+		})
 		return
 	}
 
@@ -167,36 +170,6 @@ func BlackList(c *gin.Context) {
 
 // Data представляет все данные из JSON файла
 type Data map[string]structs.Category
-
-// loadData Функция для загрузки данных из JSON файла.
-func loadData(filename string) (Data, error) {
-
-	file, err := os.Open(filename)
-	if err != nil {
-		return nil, err
-	}
-	//defer file.Close()
-
-	var data Data
-	decoder := json.NewDecoder(file)
-	err = decoder.Decode(&data)
-	if err != nil {
-		return nil, err
-	}
-
-	return data, nil
-}
-
-// categoryLoadData для загрузки категорий.
-func categoryLoadData(c *gin.Context) {
-
-	data, err := loadData("./data.json")
-	if err != nil {
-		log.Fatalf("Error loading data: %v", err)
-	}
-
-	c.HTML(http.StatusOK, "category_template.html", data)
-}
 
 // HandlerInfo код страницы инфо.
 func HandlerInfo(c *gin.Context) {
@@ -376,7 +349,6 @@ func HandlerIndex(c *gin.Context) {
 		logger.Errorf("ошибка запрос к базе %v", err)
 		return
 	}
-	//fmt.Println("orders", orders)
 
 	var payloads []structs.OrderInfo
 	var webnums []structs.Webnums
@@ -466,69 +438,4 @@ func MergeSlidesWithDeliveryDate(orders []structs.OrderInfo, nums []structs.Webn
 	}
 
 	return result
-}
-
-func PurchasesHandler(c *gin.Context) {
-	period := c.Query("period")
-
-	var startDate, endDate string
-
-	switch period {
-	case "day":
-		startDate = time.Now().AddDate(0, 0, -1).Format("2006-01-02")
-		endDate = time.Now().Format("2006-01-02")
-	case "week":
-		startDate = time.Now().AddDate(0, 0, -7).Format("2006-01-02")
-		endDate = time.Now().Format("2006-01-02")
-	case "month":
-		startDate = time.Now().AddDate(0, -1, 0).Format("2006-01-02")
-		endDate = time.Now().Format("2006-01-02")
-	case "year":
-		startDate = time.Now().AddDate(-1, 0, 0).Format("2006-01-02")
-		endDate = time.Now().Format("2006-01-02")
-	default:
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid period"})
-		return
-	}
-
-	orders, err := dataSources.GetOrdersByDeliveryDateRange(dataSources.DB, startDate, endDate)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	labels := []string{}
-	amounts := []int{}
-	//var DeliveryDate string
-	//var TotalCost int
-	// Карта для хранения суммированных значений
-	dateSums := make(map[string]int)
-	for _, order := range orders {
-
-		// Парсинг строки времени в тип time.Time
-		t, err := time.Parse(time.RFC3339, order.DeliveryDate)
-		if err != nil {
-
-			logger.Errorf("Ошибка парсинга строки времени: %v", err)
-			return
-
-		}
-
-		// Форматирование времени в нужный формат
-		formattedDeliveryDate := t.Format("2006-01-02")
-
-		dateSums[formattedDeliveryDate] += order.TotalCost
-	}
-
-	for date, sum := range dateSums {
-
-		labels = append(labels, date)
-		amounts = append(amounts, sum)
-
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"labels":  labels,
-		"amounts": amounts,
-	})
 }

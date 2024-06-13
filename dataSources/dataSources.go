@@ -6,6 +6,9 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"io"
+
+	"os"
 	"regexp"
 	"strconv"
 	"time"
@@ -21,10 +24,89 @@ var logger *slog.Logger // Глобальный логгер
 // DB одк
 var DB *sql.DB
 
+// Общая часть запроса
+const baseQuery = `
+	SELECT
+		tg_user_Chat_ID.user_id,
+		tg_user_full_name.full_name,
+		tg_user_orders_date.date_time,
+		tg_user_orders_date.total_cost,
+		tg_user_orders_date.delivery_date,
+		tg_user_phone_number.phone_number,
+		tg_user_delivery_address.delivery_address,
+		tg_user_order_id.item_name,
+		tg_user_orders.quantity,
+		tg_user_orders.cost
+	FROM
+		tg_user_Chat_ID
+			JOIN tg_user_orders_date ON tg_user_Chat_ID.id = tg_user_orders_date.user_id
+			JOIN tg_user_phone_number ON tg_user_orders_date.phone_number_id = tg_user_phone_number.id
+			JOIN tg_user_delivery_address ON tg_user_orders_date.delivery_address_id = tg_user_delivery_address.id
+			JOIN tg_user_orders ON tg_user_orders_date.id = tg_user_orders.order_id
+			JOIN tg_user_full_name ON tg_user_orders_date.full_name_id = tg_user_full_name.id
+			JOIN tg_user_order_id ON tg_user_orders.item_name = tg_user_order_id.id
+`
+const limitedOrdersQuery = `
+    WITH LimitedOrders AS (
+        SELECT
+            tg_user_orders_date.id AS order_id
+        FROM
+            tg_user_orders_date
+            JOIN tg_user_Chat_ID ON tg_user_orders_date.user_id = tg_user_Chat_ID.id
+        WHERE
+            tg_user_Chat_ID.user_id = ?
+        ORDER BY
+            tg_user_orders_date.delivery_date DESC
+        LIMIT ?
+    )
+    SELECT
+        tg_user_Chat_ID.user_id,
+        tg_user_full_name.full_name,
+        tg_user_orders_date.date_time,
+        tg_user_orders_date.total_cost,
+        tg_user_orders_date.delivery_date,
+        tg_user_phone_number.phone_number,
+        tg_user_delivery_address.delivery_address,
+        tg_user_order_id.item_name,
+        tg_user_orders.quantity,
+        tg_user_orders.cost
+    FROM
+        tg_user_Chat_ID
+        JOIN tg_user_orders_date ON tg_user_Chat_ID.id = tg_user_orders_date.user_id
+        JOIN tg_user_phone_number ON tg_user_orders_date.phone_number_id = tg_user_phone_number.id
+        JOIN tg_user_delivery_address ON tg_user_orders_date.delivery_address_id = tg_user_delivery_address.id
+        JOIN tg_user_orders ON tg_user_orders_date.id = tg_user_orders.order_id
+        JOIN tg_user_full_name ON tg_user_orders_date.full_name_id = tg_user_full_name.id
+        JOIN tg_user_order_id ON tg_user_orders.item_name = tg_user_order_id.id
+    WHERE
+        tg_user_orders_date.id IN (SELECT order_id FROM LimitedOrders)
+    ORDER BY
+        tg_user_orders_date.delivery_date DESC;
+`
+
+const baseQueryOrders = `
+  SELECT
+    tg_user_Chat_ID.user_id,
+    tg_user_full_name.full_name,
+    tg_user_phone_number.phone_number,
+    tg_user_delivery_address.delivery_address
+FROM
+    tg_user_Chat_ID
+        JOIN tg_user_orders_date ON tg_user_Chat_ID.id = tg_user_orders_date.user_id
+        JOIN tg_user_phone_number ON tg_user_orders_date.phone_number_id = tg_user_phone_number.id
+        JOIN tg_user_delivery_address ON tg_user_orders_date.delivery_address_id = tg_user_delivery_address.id
+        JOIN tg_user_full_name ON tg_user_orders_date.full_name_id = tg_user_full_name.id
+WHERE tg_user_Chat_ID.user_id = ?
+ORDER BY
+    tg_user_orders_date.delivery_date DESC
+LIMIT 1
+`
+
 // InitDB - инициализация базы данных.
 func InitDB() {
 	// Настраиваем логгер
 	logger = loggers.SetupLogger()
+
 	// Открываем соединение с базой данных SQLite
 	var err error
 	DB, err = sql.Open("sqlite3", "./data.db")
@@ -342,6 +424,13 @@ func ProcessOrder(order string, db *sql.DB, update tgbotapi.Update) error {
 		}
 	}()
 
+	userBlack := 0
+
+	err = UpsertUser(tx, userID, userName, userBlack)
+	if err != nil {
+		logger.Errorf("Error upserting user: %v", err)
+	}
+
 	// Форматирование текущей даты и времени в указанный формат
 	formattedDateTime := time.Now().Format("15:04 02.01.2006")
 
@@ -361,13 +450,6 @@ func ProcessOrder(order string, db *sql.DB, update tgbotapi.Update) error {
 	existingFullNameID := ids[1]
 	existingPhoneID := ids[2]
 	existingAddressID := ids[3]
-
-	userBlack := 0
-
-	err = UpsertUser(tx, userID, userName, userBlack)
-	if err != nil {
-		logger.Errorf("Error upserting user: %v", err)
-	}
 
 	// Вставляем новую запись в tg_orders_date
 	var existingOrdersDateID int64
@@ -456,66 +538,6 @@ func processRows(rows *sql.Rows) ([]structs.OrderDb, error) {
 	return orders, nil
 }
 
-// Общая часть запроса
-const baseQuery = `
-	SELECT
-		tg_user_Chat_ID.user_id,
-		tg_user_full_name.full_name,
-		tg_user_orders_date.date_time,
-		tg_user_orders_date.total_cost,
-		tg_user_orders_date.delivery_date,
-		tg_user_phone_number.phone_number,
-		tg_user_delivery_address.delivery_address,
-		tg_user_order_id.item_name,
-		tg_user_orders.quantity,
-		tg_user_orders.cost
-	FROM
-		tg_user_Chat_ID
-			JOIN tg_user_orders_date ON tg_user_Chat_ID.id = tg_user_orders_date.user_id
-			JOIN tg_user_phone_number ON tg_user_orders_date.phone_number_id = tg_user_phone_number.id
-			JOIN tg_user_delivery_address ON tg_user_orders_date.delivery_address_id = tg_user_delivery_address.id
-			JOIN tg_user_orders ON tg_user_orders_date.id = tg_user_orders.order_id
-			JOIN tg_user_full_name ON tg_user_orders_date.full_name_id = tg_user_full_name.id
-			JOIN tg_user_order_id ON tg_user_orders.item_name = tg_user_order_id.id
-`
-const limitedOrdersQuery = `
-    WITH LimitedOrders AS (
-        SELECT
-            tg_user_orders_date.id AS order_id
-        FROM
-            tg_user_orders_date
-            JOIN tg_user_Chat_ID ON tg_user_orders_date.user_id = tg_user_Chat_ID.id
-        WHERE
-            tg_user_Chat_ID.user_id = ?
-        ORDER BY
-            tg_user_orders_date.delivery_date DESC
-        LIMIT ?
-    )
-    SELECT
-        tg_user_Chat_ID.user_id,
-        tg_user_full_name.full_name,
-        tg_user_orders_date.date_time,
-        tg_user_orders_date.total_cost,
-        tg_user_orders_date.delivery_date,
-        tg_user_phone_number.phone_number,
-        tg_user_delivery_address.delivery_address,
-        tg_user_order_id.item_name,
-        tg_user_orders.quantity,
-        tg_user_orders.cost
-    FROM
-        tg_user_Chat_ID
-        JOIN tg_user_orders_date ON tg_user_Chat_ID.id = tg_user_orders_date.user_id
-        JOIN tg_user_phone_number ON tg_user_orders_date.phone_number_id = tg_user_phone_number.id
-        JOIN tg_user_delivery_address ON tg_user_orders_date.delivery_address_id = tg_user_delivery_address.id
-        JOIN tg_user_orders ON tg_user_orders_date.id = tg_user_orders.order_id
-        JOIN tg_user_full_name ON tg_user_orders_date.full_name_id = tg_user_full_name.id
-        JOIN tg_user_order_id ON tg_user_orders.item_name = tg_user_order_id.id
-    WHERE
-        tg_user_orders_date.id IN (SELECT order_id FROM LimitedOrders)
-    ORDER BY
-        tg_user_orders_date.delivery_date DESC;
-`
-
 // GetOrdersByUserID Функция для выбора из базы данных.
 func GetOrdersByUserID(db *sql.DB, userID int64, limit uint8) ([]structs.OrderDb, error) {
 	// Настраиваем логгер
@@ -527,7 +549,7 @@ func GetOrdersByUserID(db *sql.DB, userID int64, limit uint8) ([]structs.OrderDb
 		logger.Printf("Error preparing query: %v", err)
 		return nil, err
 	}
-	//defer rows.Close()
+	_ = db.Close()
 
 	return processRows(rows)
 }
@@ -542,7 +564,7 @@ func GetOrdersWithFilters(db *sql.DB, params structs.QueryParams) ([]structs.Ord
 	// Инициализация пустого среза с помощью make
 	queryArgs := make([]interface{}, 0)
 
-	if params.UserID.UserID != 0 {
+	if params.UserID != 0 {
 		query += " WHERE tg_user_Chat_ID.user_id = ?"
 		queryArgs = append(queryArgs, params.UserID)
 	}
@@ -577,34 +599,8 @@ func GetOrdersWithFilters(db *sql.DB, params structs.QueryParams) ([]structs.Ord
 		logger.Errorf("Error preparing query %v ", err)
 		return nil, err
 	}
-	//defer rows.Close()
 
 	return processRows(rows)
-}
-
-func GetOrdersByDeliveryDateRange(db *sql.DB, startDate, endDate string) ([]structs.Order, error) {
-	query := `
-        SELECT delivery_date, total_cost
-        FROM tg_user_orders_date
-        WHERE delivery_date BETWEEN ? AND ?        
-    `
-	rows, err := db.Query(query, startDate, endDate)
-	if err != nil {
-		return nil, err
-	}
-	//defer rows.Close()
-
-	var orders []structs.Order
-	for rows.Next() {
-		var order structs.Order
-		err = rows.Scan(&order.DeliveryDate, &order.TotalCost)
-		if err != nil {
-			return nil, err
-		}
-		orders = append(orders, order)
-	}
-
-	return orders, nil
 }
 
 func UpsertUser(tx *sql.Tx, userID int64, userName string, userBlack int) error {
@@ -646,6 +642,7 @@ func UpsertUser(tx *sql.Tx, userID int64, userName string, userBlack int) error 
 func GetUsers(db *sql.DB) ([]structs.User, error) {
 	rows, err := db.Query("SELECT user_id, user_name, user_black FROM tg_user_Chat_ID")
 	if err != nil {
+		logger.Errorf("Error preparing query: %v", err)
 		return nil, err
 	}
 
@@ -665,6 +662,8 @@ func GetUsers(db *sql.DB) ([]structs.User, error) {
 
 func UpdateUserBlack(db *sql.DB, userID, userBlack int) error {
 	_, err := db.Exec("UPDATE tg_user_Chat_ID SET user_black = ? WHERE user_id = ?", userBlack, userID)
+	_ = db.Close()
+	logger.Errorf("Error updating user_black: %v", err)
 	return err
 }
 
@@ -674,4 +673,92 @@ func UserBlack(db *sql.DB, userID int64) bool {
 	_ = db.QueryRow(query, userID).Scan(&userBlack)
 
 	return userBlack != 0
+}
+
+// backupDatabase резервного копирования базы данных SQLite.
+func backupDatabase() {
+	// Путь к файлу текущей и новой резервной копии
+	oldBackupPath := "./backup_old.db"
+	newBackupPath := "./backup.db"
+
+	// Создаем новую резервную копию
+	inputFile, err := os.Open("./data.db")
+	if err != nil {
+		logger.Errorf("Ошибка не удается открыть базу данных: %v", err)
+	}
+	defer func(inputFile *os.File) {
+		_ = inputFile.Close()
+	}(inputFile)
+
+	outputFile, err := os.Create(newBackupPath)
+	if err != nil {
+		logger.Errorf("Ошибка при создании нового файла резервной копии: %v", err)
+	}
+	_, err = io.Copy(outputFile, inputFile)
+	if err != nil {
+		logger.Errorf("Ошибка при копировании базы данных в файл резервной копии: %v", err)
+	}
+	_ = outputFile.Close() // Закрываем файл перед переименованием
+
+	// Ждем немного, чтобы ОС завершила все операции с файлом
+	time.Sleep(500 * time.Millisecond)
+
+	// Удаляем старую резервную копию, если она существует
+	if _, err := os.Stat(oldBackupPath); err == nil {
+		err = os.Remove(oldBackupPath)
+		if err != nil {
+			logger.Errorf("Ошибка при удалении старого файла резервной копии: %v", err)
+		}
+	} else if !os.IsNotExist(err) {
+		logger.Errorf("Error checking old backup file: %v", err)
+	}
+
+	// Переименовываем новую резервную копию в старую
+	err = os.Rename(newBackupPath, oldBackupPath)
+	if err != nil {
+		logger.Fatalf("Error renaming new backup file to old: %v", err)
+	}
+
+	logger.Info("Backup completed successfully and old backup removed.")
+}
+
+// StartBackupRoutine запускает Go-рутину для ежедневного копирования базы данных SQLite.
+func StartBackupRoutine() {
+	go func() {
+		for {
+			now := time.Now()
+			// Вычисляем время до следующей полуночи
+			// Устанавливаем время следующего запуска на 8:00 утра текущего дня
+			next := time.Date(now.Year(), now.Month(), now.Day(), 17, 10, 0, 0, now.Location())
+
+			// Если текущее время уже после 8:00 утра, то устанавливаем следующий запуск на 8:00 утра следующего дня
+			if now.After(next) {
+				next = next.Add(24 * time.Hour)
+			}
+
+			// Создаем таймер до следующего запуска
+			duration := time.Until(next)
+			timer := time.NewTimer(duration)
+			<-timer.C
+
+			// Выполняем резервное копирование
+			backupDatabase()
+
+			// Останавливаем таймер и переустанавливаем его на следующие 24 часа
+			//timer.Stop()
+			//timer.Reset(24 * time.Hour)
+
+		}
+	}()
+}
+
+// GetByUserID Функция для выбора из базы данных.
+func GetByUserID(db *sql.DB, userID int64) structs.OrderDb {
+	// Настраиваем логгер
+	logger = loggers.SetupLogger()
+	var o structs.OrderDb
+	// Выполняем запрос для получения заказов
+	_ = db.QueryRow(baseQueryOrders, userID).Scan(&o.UserID.UserID, &o.FullName, &o.PhoneNumber, &o.DeliveryAddress)
+
+	return o
 }

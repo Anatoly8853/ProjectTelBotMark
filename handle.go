@@ -104,7 +104,7 @@ func handleCommands(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	}
 }
 
-// handleMessageText Разбор callbackData для определения действия текстовых сообщений.
+// handleMessageText Разбор MessageText для определения действия текстовых сообщений.
 func handleMessageText(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	if update.Message.Chat.ID == 0 {
 		logger.Errorf("нет данных для обработки update.Message.Chat.ID = %v ", update.Message.Chat.ID)
@@ -126,124 +126,8 @@ func handleMessageText(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 
 			if DeliveryDateChatID[update.Message.Chat.ID] != 0 {
 
-				// Получаем и выводим поле DeliveryDate по chatID ФИО
-				if field, err := getFieldByChatID(update.Message.Chat.ID, "FullName"); err == nil {
+				pureText = handleFieldByChatID(bot, update, pureText)
 
-					if field == "ФИО:" {
-						deleteMessages(bot, update.Message.Chat.ID)
-						if pureText == "" || len(pureText) < 3 {
-
-							//Удаляем предыдущие сообщения
-							deletePreviousMessages(bot, update.Message.Chat.ID, update.Message.MessageID)
-
-							str := "ФИО: не может быть пустым и имя не может быть короче 3 символов\n"
-							FullName := "ФИО:"
-							instructions := "Пожалуйста, введите " + FullName + "\n" +
-								"Пример:\n" +
-								"Иванов Иван Иванович\n"
-							str += instructions
-
-							//отправляем сообщение.
-							sendMessage(bot, update.Message.Chat.ID, str)
-							return
-						}
-						err = addOrUpdateOrderField(update.Message.Chat.ID, "FullName", pureText)
-						if err != nil {
-							logger.Errorf("ошибка при добавлении или обновлении поля FullName: %v", err)
-							return
-						}
-						pureText = "Номер телефона:"
-						DeliveryDateChatID[update.Message.Chat.ID] = 0
-					}
-				}
-
-				// Получаем и выводим поле DeliveryAddress по chatID Адрес доставки
-				if field, err := getFieldByChatID(update.Message.Chat.ID, "DeliveryAddress"); err == nil {
-
-					if field == "Адрес доставки:" {
-
-						deleteMessages(bot, update.Message.Chat.ID)
-						if len(pureText) < 10 {
-							deletePreviousMessages(bot, update.Message.Chat.ID, update.Message.MessageID)
-							str := "Адрес доставки не может быть пустым\n"
-							DeliveryAddress := "Адрес доставки:"
-							instructions := "Пожалуйста, введите " + DeliveryAddress + "\n" +
-								"Пример:\n" +
-								"г. Будущего, ул. Пушкина, д. 12 кв 5\n"
-							str += instructions
-							//отправляем сообщение
-							sendMessage(bot, update.Message.Chat.ID, str)
-							return
-						}
-						err = addOrUpdateOrderField(update.Message.Chat.ID, "DeliveryAddress", pureText)
-						if err != nil {
-							logger.Errorf("Ошибка при добавлении или обновлении поля DeliveryAddress: %v", err)
-							return
-						}
-
-						FullName := "ФИО:"
-						instructions := "Пожалуйста, введите " + FullName + "\n" +
-							"Пример:\n" +
-							"Иванов Иван Иванович\n"
-
-						err = addOrUpdateOrderField(update.Message.Chat.ID, "FullName", FullName)
-						if err != nil {
-							logger.Errorf("Ошибка при добавлении или обновлении поля FullName: %v", err)
-							return
-						}
-
-						//отправляем сообщение.
-						sendMessage(bot, update.Message.Chat.ID, instructions)
-
-						pureText = "ok"
-					}
-				}
-
-				// Получаем и выводим поле DeliveryAddress по chatID Номер телефона
-				if field, err := getFieldByChatID(update.Message.Chat.ID, "PhoneNumber"); err == nil {
-
-					if field == "Номер телефона:" {
-
-						formatted, str := formatPhoneNumber(pureText)
-						deleteMessages(bot, update.Message.Chat.ID)
-
-						if str != "" {
-							deletePreviousMessages(bot, update.Message.Chat.ID, update.Message.MessageID)
-							// Формирование текста с просьбой ввести номер телефона
-							PhoneNumber := "Номер телефона:"
-
-							instructions := "\nПожалуйста, введите " + PhoneNumber + "\n" +
-								"Пример:\n" +
-								"+79345678901\n"
-							str += instructions
-
-							//отправляем сообщение
-							sendMessage(bot, update.Message.Chat.ID, str)
-							return
-						}
-
-						err = addOrUpdateOrderField(update.Message.Chat.ID, "PhoneNumber", formatted)
-						if err != nil {
-							logger.Errorf("Ошибка при добавлении или обновлении поля PhoneNumber %v", err)
-							return
-						}
-
-						DeliveryAddress := "Адрес доставки:"
-						instructions := "Пожалуйста, введите " + DeliveryAddress + "\n" +
-							"Пример:\n" +
-							"г. Будущего, ул. Пушкина, д. 12 кв 5\n"
-
-						err = addOrUpdateOrderField(update.Message.Chat.ID, "DeliveryAddress", DeliveryAddress)
-						if err != nil {
-							logger.Errorf("Ошибка при добавлении или обновлении поля DeliveryAddress: %v", err)
-							return
-						}
-
-						//отправляем сообщение
-						sendMessage(bot, update.Message.Chat.ID, instructions)
-						pureText = "ok"
-					}
-				}
 			}
 
 			switch pureText {
@@ -537,6 +421,7 @@ func handleCallbackQueryData(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	}
 }
 
+//handleStartCommand добро пожаловать! Нажмите 'Старт' для начала.
 func handleStartCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	//deletePreviousMessages(bot, update.Message.Chat.ID, update.Message.MessageID)
 	msg := tgbotapi.NewMessage(update.Message.Chat.ID, "Добро пожаловать! Нажмите 'Старт' для начала.")
@@ -547,6 +432,130 @@ func handleStartCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	)
 	_, err := bot.Send(msg)
 	if err != nil {
-		logger.Errorf("Error sending message:", err)
+		logger.Errorf("Error sending message: = %v", err)
 	}
+}
+
+func handleFieldByChatID(bot *tgbotapi.BotAPI, update tgbotapi.Update, pureText string) string {
+
+	// Получаем и выводим поле DeliveryDate по chatID ФИО
+	if field, err := getFieldByChatID(update.Message.Chat.ID, "FullName"); err == nil {
+
+		if field == "ФИО:" {
+			deleteMessages(bot, update.Message.Chat.ID)
+			if pureText == "" || len(pureText) < 3 {
+
+				//Удаляем предыдущие сообщения
+				deletePreviousMessages(bot, update.Message.Chat.ID, update.Message.MessageID)
+
+				str := "ФИО: не может быть пустым и имя не может быть короче 3 символов\n"
+				FullName := "ФИО:"
+				instructions := "Пожалуйста, введите " + FullName + "\nПример:\nИванов Иван Иванович\n"
+				str += instructions
+
+				//отправляем сообщение.
+				sendMessage(bot, update.Message.Chat.ID, str)
+				return "ok"
+			}
+
+			err = addOrUpdateOrderField(update.Message.Chat.ID, "FullName", pureText)
+			if err != nil {
+				logger.Errorf("ошибка при добавлении или обновлении поля FullName: %v", err)
+				return "ok"
+			}
+			pureText = "Номер телефона:"
+			DeliveryDateChatID[update.Message.Chat.ID] = 0
+
+			return pureText
+		}
+	}
+
+	// Получаем и выводим поле DeliveryAddress по chatID Адрес доставки
+	if field, err := getFieldByChatID(update.Message.Chat.ID, "DeliveryAddress"); err == nil {
+
+		if field == "Адрес доставки:" {
+
+			deleteMessages(bot, update.Message.Chat.ID)
+			if len(pureText) < 10 {
+				deletePreviousMessages(bot, update.Message.Chat.ID, update.Message.MessageID)
+				str := "Адрес доставки не может быть пустым\n"
+				DeliveryAddress := "Адрес доставки:"
+				instructions := "Пожалуйста, введите " + DeliveryAddress + "\nПример:\nг. Будущего, ул. Пушкина, д. 12 кв 5\n"
+				str += instructions
+				//отправляем сообщение
+				sendMessage(bot, update.Message.Chat.ID, str)
+				return "ok"
+			}
+
+			err = addOrUpdateOrderField(update.Message.Chat.ID, "DeliveryAddress", pureText)
+			if err != nil {
+				logger.Errorf("Ошибка при добавлении или обновлении поля DeliveryAddress: %v", err)
+				return "ok"
+			}
+
+			FullName := "ФИО:"
+			instructions := "Пожалуйста, введите " + FullName + "\nПример:\nИванов Иван Иванович\n"
+
+			err = addOrUpdateOrderField(update.Message.Chat.ID, "FullName", FullName)
+			if err != nil {
+				logger.Errorf("Ошибка при добавлении или обновлении поля FullName: %v", err)
+				return "ok"
+			}
+
+			//отправляем сообщение.
+			sendMessage(bot, update.Message.Chat.ID, instructions)
+
+			pureText = "ok"
+			return "ok"
+		}
+	}
+
+	// Получаем и выводим поле DeliveryAddress по chatID Номер телефона
+	if field, err := getFieldByChatID(update.Message.Chat.ID, "PhoneNumber"); err == nil {
+
+		if field == "Номер телефона:" {
+
+			formatted, str := formatPhoneNumber(pureText)
+			deleteMessages(bot, update.Message.Chat.ID)
+
+			if str != "" {
+				deletePreviousMessages(bot, update.Message.Chat.ID, update.Message.MessageID)
+				// Формирование текста с просьбой ввести номер телефона
+				PhoneNumber := "Номер телефона:"
+
+				instructions := "\nПожалуйста, введите " + PhoneNumber + "\n" +
+					"Пример:\n" +
+					"+79345678901\n"
+				str += instructions
+
+				//отправляем сообщение
+				sendMessage(bot, update.Message.Chat.ID, str)
+				return "ok"
+			}
+
+			err = addOrUpdateOrderField(update.Message.Chat.ID, "PhoneNumber", formatted)
+			if err != nil {
+				logger.Errorf("Ошибка при добавлении или обновлении поля PhoneNumber %v", err)
+				return "ok"
+			}
+
+			DeliveryAddress := "Адрес доставки:"
+			instructions := "Пожалуйста, введите " + DeliveryAddress + "\n" +
+				"Пример:\n" +
+				"г. Будущего, ул. Пушкина, д. 12 кв 5\n"
+
+			err = addOrUpdateOrderField(update.Message.Chat.ID, "DeliveryAddress", DeliveryAddress)
+			if err != nil {
+				logger.Errorf("Ошибка при добавлении или обновлении поля DeliveryAddress: %v", err)
+				return "ok"
+			}
+
+			//отправляем сообщение
+			sendMessage(bot, update.Message.Chat.ID, instructions)
+			pureText = "ok"
+			return "ok"
+		}
+	}
+
+	return pureText
 }

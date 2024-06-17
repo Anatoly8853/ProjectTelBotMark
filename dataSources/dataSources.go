@@ -349,6 +349,8 @@ func ProcessOrder(order string, db *sql.DB, update tgbotapi.Update) error {
 	userID := update.CallbackQuery.Message.Chat.ID
 	userName := update.CallbackQuery.From.UserName
 
+	logger.Infof("userName = %s", userName)
+
 	if order == "" {
 		logger.Error("нет данных для бд")
 		return errors.New("нет данных для бд")
@@ -663,7 +665,6 @@ func GetUsers(db *sql.DB) ([]structs.User, error) {
 
 func UpdateUserBlack(db *sql.DB, userID, userBlack int) error {
 	_, err := db.Exec("UPDATE tg_user_Chat_ID SET user_black = ? WHERE user_id = ?", userBlack, userID)
-	_ = db.Close()
 	logger.Errorf("Error updating user_black: %v", err)
 	return err
 }

@@ -266,8 +266,9 @@ func handleDeliveryDetailsMessage(bot *tgbotapi.BotAPI, chatID int64) {
 
 	MsgTexts += fmt.Sprintf("Общая стоимость: %d руб.", totalCost)
 
+	//TODO
 	// Очищаем данные заказа
-	clearOrder(chatID)
+	//clearOrder(chatID)
 
 	orderDetails[chatID] += MsgTexts
 

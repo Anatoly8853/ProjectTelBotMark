@@ -46,6 +46,7 @@ const baseQuery = `
 			JOIN tg_user_full_name ON tg_user_orders_date.full_name_id = tg_user_full_name.id
 			JOIN tg_user_order_id ON tg_user_orders.item_name = tg_user_order_id.id
 `
+
 const limitedOrdersQuery = `
     WITH LimitedOrders AS (
         SELECT
@@ -348,6 +349,8 @@ func ProcessOrder(order string, db *sql.DB, update tgbotapi.Update) error {
 	userID := update.CallbackQuery.Message.Chat.ID
 	userName := update.CallbackQuery.From.UserName
 
+	logger.Infof("userName = %s", userName)
+
 	if order == "" {
 		logger.Error("нет данных для бд")
 		return errors.New("нет данных для бд")
@@ -380,16 +383,6 @@ func ProcessOrder(order string, db *sql.DB, update tgbotapi.Update) error {
 	}
 	deliveryDate := dateMatches[1]
 
-	// Парсинг строки времени в тип time.Time
-	t, err := time.Parse("02.01.2006", deliveryDate)
-	if err != nil {
-		logger.Errorf("Ошибка парсинга строки времени: %v", err)
-		return err
-	}
-
-	// Преобразуем дату в строку формата "YYYY-MM-DD" для вставки в базу данных
-	formattedDeliveryDate := t.Format("2006-01-02")
-
 	nameMatches := nameRegex.FindStringSubmatch(order)
 	if len(nameMatches) < 2 {
 		return errors.New("не удалось извлечь ФИО")
@@ -401,6 +394,16 @@ func ProcessOrder(order string, db *sql.DB, update tgbotapi.Update) error {
 		return errors.New("не удалось извлечь общую стоимость")
 	}
 	totalCost, _ := strconv.Atoi(totalCostMatches[1])
+
+	// Парсинг строки времени в тип time.Time
+	t, err := time.Parse("02.01.2006", deliveryDate)
+	if err != nil {
+		logger.Errorf("Ошибка парсинга строки времени: %v", err)
+		return err
+	}
+
+	// Преобразуем дату в строку формата "YYYY-MM-DD" для вставки в базу данных
+	formattedDeliveryDate := t.Format("2006-01-02")
 
 	// Извлечение информации о товарах
 	items := itemRegex.FindAllStringSubmatch(order, -1)
@@ -662,7 +665,6 @@ func GetUsers(db *sql.DB) ([]structs.User, error) {
 
 func UpdateUserBlack(db *sql.DB, userID, userBlack int) error {
 	_, err := db.Exec("UPDATE tg_user_Chat_ID SET user_black = ? WHERE user_id = ?", userBlack, userID)
-	_ = db.Close()
 	logger.Errorf("Error updating user_black: %v", err)
 	return err
 }

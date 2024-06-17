@@ -19,13 +19,7 @@ import (
 // Baskets Карта для хранения данных о покупках для каждого пользователя.
 var Baskets = make(map[int64][]structs.Purchase)
 
-// BasketMessages Карта для хранения данных о покупках для каждого пользователя.
-var BasketMessages = make(map[int64]int)
-
 var DeliveryDateChatID = make(map[int64]int)
-
-// messagesToDelete удаление сообщений.
-var messagesToDelete = make(map[int64][]int)
 
 // orderDetails содержание корзины.
 var orderDetails = make(map[int64]string)
@@ -33,7 +27,7 @@ var orderDetails = make(map[int64]string)
 // orders Map для хранения данных по chatID.
 var orders = make(map[int64]structs.OrderDb)
 
-// AddToBasket Добавление товаров в корзину.
+// AddToBasket добавление товаров в корзину.
 func AddToBasket(bot *tgbotapi.BotAPI, update tgbotapi.Update, item string, quantity int, cost int) {
 	if update.CallbackQuery.Message.Chat.ID == 0 {
 		logger.Errorf("нет данных для обработки update.CallbackQuery.Message.Chat.ID = %v ", update.CallbackQuery.Message.Chat.ID)
@@ -203,7 +197,7 @@ func RequestDeliveryDetails(bot *tgbotapi.BotAPI, chatID int64) {
 	DeliveryDateChatID[chatID] = 1
 }
 
-// handleDeliveryDetailsMessage Анализируем и извлекаем данные из сообщения.
+// handleDeliveryDetailsMessage анализируем и извлекаем данные из сообщения.
 // Объединяем данные заказа с содержимым корзины.
 func handleDeliveryDetailsMessage(bot *tgbotapi.BotAPI, chatID int64) {
 	if chatID == 0 {
@@ -272,8 +266,9 @@ func handleDeliveryDetailsMessage(bot *tgbotapi.BotAPI, chatID int64) {
 
 	MsgTexts += fmt.Sprintf("Общая стоимость: %d руб.", totalCost)
 
+	//TODO
 	// Очищаем данные заказа
-	clearOrder(chatID)
+	//clearOrder(chatID)
 
 	orderDetails[chatID] += MsgTexts
 
@@ -290,51 +285,6 @@ func handleDeliveryDetailsMessage(bot *tgbotapi.BotAPI, chatID int64) {
 	} else {
 		// Сохраняем идентификатор отправленного сообщения для последующего удаления
 		BasketMessages[chatID] = sentMsg.MessageID
-	}
-}
-
-// deletePreviousMessages Удаляем сообщения.
-func deletePreviousMessages(bot *tgbotapi.BotAPI, chatID int64, messageID int) {
-	if chatID == 0 || messageID == 0 {
-		logger.Errorf("нет данных для обработки chatID = %v messageID = %v", chatID, messageID)
-		return
-	}
-
-	// Проверяем, есть ли сообщения для удаления в этом чате
-	if _, found := messagesToDelete[chatID]; found {
-		// Проходимся по каждому идентификатору сообщения и удаляем его
-		deleteMsg := tgbotapi.NewDeleteMessage(chatID, messageID)
-		if _, err := bot.Request(deleteMsg); err != nil {
-			//log.Printf("Ошибка при удалении сообщения: %v", err)
-			// Не используйте log.Panic, чтобы избежать прерывания работы бота из-за одной ошибки
-		}
-		/*
-			for chatIDs, messageIDs := range messagesToDelete {
-				fmt.Printf("ChatID: %d-----------------------------------\n", chatIDs)
-
-				for _, messageIDa := range messageIDs {
-					fmt.Println("len(messageIDa)---------------------------------------------------------------------------", len(messageIDs))
-					fmt.Printf(" MessageID: %d---------------------------------------------------------------------------------------\n", messageIDa)
-				}
-
-			}
-
-		*/
-
-	}
-}
-
-// deleteMessages Удаляем сообщения.
-func deleteMessages(bot *tgbotapi.BotAPI, chatID int64) {
-	if chatID == 0 {
-		logger.Errorf("нет данных для обработки chatID = %v", chatID)
-		return
-	}
-	// Удаление сообщения
-	messageIDs := BasketMessages[chatID]
-	deleteMsg := tgbotapi.NewDeleteMessage(chatID, messageIDs)
-	if _, err := bot.Request(deleteMsg); err != nil {
-		//log.Panic(err) // Обработка ошибки по вашему усмотрению
 	}
 }
 
@@ -443,7 +393,7 @@ func MainOrdersByUserID(bot *tgbotapi.BotAPI, userID int64) {
 	}
 }
 
-// addOrUpdateOrderField Функция для добавления или обновления конкретного поля заказа.
+// addOrUpdateOrderField для добавления или обновления конкретного поля заказа.
 func addOrUpdateOrderField(chatID int64, fieldName string, value interface{}) error {
 	if chatID == 0 {
 		logger.Errorf("нет данных для обработки chatID = %v", chatID)
@@ -483,16 +433,7 @@ func addOrUpdateOrderField(chatID int64, fieldName string, value interface{}) er
 	return nil
 }
 
-// clearOrder Функция для очистки данных заказа по chatID.
-func clearOrder(chatID int64) {
-	if chatID == 0 {
-		logger.Errorf("нет данных для обработки chatID = %v", chatID)
-		return
-	}
-	delete(orders, chatID)
-}
-
-// getFieldByChatID Функция для получения значения поля по chatID и имени поля.
+// getFieldByChatID для получения значения поля по chatID и имени поля.
 func getFieldByChatID(chatID int64, fieldName string) (interface{}, error) {
 	if chatID == 0 {
 		logger.Errorf("нет данных для обработки chatID = %v", chatID)
@@ -516,7 +457,7 @@ func getFieldByChatID(chatID int64, fieldName string) (interface{}, error) {
 	return fieldVal.Interface(), nil
 }
 
-// formatDateString Функция для очистки строки от пробелов и знаков препинания, а также форматирования даты.
+// formatDateString для очистки строки от пробелов и знаков препинания, а также форматирования даты.
 func formatDateString(dateStr string) (string, string) {
 	// Удаляем все пробелы и знаки препинания, кроме точки
 	re := regexp.MustCompile(`[^\d.]`)

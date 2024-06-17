@@ -66,7 +66,7 @@ func CreateCategoryKeyboard(categoryName string) ([][]tgbotapi.InlineKeyboardBut
 	return inlineKeyboard, nil
 }
 
-// createCalendarKeyboard календать рлавиатура
+// createCalendarKeyboard календать клавиатура.
 func createCalendarKeyboard(month time.Time) tgbotapi.InlineKeyboardMarkup {
 	currentYear, currentMonth, _ := month.Date()
 	currentLocation := month.Location()
@@ -80,8 +80,9 @@ func createCalendarKeyboard(month time.Time) tgbotapi.InlineKeyboardMarkup {
 	var row []tgbotapi.InlineKeyboardButton
 
 	// Заголовок с названием месяца
-	monthYear := month.Format("January 2006")
-	row = append(row, tgbotapi.NewInlineKeyboardButtonData(monthYear, "ignore"))
+	monthYear := month.Format("01")
+	monthName := getMonthName(monthYear)
+	row = append(row, tgbotapi.NewInlineKeyboardButtonData(monthName, "ignore"))
 	buttons = append(buttons, row)
 
 	row = []tgbotapi.InlineKeyboardButton{}
@@ -120,15 +121,46 @@ func createCalendarKeyboard(month time.Time) tgbotapi.InlineKeyboardMarkup {
 		buttons = append(buttons, row)
 	}
 
-	// Кнопка для перехода на следующий месяц
+	// Кнопки для перехода между месяцами
+	row = []tgbotapi.InlineKeyboardButton{}
+	currentDate := time.Now()
+	if currentYear > currentDate.Year() || (currentYear == currentDate.Year() && currentMonth > currentDate.Month()) {
+		prevMonth := month.AddDate(0, -1, 0)
+		prevMonthStr := prevMonth.Format("01-2006")
+		row = append(row, tgbotapi.NewInlineKeyboardButtonData("⬅️", "nextmonth_"+prevMonthStr))
+	}
+
 	nextMonth := month.AddDate(0, 1, 0)
 	nextMonthStr := nextMonth.Format("01-2006")
-	row = []tgbotapi.InlineKeyboardButton{
-		tgbotapi.NewInlineKeyboardButtonData("Next Month", "nextmonth_"+nextMonthStr),
-	}
+	row = append(row, tgbotapi.NewInlineKeyboardButtonData("➡️", "nextmonth_"+nextMonthStr))
 	buttons = append(buttons, row)
 
 	return tgbotapi.InlineKeyboardMarkup{
 		InlineKeyboard: buttons,
 	}
+}
+
+func getMonthName(monthStr string) string {
+	monthMap := map[string]string{
+		"01": "Январь",
+		"02": "Февраль",
+		"03": "Март",
+		"04": "Апрель",
+		"05": "Май",
+		"06": "Июнь",
+		"07": "Июль",
+		"08": "Август",
+		"09": "Сентябрь",
+		"10": "Октябрь",
+		"11": "Ноябрь",
+		"12": "Декабрь",
+	}
+
+	monthName, exists := monthMap[monthStr]
+	if !exists {
+		logger.Errorf("invalid month format: %s", monthStr)
+		return ""
+	}
+
+	return monthName
 }

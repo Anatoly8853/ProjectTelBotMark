@@ -27,11 +27,11 @@ type CustomFormatter struct{}
 // Format реализует метод интерфейса slog.Formatter.
 /* funcName := getFunctionName(caller.PC)  Получаем имя функции */
 func (f *CustomFormatter) Format(record *slog.Record) ([]byte, error) {
-	formattedTime := record.Time.Format("15:04:05 02.01.2006")
+	//formattedTime := record.Time.Format("15:04:05 02.01.2006")
 	caller := record.Caller
 	fileName := filepath.Base(caller.File) // Получаем только имя файла
 	funcName := getFunctionName(caller.PC) // Получаем имя функции
-	logMessage := fmt.Sprintf("[%s] [%s] [%s:%d,%s] %s\n", record.Level.String(), formattedTime, fileName, caller.Line, funcName, record.Message)
+	logMessage := fmt.Sprintf("[%s] [%s] [%s:%d,%s] %s\n", record.Level.String(), record.Time.Format("2006-01-02 15:04:05"), fileName, caller.Line, funcName, record.Message)
 	return []byte(logMessage), nil
 }
 

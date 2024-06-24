@@ -1,16 +1,14 @@
 package dataSources
 
 import (
+	`ProjectTelBotMark/bychat`
 	"ProjectTelBotMark/loggers"
 	"ProjectTelBotMark/structs"
 	"database/sql"
-	"errors"
 	"fmt"
 	"io"
 
 	"os"
-	"regexp"
-	"strconv"
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -23,6 +21,8 @@ var logger *slog.Logger // Глобальный логгер
 
 // DB одк
 var DB *sql.DB
+
+var UserBlack = make(map[int64]int)
 
 // Общая часть запроса
 const baseQuery = `
@@ -342,7 +342,7 @@ func getOrInsertValues(tx *sql.Tx, tables []string, columns []string, values []i
 }
 
 // ProcessOrder Функция для парсинга деталей заказа и добавления в базу данных.
-func ProcessOrder(order string, db *sql.DB, update tgbotapi.Update) error {
+func ProcessOrder(db *sql.DB, update tgbotapi.Update) error {
 	// Настраиваем логгер
 	logger = loggers.SetupLogger()
 
@@ -351,49 +351,65 @@ func ProcessOrder(order string, db *sql.DB, update tgbotapi.Update) error {
 
 	logger.Infof("userName = %s", userName)
 
-	if order == "" {
-		logger.Error("нет данных для бд")
-		return errors.New("нет данных для бд")
-	}
-
 	// Регулярные выражения для извлечения информации
-	phoneRegex := regexp.MustCompile(`Номер телефона: (\+\d+)`)
-	addressRegex := regexp.MustCompile(`Адрес доставки: (.+)`)
-	dateRegex := regexp.MustCompile(`Дата доставки: (\d{2}\.\d{2}\.\d{4})`)
-	nameRegex := regexp.MustCompile(`ФИО: (.+)`)
-	itemRegex := regexp.MustCompile(`Товар: (.+?) кол-во: (\d+) цена: (\d+)\s*руб\.`)
-	totalCostRegex := regexp.MustCompile(`Общая стоимость: (\d+)\sруб\.`)
+	var phoneNumber string
+	var deliveryAddress string
+	var deliveryDate string
+	var fullName string
+	var totalCost int
 
 	// Извлечение основной информации о заказе
-	phoneMatches := phoneRegex.FindStringSubmatch(order)
-	if len(phoneMatches) < 2 {
-		return errors.New("не удалось извлечь номер телефона")
+	//"Номер телефона: [ваш номер]\n" +
+	if field, err := bychat.GetFieldByChatID(userID, "PhoneNumber"); err == nil {
+		str, _ := field.(string)
+		phoneNumber = str
 	}
-	phoneNumber := phoneMatches[1]
 
-	addressMatches := addressRegex.FindStringSubmatch(order)
-	if len(addressMatches) < 2 {
-		return errors.New("не удалось извлечь адрес доставки")
+	//"Адрес доставки: [ваш адрес]\n" +
+	if field, err := bychat.GetFieldByChatID(userID, "DeliveryAddress"); err == nil {
+		str, _ := field.(string)
+		deliveryAddress = str
 	}
-	deliveryAddress := addressMatches[1]
 
-	dateMatches := dateRegex.FindStringSubmatch(order)
-	if len(dateMatches) < 2 {
-		return errors.New("не удалось извлечь дату доставки")
+	//"Дата доставки: [желаемая дата]\n" +
+	if field, err := bychat.GetFieldByChatID(userID, "DeliveryDate"); err == nil {
+		str, _ := field.(string)
+		deliveryDate = str
 	}
-	deliveryDate := dateMatches[1]
 
-	nameMatches := nameRegex.FindStringSubmatch(order)
-	if len(nameMatches) < 2 {
-		return errors.New("не удалось извлечь ФИО")
+	//"ФИО: [ваше имя и фамилия]\n\n" +
+	if field, err := bychat.GetFieldByChatID(userID, "FullName"); err == nil {
+		str, _ := field.(string)
+		fullName = str
 	}
-	fullName := nameMatches[1]
 
-	totalCostMatches := totalCostRegex.FindStringSubmatch(order)
-	if len(totalCostMatches) < 2 {
-		return errors.New("не удалось извлечь общую стоимость")
+	// Получение содержимого корзины
+	purchases := structs.Baskets[userID]
+
+	groupedPurchases := make(map[string]structs.Purchase)
+	for _, p := range purchases {
+
+		key := p.Item
+		if existing, found := groupedPurchases[key]; found {
+
+			existing.Quantity += p.Quantity
+			existing.Cost += p.Cost
+			groupedPurchases[key] = existing
+
+		} else {
+
+			groupedPurchases[key] = p
+
+		}
 	}
-	totalCost, _ := strconv.Atoi(totalCostMatches[1])
+
+	for _, p := range groupedPurchases {
+
+		itemTotalCost := p.Cost // Общая стоимость для этой группы товаров
+		//MsgTexts += fmt.Sprintf("Товар: %s кол-во: %d цена: %d руб.\n", p.Item, p.Quantity, itemTotalCost)
+		totalCost += itemTotalCost
+
+	}
 
 	// Парсинг строки времени в тип time.Time
 	t, err := time.Parse("02.01.2006", deliveryDate)
@@ -406,7 +422,7 @@ func ProcessOrder(order string, db *sql.DB, update tgbotapi.Update) error {
 	formattedDeliveryDate := t.Format("2006-01-02")
 
 	// Извлечение информации о товарах
-	items := itemRegex.FindAllStringSubmatch(order, -1)
+	//items := itemRegex.FindAllStringSubmatch(order, -1)
 
 	// Начало транзакции
 	tx, err := db.Begin()
@@ -477,10 +493,11 @@ func ProcessOrder(order string, db *sql.DB, update tgbotapi.Update) error {
 		return err
 	}
 
-	for _, item := range items {
-		itemName := item[1]
-		quantity, _ := strconv.Atoi(item[2])
-		cost, _ := strconv.Atoi(item[3])
+	for _, p := range groupedPurchases {
+		itemTotalCost := p.Cost // Общая стоимость для этой группы товаров
+		itemName := p.Item
+		quantity := p.Quantity
+		cost := itemTotalCost
 
 		// Вставка новой записи в tg_user_Chat_ID
 		// Проверяем, существует ли пользователь с таким user_id
@@ -552,7 +569,6 @@ func GetOrdersByUserID(db *sql.DB, userID int64, limit uint8) ([]structs.OrderDb
 		logger.Printf("Error preparing query: %v", err)
 		return nil, err
 	}
-	_ = db.Close()
 
 	return processRows(rows)
 }
@@ -657,7 +673,18 @@ func GetUsers(db *sql.DB) ([]structs.User, error) {
 			logger.Errorf("Error scanning rows: %v", err)
 			return nil, err
 		}
+
 		users = append(users, user)
+
+		// Добавляем в мапу, если user_black не равен 0
+		//if user.UserBlack.UserBlack != 0 {
+		UserBlack[user.UserID] = user.UserBlack.UserBlack
+		//}
+	}
+
+	if err = rows.Err(); err != nil {
+		logger.Errorf("Error after iterating rows: %v", err)
+		return nil, err
 	}
 
 	return users, nil
@@ -665,16 +692,11 @@ func GetUsers(db *sql.DB) ([]structs.User, error) {
 
 func UpdateUserBlack(db *sql.DB, userID, userBlack int) error {
 	_, err := db.Exec("UPDATE tg_user_Chat_ID SET user_black = ? WHERE user_id = ?", userBlack, userID)
-	logger.Errorf("Error updating user_black: %v", err)
+	if err != nil {
+		logger.Errorf("Error updating user_name: %v", err)
+	}
+
 	return err
-}
-
-func UserBlack(db *sql.DB, userID int64) bool {
-	var userBlack int
-	query := `SELECT user_black FROM tg_user_Chat_ID WHERE user_id = ?`
-	_ = db.QueryRow(query, userID).Scan(&userBlack)
-
-	return userBlack != 0
 }
 
 // backupDatabase резервного копирования базы данных SQLite.

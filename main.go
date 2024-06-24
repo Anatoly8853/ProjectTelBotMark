@@ -63,6 +63,12 @@ func main() {
 
 	bot.Debug = false //false //true   // выводим лог или нет
 
+	_, err = dataSources.GetUsers(dataSources.DB)
+	if err != nil {
+		logger.Errorf("Error getting users: %v", err)
+		return
+	}
+
 	UpdateMessage(bot)
 
 	dataSources.StartBackupRoutine()
@@ -73,6 +79,7 @@ func main() {
 	reminders.StartDailyCheck(bot)
 
 	routers.GinRouter(bot)
+
 }
 
 // createCategoryMessage Вывод изображения продуктов и кнопки фасовки продукта.
@@ -106,13 +113,16 @@ func createCategoryMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update, categor
 
 		// Создаем сообщение с инлайн-клавиатурой
 		msg := tgbotapi.NewMessage(chatID, "Выбранная категория: "+categoryData.CategoryName)
+		//msg := tgbotapi.NewMessage(chatID, ".")
 		msg.ReplyMarkup = tgbotapi.NewReplyKeyboard(keyboardReply...)
 
 		// Отправляем сообщение с клавиатурой
-		_, err = bot.Send(msg)
+		sentMsg, err := bot.Send(msg)
 		if err != nil {
 			logger.Errorf("Ошибка при отправке сообщения: %v", err)
 			return err
+		} else {
+			messagesToDelete[chatID] = append(messagesToDelete[chatID], sentMsg.MessageID)
 		}
 	} else {
 		// Создаем медиа-объект для изображения

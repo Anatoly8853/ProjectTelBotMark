@@ -18,6 +18,7 @@ import (
 )
 
 var logger *slog.Logger // Глобальный логгер docs.
+var bot *tgbotapi.BotAPI
 
 func main() {
 
@@ -38,7 +39,7 @@ func main() {
 
 	}
 
-	bot, err := tgbotapi.NewBotAPI(os.Getenv("TELEGRAM_TOKEN"))
+	bot, err = tgbotapi.NewBotAPI(os.Getenv("TELEGRAM_TOKEN"))
 	if err != nil {
 
 		logger.Fatalf("Неn токена TELEGRAM_TOKEN: %v", err)
@@ -63,13 +64,13 @@ func main() {
 
 	bot.Debug = false //false //true   // выводим лог или нет
 
-	_, err = dataSources.GetUsers(dataSources.DB)
+	_, err = dataSources.GetUsers()
 	if err != nil {
 		logger.Errorf("Error getting users: %v", err)
 		return
 	}
 
-	UpdateMessage(bot)
+	UpdateMessage()
 
 	dataSources.StartBackupRoutine()
 
@@ -83,7 +84,7 @@ func main() {
 }
 
 // createCategoryMessage Вывод изображения продуктов и кнопки фасовки продукта.
-func createCategoryMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update, categoryName string) error {
+func createCategoryMessage(update tgbotapi.Update, categoryName string) error {
 	if update.Message.Chat.ID == 0 {
 		logger.Errorf("нет данных для обработки update.Message.Chat.ID = %v ", update.Message.Chat.ID)
 		er := "нет данных для обработки update.Message.Chat.ID"
@@ -99,9 +100,9 @@ func createCategoryMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update, categor
 		return errors.New(er)
 	}
 
-	photoMessagesDelete(bot, chatID)
+	photoMessagesDelete(chatID)
 
-	keyboardMessagesDelete(bot, chatID)
+	keyboardMessagesDelete(chatID)
 
 	if categoryData.Photo == "" {
 		keyboardReply, err := CreateCategoryKeyboardReply(categoryData.CategoryName)

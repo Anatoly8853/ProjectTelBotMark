@@ -12,15 +12,16 @@ import (
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"github.com/gookit/slog"
+
 	_ "github.com/mattn/go-sqlite3"
 )
 
-// Настраиваем логгер
-var logger *slog.Logger // Глобальный логгер
-
 // DB одк
 var DB *sql.DB
+
+type Queries struct {
+	DB *sql.DB
+}
 
 var UserBlack = make(map[int64]int)
 
@@ -106,7 +107,7 @@ LIMIT 1
 // InitDB - инициализация базы данных.
 func InitDB() {
 	// Настраиваем логгер
-	logger = loggers.SetupLogger()
+	logger := loggers.SetupLogger()
 
 	// Открываем соединение с базой данных SQLite
 	var err error
@@ -207,7 +208,7 @@ func InitDB() {
 // CloseDB - закрытие соединения с базой данных.
 func CloseDB() {
 	// Настраиваем логгер
-	logger = loggers.SetupLogger()
+	logger := loggers.SetupLogger()
 	if DB != nil {
 		err := DB.Close()
 		if err != nil {
@@ -219,7 +220,7 @@ func CloseDB() {
 
 func UserID() []structs.User {
 	// Настраиваем логгер
-	logger = loggers.SetupLogger()
+	logger := loggers.SetupLogger()
 	row, err := DB.Query(`SELECT user_id FROM tg_user_Chat_ID`)
 	if err != nil {
 		logger.Errorf("Error getting user id: %v", err)
@@ -243,7 +244,7 @@ func UserID() []structs.User {
 // getOrInsertValues Функция для получения или вставки значений в таблицы базы данных.
 func getOrInsertValues(tx *sql.Tx, tables []string, columns []string, values []interface{}) ([]int64, error) {
 	// Настраиваем логгер
-	logger = loggers.SetupLogger()
+	logger := loggers.SetupLogger()
 
 	var ids []int64
 
@@ -344,7 +345,7 @@ func getOrInsertValues(tx *sql.Tx, tables []string, columns []string, values []i
 // ProcessOrder Функция для парсинга деталей заказа и добавления в базу данных.
 func ProcessOrder(db *sql.DB, update tgbotapi.Update) error {
 	// Настраиваем логгер
-	logger = loggers.SetupLogger()
+	logger := loggers.SetupLogger()
 
 	userID := update.CallbackQuery.Message.Chat.ID
 	userName := update.CallbackQuery.From.UserName
@@ -525,7 +526,7 @@ func ProcessOrder(db *sql.DB, update tgbotapi.Update) error {
 // processRows функция для обработки строк результата SQL-запроса.
 func processRows(rows *sql.Rows) ([]structs.OrderDb, error) {
 	// Настраиваем логгер
-	logger = loggers.SetupLogger()
+	logger := loggers.SetupLogger()
 
 	var orders []structs.OrderDb
 
@@ -559,12 +560,12 @@ func processRows(rows *sql.Rows) ([]structs.OrderDb, error) {
 }
 
 // GetOrdersByUserID Функция для выбора из базы данных.
-func GetOrdersByUserID(db *sql.DB, userID int64, limit uint8) ([]structs.OrderDb, error) {
+func GetOrdersByUserID(userID int64, limit uint8) ([]structs.OrderDb, error) {
 	// Настраиваем логгер
-	logger = loggers.SetupLogger()
+	logger := loggers.SetupLogger()
 
 	// Выполняем запрос для получения заказов
-	rows, err := db.Query(limitedOrdersQuery, userID, limit)
+	rows, err := DB.Query(limitedOrdersQuery, userID, limit)
 	if err != nil {
 		logger.Printf("Error preparing query: %v", err)
 		return nil, err
@@ -574,9 +575,9 @@ func GetOrdersByUserID(db *sql.DB, userID int64, limit uint8) ([]structs.OrderDb
 }
 
 // GetOrdersWithFilters Функция для выбора данных из базы данных с фильтрацией и сортировкой.
-func GetOrdersWithFilters(db *sql.DB, params structs.QueryParams) ([]structs.OrderDb, error) {
+func GetOrdersWithFilters(params structs.QueryParams) ([]structs.OrderDb, error) {
 	// Настраиваем логгер
-	logger = loggers.SetupLogger()
+	logger := loggers.SetupLogger()
 
 	query := baseQuery
 
@@ -613,7 +614,7 @@ func GetOrdersWithFilters(db *sql.DB, params structs.QueryParams) ([]structs.Ord
 		}
 	}
 
-	rows, err := db.Query(query, queryArgs...)
+	rows, err := DB.Query(query, queryArgs...)
 	if err != nil {
 		logger.Errorf("Error preparing query %v ", err)
 		return nil, err
@@ -623,6 +624,8 @@ func GetOrdersWithFilters(db *sql.DB, params structs.QueryParams) ([]structs.Ord
 }
 
 func UpsertUser(tx *sql.Tx, userID int64, userName string, userBlack int) error {
+	// Настраиваем логгер
+	logger := loggers.SetupLogger()
 
 	// Вставляем запись, если её нет
 	_, err := tx.Exec(`
@@ -658,8 +661,10 @@ func UpsertUser(tx *sql.Tx, userID int64, userName string, userBlack int) error 
 	return nil
 }
 
-func GetUsers(db *sql.DB) ([]structs.User, error) {
-	rows, err := db.Query("SELECT user_id, user_name, user_black FROM tg_user_Chat_ID")
+func GetUsers() ([]structs.User, error) {
+	// Настраиваем логгер
+	logger := loggers.SetupLogger()
+	rows, err := DB.Query("SELECT user_id, user_name, user_black FROM tg_user_Chat_ID")
 	if err != nil {
 		logger.Errorf("Error preparing query: %v", err)
 		return nil, err
@@ -690,8 +695,10 @@ func GetUsers(db *sql.DB) ([]structs.User, error) {
 	return users, nil
 }
 
-func UpdateUserBlack(db *sql.DB, userID, userBlack int) error {
-	_, err := db.Exec("UPDATE tg_user_Chat_ID SET user_black = ? WHERE user_id = ?", userBlack, userID)
+func UpdateUserBlack(userID, userBlack int) error {
+	// Настраиваем логгер
+	logger := loggers.SetupLogger()
+	_, err := DB.Exec("UPDATE tg_user_Chat_ID SET user_black = ? WHERE user_id = ?", userBlack, userID)
 	if err != nil {
 		logger.Errorf("Error updating user_name: %v", err)
 	}
@@ -701,6 +708,8 @@ func UpdateUserBlack(db *sql.DB, userID, userBlack int) error {
 
 // backupDatabase резервного копирования базы данных SQLite.
 func backupDatabase() {
+	// Настраиваем логгер
+	logger := loggers.SetupLogger()
 	// Путь к файлу текущей и новой резервной копии
 	oldBackupPath := "./backup_old.db"
 	newBackupPath := "./backup.db"
@@ -777,12 +786,11 @@ func StartBackupRoutine() {
 }
 
 // GetByUserID Функция для выбора из базы данных.
-func GetByUserID(db *sql.DB, userID int64) structs.OrderDb {
-	// Настраиваем логгер
-	logger = loggers.SetupLogger()
+func GetByUserID(userID int64) structs.OrderDb {
+
 	var o structs.OrderDb
 	// Выполняем запрос для получения заказов
-	_ = db.QueryRow(baseQueryOrders, userID).Scan(&o.UserID.UserID, &o.FullName, &o.PhoneNumber, &o.DeliveryAddress)
+	_ = DB.QueryRow(baseQueryOrders, userID).Scan(&o.UserID.UserID, &o.FullName, &o.PhoneNumber, &o.DeliveryAddress)
 
 	return o
 }

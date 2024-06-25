@@ -13,7 +13,7 @@ import (
 )
 
 // UpdateMessage Основной обработчик всех данных бота docs.
-func UpdateMessage(bot *tgbotapi.BotAPI) {
+func UpdateMessage() {
 	go func() {
 		u := tgbotapi.NewUpdate(0)
 		u.Timeout = 10
@@ -27,15 +27,15 @@ func UpdateMessage(bot *tgbotapi.BotAPI) {
 				// Проверяем статус user_black
 				id := dataSources.UserBlack[update.CallbackQuery.Message.Chat.ID]
 				if id != 0 {
-					deletePreviousMessages(bot, update.CallbackQuery.Message.Chat.ID, update.CallbackQuery.Message.MessageID)
+					deletePreviousMessages(update.CallbackQuery.Message.Chat.ID, update.CallbackQuery.Message.MessageID)
 					//отправляем сообщение
-					sendMessage(bot, update.CallbackQuery.Message.Chat.ID, "Вам мы ничего продать не можем.")
+					sendMessage(update.CallbackQuery.Message.Chat.ID, "Вам мы ничего продать не можем.")
 					logger.Infof("Юзер из черного списка %v имя %v", update.CallbackQuery.Message.Chat.ID, update.CallbackQuery.Message.From.UserName)
 					continue // Прерываем выполнение, если user_black != 0
 				}
 
 				// Обработка CallbackQuery
-				handleCallbackQueryData(bot, update)
+				handleCallbackQueryData(update)
 				continue // Переход к следующему обновлению после обработки CallbackQuery
 			}
 
@@ -44,9 +44,9 @@ func UpdateMessage(bot *tgbotapi.BotAPI) {
 				// Проверяем статус user_black
 				id := dataSources.UserBlack[update.Message.Chat.ID]
 				if id != 0 {
-					deletePreviousMessages(bot, update.Message.Chat.ID, update.Message.MessageID)
+					deletePreviousMessages(update.Message.Chat.ID, update.Message.MessageID)
 					//отправляем сообщение
-					sendMessage(bot, update.Message.Chat.ID, "Вам мы ничего продать не можем.")
+					sendMessage(update.Message.Chat.ID, "Вам мы ничего продать не можем.")
 					logger.Infof("Юзер из черного списка %v имя %v", update.Message.Chat.ID, update.Message.From.UserName)
 					continue // Прерываем выполнение, если user_black != 0
 				}
@@ -54,10 +54,10 @@ func UpdateMessage(bot *tgbotapi.BotAPI) {
 				// В этом месте обрабатываем все сообщения, включая команды
 				if update.Message.IsCommand() {
 					// Обработка команд пользователя
-					handleCommands(bot, update)
+					handleCommands(update)
 				} else {
 					// Обработка текстовых сообщений (не команд)
-					handleMessageText(bot, update)
+					handleMessageText(update)
 				}
 				continue
 			}
@@ -76,7 +76,7 @@ func UpdateMessage(bot *tgbotapi.BotAPI) {
 }
 
 // handleCommands Обработка команды /start и вывод основного меню docs.
-func handleCommands(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
+func handleCommands(update tgbotapi.Update) {
 	//var err error
 	msg := tgbotapi.NewMessage(update.Message.Chat.ID, "Нет такой команды")
 	if update.Message.IsCommand() {
@@ -87,7 +87,7 @@ func handleCommands(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 		switch command {
 		case "start":
 			// Отправляем главное меню при старте бота или команде /start
-			handleStartCommand(bot, update)
+			handleStartCommand(update)
 			// Другие команды...
 		case "cabbage":
 
@@ -105,7 +105,7 @@ func handleCommands(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 }
 
 // handleMessageText Разбор MessageText для определения действия текстовых сообщений.
-func handleMessageText(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
+func handleMessageText(update tgbotapi.Update) {
 	if update.Message.Chat.ID == 0 {
 		logger.Errorf("нет данных для обработки update.Message.Chat.ID = %v ", update.Message.Chat.ID)
 		return
@@ -120,13 +120,13 @@ func handleMessageText(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 		_, pureText := SeparateEmojiAndText(categoryName)
 
 		// Проверяем есть у нас такая категория если нет вызываем другое меню
-		err := createCategoryMessage(bot, update, pureText)
+		err := createCategoryMessage(update, pureText)
 
 		if err != nil {
 
 			if DeliveryDateChatID[update.Message.Chat.ID] != 0 {
 
-				pureText = handleFieldByChatID(bot, update, pureText)
+				pureText = handleFieldByChatID(update, pureText)
 
 			}
 
@@ -137,21 +137,21 @@ func handleMessageText(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 				break
 			case "Номер телефона:":
 
-				handleDeliveryDetailsMessage(bot, update.Message.Chat.ID)
+				handleDeliveryDetailsMessage(update.Message.Chat.ID)
 
 			case "Мои заказы":
 
-				photoMessagesDelete(bot, update.Message.Chat.ID)
+				photoMessagesDelete(update.Message.Chat.ID)
 
-				keyboardMessagesDelete(bot, update.Message.Chat.ID)
+				keyboardMessagesDelete(update.Message.Chat.ID)
 
 				//Выводим заказы пользователей
-				MainOrdersByUserID(bot, update.Message.Chat.ID)
+				MainOrdersByUserID(update.Message.Chat.ID)
 
 			case "Назад":
 
 				// Возвращаемся в основное меню
-				err = createCategoryMessage(bot, update, "Меню")
+				err = createCategoryMessage(update, "Меню")
 				if err != nil {
 					logger.Errorf("Ошибка создания сообщения %v ", err)
 					return
@@ -159,11 +159,11 @@ func handleMessageText(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 
 			case "Корзина":
 
-				photoMessagesDelete(bot, update.Message.Chat.ID)
+				photoMessagesDelete(update.Message.Chat.ID)
 
-				keyboardMessagesDelete(bot, update.Message.Chat.ID)
+				keyboardMessagesDelete(update.Message.Chat.ID)
 
-				ShowBasket(bot, update.Message.Chat.ID)
+				ShowBasket(update.Message.Chat.ID)
 
 			default:
 				msg.ReplyToMessageID = update.Message.MessageID // Устанавливаем ID сообщения, на которое отвечаем
@@ -172,12 +172,12 @@ func handleMessageText(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 				}
 			}
 		}
-		deletePreviousMessages(bot, update.Message.Chat.ID, update.Message.MessageID)
+		deletePreviousMessages(update.Message.Chat.ID, update.Message.MessageID)
 	}
 }
 
 // handleCallbackQueryData Разбор callbackData для определения действия.
-func handleCallbackQueryData(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
+func handleCallbackQueryData(update tgbotapi.Update) {
 	if update.CallbackQuery != nil {
 
 		if update.CallbackQuery.Data == "" {
@@ -208,7 +208,7 @@ func handleCallbackQueryData(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 				return
 			}
 
-			AddToBasket(bot, update, parts[1], num1, num2) // Добавление товара с указанием названия, количества и стоимости
+			AddToBasket(update, parts[1], num1, num2) // Добавление товара с указанием названия, количества и стоимости
 		case "ignore":
 
 			break
@@ -219,14 +219,14 @@ func handleCallbackQueryData(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 				if err != nil {
 
 					//отправляем сообщение
-					sendMessage(bot, update.CallbackQuery.Message.Chat.ID, "Время заказа истекло, пожалуйста добавьте в корзину продукты и оформите заказ повторно.")
+					sendMessage(update.CallbackQuery.Message.Chat.ID, "Время заказа истекло, пожалуйста добавьте в корзину продукты и оформите заказ повторно.")
 					structs.Baskets[update.CallbackQuery.Message.Chat.ID] = nil
 					logger.Errorf("Ошибка обработки заказа: %v", err)
 
 				} else {
 
 					//Заказ успешно обработан и добавлен в базу данных.
-					GroupMessagesChatID(bot, update.CallbackQuery.Message.Chat.ID)
+					GroupMessagesChatID(update.CallbackQuery.Message.Chat.ID)
 					structs.Baskets[update.CallbackQuery.Message.Chat.ID] = nil
 				}
 
@@ -235,19 +235,19 @@ func handleCallbackQueryData(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 			} else {
 
 				//отправляем сообщение
-				sendMessage(bot, update.CallbackQuery.Message.Chat.ID, "Время заказа истекло, пожалуйста добавьте в корзину продукты и оформите заказ повторно.")
+				sendMessage(update.CallbackQuery.Message.Chat.ID, "Время заказа истекло, пожалуйста добавьте в корзину продукты и оформите заказ повторно.")
 			}
 		case "send": // Получение содержимого корзины
 			if structs.Baskets[update.CallbackQuery.Message.Chat.ID] != nil {
 				// Пример ввода данных заказа
-				RequestDeliveryDetails(bot, update.CallbackQuery.Message.Chat.ID)
+				RequestDeliveryDetails(update.CallbackQuery.Message.Chat.ID)
 
 			} else {
 
 				delete(bychat.Orders, update.CallbackQuery.Message.Chat.ID)
 
 				//отправляем сообщение
-				sendMessage(bot, update.CallbackQuery.Message.Chat.ID, "Время заказа истекло, пожалуйста добавьте в корзину продукты и оформите заказ повторно.")
+				sendMessage(update.CallbackQuery.Message.Chat.ID, "Время заказа истекло, пожалуйста добавьте в корзину продукты и оформите заказ повторно.")
 			}
 		case "sends":
 
@@ -258,7 +258,7 @@ func handleCallbackQueryData(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 
 			DeliveryDateChatID[update.CallbackQuery.Message.Chat.ID] = 0
 
-			orders := dataSources.GetByUserID(dataSources.DB, update.CallbackQuery.Message.Chat.ID)
+			orders := dataSources.GetByUserID(update.CallbackQuery.Message.Chat.ID)
 
 			if orders.PhoneNumber == "" || orders.FullName == "" || orders.DeliveryAddress == "" {
 				logger.Errorf("нет данных orders.PhoneNumber = %v, orders.FullName = %v, orders.DeliveryAddress = %v", orders.PhoneNumber, orders.FullName, orders.DeliveryAddress)
@@ -284,14 +284,14 @@ func handleCallbackQueryData(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 			}
 
 			//Удаляем предыдущие сообщения
-			deletePreviousMessages(bot, update.CallbackQuery.Message.Chat.ID, update.CallbackQuery.Message.MessageID)
+			deletePreviousMessages(update.CallbackQuery.Message.Chat.ID, update.CallbackQuery.Message.MessageID)
 
 			callback := tgbotapi.NewCallback(update.CallbackQuery.ID, "")
 			if _, err := bot.Request(callback); err != nil {
 				logger.Error(err)
 			}
 
-			handleDeliveryDetailsMessage(bot, update.CallbackQuery.Message.Chat.ID)
+			handleDeliveryDetailsMessage(update.CallbackQuery.Message.Chat.ID)
 		case "phonenumber":
 
 			if len(parts) < 2 {
@@ -299,7 +299,7 @@ func handleCallbackQueryData(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 				return
 			}
 			//Удаляем предыдущие сообщения
-			deletePreviousMessages(bot, update.CallbackQuery.Message.Chat.ID, update.CallbackQuery.Message.MessageID)
+			deletePreviousMessages(update.CallbackQuery.Message.Chat.ID, update.CallbackQuery.Message.MessageID)
 
 			// Формирование текста с просьбой ввести номер телефона
 			PhoneNumber := "Номер телефона:"
@@ -315,7 +315,7 @@ func handleCallbackQueryData(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 			}
 
 			//отправляем сообщение
-			sendMessage(bot, update.CallbackQuery.Message.Chat.ID, instructions)
+			sendMessage(update.CallbackQuery.Message.Chat.ID, instructions)
 		case "deliverydate":
 
 			if len(parts) < 2 {
@@ -324,7 +324,7 @@ func handleCallbackQueryData(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 			}
 
 			//Удаляем предыдущие сообщения
-			deletePreviousMessages(bot, update.CallbackQuery.Message.Chat.ID, update.CallbackQuery.Message.MessageID)
+			deletePreviousMessages(update.CallbackQuery.Message.Chat.ID, update.CallbackQuery.Message.MessageID)
 
 			callback := tgbotapi.NewCallback(update.CallbackQuery.ID, "")
 			if _, err := bot.Request(callback); err != nil {
@@ -360,7 +360,7 @@ func handleCallbackQueryData(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 					PhoneNumber := "Номер телефона:"
 					var msgText string
 
-					orders := dataSources.GetByUserID(dataSources.DB, update.CallbackQuery.Message.Chat.ID)
+					orders := dataSources.GetByUserID(update.CallbackQuery.Message.Chat.ID)
 
 					if orders.PhoneNumber == "" || orders.FullName == "" || orders.DeliveryAddress == "" {
 
@@ -376,7 +376,7 @@ func handleCallbackQueryData(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 						}
 
 						// Отправка сообщение
-						sendMessage(bot, update.CallbackQuery.Message.Chat.ID, instructions)
+						sendMessage(update.CallbackQuery.Message.Chat.ID, instructions)
 						return
 
 					}
@@ -425,13 +425,13 @@ func handleCallbackQueryData(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 				logger.Error(err)
 			}
 		case "delete": // Очищаем корзину
-			DeleteBasketContents(bot, update.CallbackQuery.Message.Chat.ID)
+			DeleteBasketContents(update.CallbackQuery.Message.Chat.ID)
 		}
 	}
 }
 
 //handleStartCommand добро пожаловать! Нажмите 'Старт' для начала.
-func handleStartCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
+func handleStartCommand(update tgbotapi.Update) {
 	//deletePreviousMessages(bot, update.Message.Chat.ID, update.Message.MessageID)
 	msg := tgbotapi.NewMessage(update.Message.Chat.ID, "Добро пожаловать! Нажмите 'Старт' для начала.")
 	msg.ReplyMarkup = tgbotapi.NewReplyKeyboard(
@@ -445,17 +445,17 @@ func handleStartCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	}
 }
 
-func handleFieldByChatID(bot *tgbotapi.BotAPI, update tgbotapi.Update, pureText string) string {
+func handleFieldByChatID(update tgbotapi.Update, pureText string) string {
 
 	// Получаем и выводим поле DeliveryDate по chatID ФИО
 	if field, err := bychat.GetFieldByChatID(update.Message.Chat.ID, "FullName"); err == nil {
 
 		if field == "ФИО:" {
-			deleteMessages(bot, update.Message.Chat.ID)
+			deleteMessages(update.Message.Chat.ID)
 			if pureText == "" || len(pureText) < 3 {
 
 				//Удаляем предыдущие сообщения
-				deletePreviousMessages(bot, update.Message.Chat.ID, update.Message.MessageID)
+				deletePreviousMessages(update.Message.Chat.ID, update.Message.MessageID)
 
 				str := "ФИО: не может быть пустым и имя не может быть короче 3 символов\n"
 				FullName := "ФИО:"
@@ -463,7 +463,7 @@ func handleFieldByChatID(bot *tgbotapi.BotAPI, update tgbotapi.Update, pureText 
 				str += instructions
 
 				//отправляем сообщение.
-				sendMessage(bot, update.Message.Chat.ID, str)
+				sendMessage(update.Message.Chat.ID, str)
 				return "ok"
 			}
 
@@ -484,15 +484,15 @@ func handleFieldByChatID(bot *tgbotapi.BotAPI, update tgbotapi.Update, pureText 
 
 		if field == "Адрес доставки:" {
 
-			deleteMessages(bot, update.Message.Chat.ID)
+			deleteMessages(update.Message.Chat.ID)
 			if len(pureText) < 10 {
-				deletePreviousMessages(bot, update.Message.Chat.ID, update.Message.MessageID)
+				deletePreviousMessages(update.Message.Chat.ID, update.Message.MessageID)
 				str := "Адрес доставки не может быть пустым\n"
 				DeliveryAddress := "Адрес доставки:"
 				instructions := "Пожалуйста, введите " + DeliveryAddress + "\nПример:\nг. Будущего, ул. Пушкина, д. 12 кв 5\n"
 				str += instructions
 				//отправляем сообщение
-				sendMessage(bot, update.Message.Chat.ID, str)
+				sendMessage(update.Message.Chat.ID, str)
 				return "ok"
 			}
 
@@ -512,7 +512,7 @@ func handleFieldByChatID(bot *tgbotapi.BotAPI, update tgbotapi.Update, pureText 
 			}
 
 			//отправляем сообщение.
-			sendMessage(bot, update.Message.Chat.ID, instructions)
+			sendMessage(update.Message.Chat.ID, instructions)
 
 			pureText = "ok"
 			return "ok"
@@ -525,10 +525,10 @@ func handleFieldByChatID(bot *tgbotapi.BotAPI, update tgbotapi.Update, pureText 
 		if field == "Номер телефона:" {
 
 			formatted, str := bychat.FormatPhoneNumber(pureText)
-			deleteMessages(bot, update.Message.Chat.ID)
+			deleteMessages(update.Message.Chat.ID)
 
 			if str != "" {
-				deletePreviousMessages(bot, update.Message.Chat.ID, update.Message.MessageID)
+				deletePreviousMessages(update.Message.Chat.ID, update.Message.MessageID)
 				// Формирование текста с просьбой ввести номер телефона
 				PhoneNumber := "Номер телефона:"
 
@@ -538,7 +538,7 @@ func handleFieldByChatID(bot *tgbotapi.BotAPI, update tgbotapi.Update, pureText 
 				str += instructions
 
 				//отправляем сообщение
-				sendMessage(bot, update.Message.Chat.ID, str)
+				sendMessage(update.Message.Chat.ID, str)
 				return "ok"
 			}
 
@@ -560,7 +560,7 @@ func handleFieldByChatID(bot *tgbotapi.BotAPI, update tgbotapi.Update, pureText 
 			}
 
 			//отправляем сообщение
-			sendMessage(bot, update.Message.Chat.ID, instructions)
+			sendMessage(update.Message.Chat.ID, instructions)
 			pureText = "ok"
 			return "ok"
 		}
@@ -571,7 +571,7 @@ func handleFieldByChatID(bot *tgbotapi.BotAPI, update tgbotapi.Update, pureText 
 
 // handleDeliveryDetailsMessage анализируем и извлекаем данные из сообщения.
 // Объединяем данные заказа с содержимым корзины.
-func handleDeliveryDetailsMessage(bot *tgbotapi.BotAPI, chatID int64) {
+func handleDeliveryDetailsMessage(chatID int64) {
 	if chatID == 0 {
 		logger.Errorf("нет данных для обработки chatID = %v", chatID)
 		return

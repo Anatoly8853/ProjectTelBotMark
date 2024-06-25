@@ -19,8 +19,6 @@ const (
 	IsWarnMode  = true
 )
 
-var logger *slog.Logger // Глобальный логгер.
-
 // CustomFormatter - кастомный формат для изменения формата даты.
 type CustomFormatter struct{}
 
@@ -60,7 +58,7 @@ func getFunctionName(pc uintptr) string {
 // SetupLogger настраивает и возвращает логгер.
 func SetupLogger() *slog.Logger {
 	// Создаем логгер
-	logger = slog.New()
+	logger := slog.New()
 
 	// Устанавливаем форматтер
 	formatter := &CustomFormatter{}

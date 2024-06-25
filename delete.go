@@ -20,7 +20,7 @@ var messagesToDelete = make(map[int64][]int)
 var BasketMessages = make(map[int64]int)
 
 // photoMessagesDelete удаляем предыдущее сообщение с фото, если оно есть.
-func photoMessagesDelete(bot *tgbotapi.BotAPI, chatID int64) {
+func photoMessagesDelete(chatID int64) {
 
 	// Удаляем предыдущее сообщение с фото, если оно есть
 	if msgID, ok := photoMessagesToDelete[chatID]; ok {
@@ -35,7 +35,7 @@ func photoMessagesDelete(bot *tgbotapi.BotAPI, chatID int64) {
 }
 
 // keyboardMessagesDelete удаляем предыдущее сообщение с клавиатурой, если оно есть.
-func keyboardMessagesDelete(bot *tgbotapi.BotAPI, chatID int64) {
+func keyboardMessagesDelete(chatID int64) {
 
 	// Удаляем предыдущее сообщение с клавиатурой, если оно есть
 	if msgID, ok := keyboardMessagesToDelete[chatID]; ok {
@@ -59,7 +59,7 @@ func clearOrder(chatID int64) {
 }
 
 // deletePreviousMessages Удаляем сообщения.
-func deletePreviousMessages(bot *tgbotapi.BotAPI, chatID int64, messageID int) {
+func deletePreviousMessages(chatID int64, messageID int) {
 	if chatID == 0 || messageID == 0 {
 		logger.Errorf("нет данных для обработки chatID = %v messageID = %v", chatID, messageID)
 		return
@@ -95,7 +95,7 @@ func deletePreviousMessages(bot *tgbotapi.BotAPI, chatID int64, messageID int) {
 }
 
 // deleteMessages Удаляем сообщения.
-func deleteMessages(bot *tgbotapi.BotAPI, chatID int64) {
+func deleteMessages(chatID int64) {
 	if chatID == 0 {
 		logger.Errorf("нет данных для обработки chatID = %v", chatID)
 		return
@@ -109,7 +109,7 @@ func deleteMessages(bot *tgbotapi.BotAPI, chatID int64) {
 }
 
 // DeleteBasketContents Очищаем корзину.
-func DeleteBasketContents(bot *tgbotapi.BotAPI, chatID int64) {
+func DeleteBasketContents(chatID int64) {
 	if chatID == 0 {
 		logger.Errorf("нет данных для обработки chatID = %v", chatID)
 		return
@@ -136,6 +136,6 @@ func DeleteBasketContents(bot *tgbotapi.BotAPI, chatID int64) {
 	}
 
 	// Отправка подтверждающего сообщения пользователю, что корзина была очищена
-	sendMessage(bot, chatID, "Корзина успешно очищена.")
+	sendMessage(chatID, "Корзина успешно очищена.")
 
 }

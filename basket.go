@@ -28,7 +28,7 @@ var orderDetails = make(map[int64]string)
 //var orders = make(map[int64]structs.OrderDb)
 
 // AddToBasket добавление товаров в корзину.
-func AddToBasket(bot *tgbotapi.BotAPI, update tgbotapi.Update, item string, quantity int, cost int) {
+func AddToBasket(update tgbotapi.Update, item string, quantity int, cost int) {
 	if update.CallbackQuery.Message.Chat.ID == 0 {
 		logger.Errorf("нет данных для обработки update.CallbackQuery.Message.Chat.ID = %v ", update.CallbackQuery.Message.Chat.ID)
 		return
@@ -57,11 +57,11 @@ func AddToBasket(bot *tgbotapi.BotAPI, update tgbotapi.Update, item string, quan
 	// Отправка всплывающего сообщения пользователю
 	popupText := fmt.Sprintf("Добавлено в корзину:\n %s, кол-во: %d, цена: %d руб.\n Общая стоимость: %d руб", item, quantity, cost, totalCost)
 
-	SendPopupMessage(bot, update, popupText)
+	SendPopupMessage(update, popupText)
 }
 
 // SendPopupMessage Отправка всплывающего сообщения.
-func SendPopupMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update, popupText string) {
+func SendPopupMessage(update tgbotapi.Update, popupText string) {
 	if update.CallbackQuery.ID == "" || update.CallbackQuery.Message == nil || popupText == "" {
 		logger.Errorf("нет данных для обработки update.CallbackQuery.Message = %v popupText = %v", update.CallbackQuery.Message, popupText)
 		return
@@ -76,7 +76,7 @@ func SendPopupMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update, popupText st
 }
 
 // ShowBasket Получение содержимого корзины.
-func ShowBasket(bot *tgbotapi.BotAPI, chatID int64) {
+func ShowBasket(chatID int64) {
 	purchases := structs.Baskets[chatID]
 	msg := tgbotapi.NewMessage(chatID, "Вы пока ничего не добавили в корзину")
 
@@ -135,14 +135,14 @@ func ShowBasket(bot *tgbotapi.BotAPI, chatID int64) {
 }
 
 // RequestDeliveryDetails Пример ввода данных заказа дата доставки.
-func RequestDeliveryDetails(bot *tgbotapi.BotAPI, chatID int64) {
+func RequestDeliveryDetails(chatID int64) {
 	if chatID == 0 {
 		logger.Errorf("нет данных для обработки chatID = %v", chatID)
 		return
 	}
 
 	// Удаление сообщения
-	deleteMessages(bot, chatID)
+	deleteMessages(chatID)
 
 	DeliveryDate := "Дату доставки:"
 
@@ -166,7 +166,7 @@ func RequestDeliveryDetails(bot *tgbotapi.BotAPI, chatID int64) {
 }
 
 // GroupMessagesChatID отправляем заказ.
-func GroupMessagesChatID(bot *tgbotapi.BotAPI, chatID int64) {
+func GroupMessagesChatID(chatID int64) {
 	if chatID == 0 {
 		logger.Errorf("нет данных для обработки chatID = %v", chatID)
 		return
@@ -186,14 +186,14 @@ func GroupMessagesChatID(bot *tgbotapi.BotAPI, chatID int64) {
 		}
 
 		// Отправляем сообщение в групповой чат.
-		sendMessage(bot, groupChatID, orderDetails[chatID])
+		sendMessage(groupChatID, orderDetails[chatID])
 		delete(orderDetails, groupChatID)
 
 		// Удаление сообщения
-		deleteMessages(bot, chatID)
+		deleteMessages(chatID)
 
 		//отправляем сообщение.
-		sendMessage(bot, chatID, "Ваш заказ успешно отправлен при сборе заказа мы Вас уведомим")
+		sendMessage(chatID, "Ваш заказ успешно отправлен при сборе заказа мы Вас уведомим")
 		delete(orderDetails, chatID)
 
 		delete(bychat.Orders, chatID)
@@ -203,19 +203,19 @@ func GroupMessagesChatID(bot *tgbotapi.BotAPI, chatID int64) {
 	} else {
 
 		//отправляем сообщение.
-		sendMessage(bot, chatID, "Нет данных для отправки")
+		sendMessage(chatID, "Нет данных для отправки")
 
 	}
 }
 
 // MainOrdersByUserID Выводим заказы пользователя в телеграмм.
-func MainOrdersByUserID(bot *tgbotapi.BotAPI, userID int64) {
+func MainOrdersByUserID(userID int64) {
 	if userID == 0 {
 		logger.Errorf("нет данных для обработки userID = %v", userID)
 		return
 	}
 
-	orders, err := dataSources.GetOrdersByUserID(dataSources.DB, userID, 6)
+	orders, err := dataSources.GetOrdersByUserID(userID, 6)
 
 	if err != nil {
 		logger.Errorf("Error getting orders: %v", err)
@@ -262,11 +262,11 @@ func MainOrdersByUserID(bot *tgbotapi.BotAPI, userID int64) {
 			}
 		}
 		//отправляем сообщение
-		sendMessage(bot, userID, msgText)
+		sendMessage(userID, msgText)
 
 	} else {
 		//отправляем сообщение
-		sendMessage(bot, userID, "Вы ничего у нас не заказывали")
+		sendMessage(userID, "Вы ничего у нас не заказывали")
 	}
 }
 
@@ -311,7 +311,7 @@ func addOrUpdateOrderField(chatID int64, fieldName string, value interface{}) er
 }
 
 // sendMessage Функция для отправки сообщения и добавления его в BasketMessages
-func sendMessage(bot *tgbotapi.BotAPI, chatID int64, text string) {
+func sendMessage(chatID int64, text string) {
 	if chatID == 0 || text == "" {
 		logger.Errorf("нет данных для обработки chatID = %v text = %v", chatID, text)
 		return

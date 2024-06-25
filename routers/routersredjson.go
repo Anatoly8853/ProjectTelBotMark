@@ -1,6 +1,7 @@
 package routers
 
 import (
+	`ProjectTelBotMark/loggers`
 	"ProjectTelBotMark/structs"
 	"encoding/json"
 	"io/ioutil"
@@ -12,6 +13,7 @@ import (
 var categories map[string]structs.Category
 
 func LoadCategories() {
+	logger := loggers.SetupLogger()
 	data, err := ioutil.ReadFile("buttons.json")
 	if err != nil {
 		logger.Fatalf("Error reading JSON file: %v", err)

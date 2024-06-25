@@ -10,15 +10,12 @@ import (
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"github.com/gookit/slog"
 )
-
-var logger *slog.Logger // Глобальный логгер
 
 // CheckDatabase функция для проверки базы данных на совпадение по дате.
 func CheckDatabase(bot *tgbotapi.BotAPI) {
 	// Настраиваем логгер
-	logger = loggers.SetupLogger()
+	logger := loggers.SetupLogger()
 
 	now := time.Now().Format("02.01.2006") // формат даты в виде DD.MM.YYYY
 
@@ -30,7 +27,7 @@ func CheckDatabase(bot *tgbotapi.BotAPI) {
 		//OrderDir: "ASC",
 	}
 
-	orders, err := dataSources.GetOrdersWithFilters(dataSources.DB, params)
+	orders, err := dataSources.GetOrdersWithFilters(params)
 	if err != nil {
 		logger.Errorf("ошибка запрос к базе %v", err)
 		return

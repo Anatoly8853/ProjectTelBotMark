@@ -6,11 +6,10 @@ import (
 	"ProjectTelBotMark/structs"
 	"fmt"
 	"html/template"
-	"log"
 	"net/http"
 	"os"
 	"path/filepath"
-	"sort"
+	`sort`
 	"strconv"
 	"time"
 
@@ -20,7 +19,32 @@ import (
 	"github.com/gookit/slog"
 )
 
-var logger *slog.Logger // Глобальный логгер
+/*
+// Получить все заказы, отсортированные по дате по убыванию
+params := QueryParams{
+OrderBy:  "tg_user_orders_date.date_time",
+OrderDir: "DESC",
+}
+orders, err := GetOrdersWithFilters(db, params)
+
+// Получить заказы для определенного пользователя за указанный период времени
+params := QueryParams{
+UserID:    123,
+StartDate: time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC),
+EndDate:   time.Date(2023, 12, 31, 23, 59, 59, 0, time.UTC),
+OrderBy:   "tg_user_orders_date.date_time",
+OrderDir:  "ASC",
+}
+orders, err := GetOrdersWithFilters(db, params)
+*/
+
+// Data представляет все данные из JSON файла
+type Data map[string]structs.Category
+
+//var logger *slog.Logger // Глобальный логгер
+type application struct {
+	logger *slog.Logger
+}
 
 // router создаем роутер.
 var router *gin.Engine
@@ -29,7 +53,9 @@ var router *gin.Engine
 func GinRouter(bot *tgbotapi.BotAPI) {
 
 	// Настраиваем логгер
-	logger = loggers.SetupLogger()
+	logger := loggers.SetupLogger()
+	app := &application{logger: logger}
+
 	gin.SetMode(gin.ReleaseMode)
 	router = gin.Default()
 	router.SetFuncMap(template.FuncMap{
@@ -40,63 +66,15 @@ func GinRouter(bot *tgbotapi.BotAPI) {
 	})
 	router.Static("/assets/", "front/")
 	router.Static("/jpeg", "./jpeg") // Новый маршрут для папки jpeg
-
 	router.LoadHTMLGlob("html/templates/*")
-	router.GET("/", HandlerIndex)
+
+	router.GET("/", app.HandlerIndex)
 	router.GET("/info", HandlerInfo)
-	router.POST("/info", PostHandlerInfo(bot))
-	router.GET("/highcharts", func(c *gin.Context) {
-		c.HTML(http.StatusOK, "highcharts.html", gin.H{
-			"Title":    "Заказы Салаты корейские",
-			"Classreg": "current"})
-	})
-	router.GET("/data", func(c *gin.Context) {
-
-		params := structs.QueryParams{
-			//StartDate: time.Now().AddDate(0, 0, -1).Format("2006-01-02"),
-			//EndDate:   time.Now().Format("2006-01-02"),
-			OrderBy: "tg_user_orders_date.delivery_date",
-			//OrderDir: "DESC",
-			OrderDir: "ASC",
-		}
-
-		orders, err := dataSources.GetOrdersWithFilters(dataSources.DB, params)
-		if err != nil {
-			logger.Errorf("ошибка запрос к базе %v", err)
-			return
-		}
-		var data [][]int64
-		dateSums := make(map[int64]int)
-		var DateTime string
-
-		for _, order := range orders {
-			t, err := time.Parse(time.RFC3339, order.DeliveryDate)
-			if err != nil {
-				log.Printf("Error parsing date: %v", err)
-				continue
-			}
-			timestamp := t.Unix() * 1000
-			if order.DateTime != DateTime {
-				dateSums[timestamp] += order.TotalCost
-				DateTime = order.DateTime
-			}
-		}
-
-		// Создаем массив с ключами и сортируем их
-		var keys []int64
-		for k := range dateSums {
-			keys = append(keys, k)
-		}
-		sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
-
-		for _, k := range keys {
-			data = append(data, []int64{k, int64(dateSums[k])})
-		}
-
-		c.JSON(http.StatusOK, data)
-	})
-	router.GET("/black", BlackList)
-	router.POST("/black/update", UpdateBlackList)
+	router.POST("/info", app.PostHandlerInfo(bot))
+	router.GET("/highcharts", HandlerHighcharts)
+	router.GET("/data", app.HandlerHighchartsData)
+	router.GET("/black", app.BlackList)
+	router.POST("/black/update", app.UpdateBlackList)
 	router.GET("/jsonred", func(c *gin.Context) {
 		c.HTML(http.StatusOK, "jsonred.html", gin.H{
 			"categories":   categories,
@@ -106,17 +84,71 @@ func GinRouter(bot *tgbotapi.BotAPI) {
 	router.POST("/jsonred/save", saveCategories)
 	err := router.Run(":8090")
 	if err != nil {
-		logger.Errorf("GinRouter %v", err)
+		app.logger.Errorf("GinRouter %v", err)
 		return
 	}
 }
 
-func UpdateBlackList(c *gin.Context) {
+//HandlerHighchartsData json для Highcharts.
+func (app *application) HandlerHighchartsData(c *gin.Context) {
+	params := structs.QueryParams{
+		//StartDate: time.Now().AddDate(0, 0, -1).Format("2006-01-02"),
+		//EndDate:   time.Now().Format("2006-01-02"),
+		OrderBy: "tg_user_orders_date.delivery_date",
+		//OrderDir: "DESC",
+		OrderDir: "ASC",
+	}
+
+	orders, err := dataSources.GetOrdersWithFilters(params)
+	if err != nil {
+		app.logger.Errorf("ошибка запрос к базе %v", err)
+		return
+	}
+	var data [][]int64
+	dateSums := make(map[int64]int)
+	var DateTime string
+
+	for _, order := range orders {
+		t, err := time.Parse(time.RFC3339, order.DeliveryDate)
+		if err != nil {
+			app.logger.Errorf("Error parsing date: %v", err)
+			continue
+		}
+		timestamp := t.Unix() * 1000
+		if order.DateTime != DateTime {
+			dateSums[timestamp] += order.TotalCost
+			DateTime = order.DateTime
+		}
+	}
+
+	// Создаем массив с ключами и сортируем их
+	var keys []int64
+	for k := range dateSums {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
+
+	for _, k := range keys {
+		data = append(data, []int64{k, int64(dateSums[k])})
+	}
+
+	c.JSON(http.StatusOK, data)
+}
+
+//HandlerHighcharts график Highcharts.
+func HandlerHighcharts(c *gin.Context) {
+	c.HTML(http.StatusOK, "highcharts.html", gin.H{
+		"Title":    "Заказы Салаты корейские",
+		"Classreg": "current"})
+}
+
+//UpdateBlackList обновляем черный список.
+func (app *application) UpdateBlackList(c *gin.Context) {
 
 	userID, err := strconv.Atoi(c.PostForm("user_id"))
 	if err != nil {
 		c.String(http.StatusBadRequest, fmt.Sprintf("Invalid user ID: %v", err))
-		logger.Errorf("Invalid user ID: %v", c.PostForm("user_id"))
+		app.logger.Errorf("Invalid user ID: %v", c.PostForm("user_id"))
 		return
 	}
 
@@ -126,20 +158,20 @@ func UpdateBlackList(c *gin.Context) {
 		userBlack = 1
 	}
 
-	err = dataSources.UpdateUserBlack(dataSources.DB, userID, userBlack)
+	err = dataSources.UpdateUserBlack(userID, userBlack)
 	if err != nil {
 		c.String(http.StatusInternalServerError, fmt.Sprintf("Error updating user: %v", err))
-		logger.Errorf("Error updating user: %v", err)
+		app.logger.Errorf("Error updating user: %v", err)
 		return
 	}
 
-	users, err := dataSources.GetUsers(dataSources.DB)
+	users, err := dataSources.GetUsers()
 	if err != nil {
-		logger.Errorf("Error getting users: %v", err)
+		app.logger.Errorf("Error getting users: %v", err)
 		return
 	}
 
-	c.HTML(200, "user_black.html", gin.H{
+	c.HTML(http.StatusOK, "user_black.html", gin.H{
 		"Title":      "Заказы Салаты корейские",
 		"Users":      users,
 		"Message":    "Данные успешно изменены",
@@ -148,11 +180,12 @@ func UpdateBlackList(c *gin.Context) {
 
 }
 
-func BlackList(c *gin.Context) {
+//BlackList добавляем в черный список.
+func (app *application) BlackList(c *gin.Context) {
 
-	users, err := dataSources.GetUsers(dataSources.DB)
+	users, err := dataSources.GetUsers()
 	if err != nil {
-		logger.Errorf("Error getting users: %v", err)
+		app.logger.Errorf("Error getting users: %v", err)
 		c.HTML(http.StatusOK, "user_black.html", gin.H{
 			"Title":      "Заказы Салаты корейские",
 			"Message":    "Ошибка обработки формы",
@@ -168,9 +201,6 @@ func BlackList(c *gin.Context) {
 	})
 }
 
-// Data представляет все данные из JSON файла
-type Data map[string]structs.Category
-
 // HandlerInfo код страницы инфо.
 func HandlerInfo(c *gin.Context) {
 
@@ -181,7 +211,7 @@ func HandlerInfo(c *gin.Context) {
 }
 
 // PostHandlerInfo отправка сообщения, в телеграм инфо.
-func PostHandlerInfo(bot *tgbotapi.BotAPI) gin.HandlerFunc {
+func (app *application) PostHandlerInfo(bot *tgbotapi.BotAPI) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var messageInfo structs.MessageInfo
 
@@ -189,8 +219,8 @@ func PostHandlerInfo(bot *tgbotapi.BotAPI) gin.HandlerFunc {
 		err := c.Bind(&messageInfo)
 		if err != nil {
 
-			logger.Errorf("PostHandlerInfo Bind: %v", err)
-			c.HTML(200, "upload.html", gin.H{
+			app.logger.Errorf("PostHandlerInfo Bind: %v", err)
+			c.HTML(http.StatusOK, "upload.html", gin.H{
 				"Title":    "Заказы Салаты корейские",
 				"Message":  "Ошибка обработки формы",
 				"Classupl": "current"})
@@ -201,7 +231,7 @@ func PostHandlerInfo(bot *tgbotapi.BotAPI) gin.HandlerFunc {
 		// Check if Info and InfoText are not empty
 		if messageInfo.Info == "" || messageInfo.InfoText == "" {
 
-			c.HTML(200, "upload.html", gin.H{
+			c.HTML(http.StatusOK, "upload.html", gin.H{
 				"Title":    "Заказы Салаты корейские",
 				"Message":  "Поля Тип информации и Сообщение для отправки не должны быть пустыми ",
 				"Classupl": "current"})
@@ -212,8 +242,8 @@ func PostHandlerInfo(bot *tgbotapi.BotAPI) gin.HandlerFunc {
 		file, err := c.FormFile("Image")
 		if err != nil && err != http.ErrMissingFile {
 
-			logger.Errorf("PostHandlerInfo FormFile: %v", err)
-			c.HTML(200, "upload.html", gin.H{
+			app.logger.Errorf("PostHandlerInfo FormFile: %v", err)
+			c.HTML(http.StatusOK, "upload.html", gin.H{
 				"Title":    "Заказы Салаты корейские",
 				"Message":  "Ошибка загрузки файла",
 				"Classupl": "current"})
@@ -237,8 +267,8 @@ func PostHandlerInfo(bot *tgbotapi.BotAPI) gin.HandlerFunc {
 				_, err = bot.Send(message)
 				if err != nil {
 
-					logger.Errorf("PostHandlerInfo SendText: %v", err)
-					c.HTML(200, "upload.html", gin.H{
+					app.logger.Errorf("PostHandlerInfo SendText: %v", err)
+					c.HTML(http.StatusOK, "upload.html", gin.H{
 						"Title":    "Заказы Салаты корейские",
 						"Message":  "Произошла ошибка при отправке текстового сообщения, попробуйте еще раз",
 						"Classupl": "current"})
@@ -250,13 +280,13 @@ func PostHandlerInfo(bot *tgbotapi.BotAPI) gin.HandlerFunc {
 				if file != nil {
 
 					savePath := "./uploads/"
-					if _, err := os.Stat(savePath); os.IsNotExist(err) {
+					if _, err = os.Stat(savePath); os.IsNotExist(err) {
 
 						err = os.MkdirAll(savePath, os.ModePerm)
 						if err != nil {
 
-							logger.Errorf("PostHandlerInfo Mkdir: %v", err)
-							c.HTML(200, "upload.html", gin.H{
+							app.logger.Errorf("PostHandlerInfo Mkdir: %v", err)
+							c.HTML(http.StatusOK, "upload.html", gin.H{
 								"Title":    "Заказы Салаты корейские",
 								"Message":  "Произошла ошибка при создании директории для сохранения изображения",
 								"Classupl": "current"})
@@ -266,11 +296,11 @@ func PostHandlerInfo(bot *tgbotapi.BotAPI) gin.HandlerFunc {
 					}
 
 					filePath := filepath.Join(savePath, file.Filename)
-					err := c.SaveUploadedFile(file, filePath)
+					err = c.SaveUploadedFile(file, filePath)
 					if err != nil {
 
-						logger.Errorf("PostHandlerInfo SaveFile: %v", err)
-						c.HTML(200, "upload.html", gin.H{
+						app.logger.Errorf("PostHandlerInfo SaveFile: %v", err)
+						c.HTML(http.StatusOK, "upload.html", gin.H{
 							"Title":    "Заказы Салаты корейские",
 							"Message":  "Произошла ошибка при сохранении изображения, попробуйте еще раз",
 							"Classupl": "current"})
@@ -286,8 +316,8 @@ func PostHandlerInfo(bot *tgbotapi.BotAPI) gin.HandlerFunc {
 					_, err = bot.SendMediaGroup(mediaGroup)
 					if err != nil {
 
-						logger.Errorf("PostHandlerInfo SendPhoto: %v", err)
-						c.HTML(200, "upload.html", gin.H{
+						app.logger.Errorf("PostHandlerInfo SendPhoto: %v", err)
+						c.HTML(http.StatusOK, "upload.html", gin.H{
 							"Title":    "Заказы Салаты корейские",
 							"Message":  "Произошла ошибка при отправке изображения, попробуйте еще раз",
 							"Classupl": "current"})
@@ -297,13 +327,13 @@ func PostHandlerInfo(bot *tgbotapi.BotAPI) gin.HandlerFunc {
 				}
 			}
 
-			c.HTML(200, "upload.html", gin.H{
+			c.HTML(http.StatusOK, "upload.html", gin.H{
 				"Title":    "Заказы Салаты корейские",
 				"Message":  "Извещение успешно отправлено",
 				"Classupl": "current"})
 		} else {
 
-			c.HTML(200, "upload.html", gin.H{
+			c.HTML(http.StatusOK, "upload.html", gin.H{
 				"Title":    "Заказы Салаты корейские",
 				"Message":  "Пока некому отправлять",
 				"Classupl": "current"})
@@ -311,29 +341,8 @@ func PostHandlerInfo(bot *tgbotapi.BotAPI) gin.HandlerFunc {
 	}
 }
 
-/*
-// Получить все заказы, отсортированные по дате по убыванию
-params := QueryParams{
-OrderBy:  "tg_user_orders_date.date_time",
-OrderDir: "DESC",
-}
-orders, err := GetOrdersWithFilters(db, params)
-
-// Получить заказы для определенного пользователя за указанный период времени
-params := QueryParams{
-UserID:    123,
-StartDate: time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC),
-EndDate:   time.Date(2023, 12, 31, 23, 59, 59, 0, time.UTC),
-OrderBy:   "tg_user_orders_date.date_time",
-OrderDir:  "ASC",
-}
-orders, err := GetOrdersWithFilters(db, params)
-*/
-
 // HandlerIndex Главная страница с выводом всех значений из базы.
-func HandlerIndex(c *gin.Context) {
-	// Настраиваем логгер
-	logger = loggers.SetupLogger()
+func (app *application) HandlerIndex(c *gin.Context) {
 
 	now := time.Now().Format("02.01.2006") // формат даты в виде DD.MM.YYYY
 
@@ -344,9 +353,9 @@ func HandlerIndex(c *gin.Context) {
 		OrderDir: "DESC",
 	}
 
-	orders, err := dataSources.GetOrdersWithFilters(dataSources.DB, params)
+	orders, err := dataSources.GetOrdersWithFilters(params)
 	if err != nil {
-		logger.Errorf("ошибка запрос к базе %v", err)
+		app.logger.Errorf("ошибка запрос к базе %v", err)
 		return
 	}
 
@@ -368,7 +377,7 @@ func HandlerIndex(c *gin.Context) {
 			// Парсинг строки времени в тип time.Time
 			t, err := time.Parse(time.RFC3339, order.DeliveryDate)
 			if err != nil {
-				logger.Errorf("Ошибка парсинга строки времени: %v", err)
+				app.logger.Errorf("Ошибка парсинга строки времени: %v", err)
 				return
 			}
 
@@ -418,7 +427,7 @@ func HandlerIndex(c *gin.Context) {
 
 	rty := MergeSlidesWithDeliveryDate(payloads, webnums)
 
-	c.HTML(200, "index.html", gin.H{
+	c.HTML(http.StatusOK, "index.html", gin.H{
 		"Title":    "Заказы Салаты корейские",
 		"Classind": "current",
 		"payload":  rty})

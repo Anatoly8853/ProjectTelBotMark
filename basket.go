@@ -1,13 +1,13 @@
 package main
 
 import (
+	`ProjectTelBotMark/bychat`
 	"ProjectTelBotMark/dataSources"
 	"ProjectTelBotMark/structs"
 	"errors"
 	"fmt"
 	"os"
 	"reflect"
-	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -16,8 +16,8 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
-// Baskets Карта для хранения данных о покупках для каждого пользователя.
-var Baskets = make(map[int64][]structs.Purchase)
+// Baskets карта для хранения данных о покупках для каждого пользователя.
+//var Baskets = make(map[int64][]structs.Purchase)
 
 var DeliveryDateChatID = make(map[int64]int)
 
@@ -25,10 +25,10 @@ var DeliveryDateChatID = make(map[int64]int)
 var orderDetails = make(map[int64]string)
 
 // orders Map для хранения данных по chatID.
-var orders = make(map[int64]structs.OrderDb)
+//var orders = make(map[int64]structs.OrderDb)
 
 // AddToBasket добавление товаров в корзину.
-func AddToBasket(bot *tgbotapi.BotAPI, update tgbotapi.Update, item string, quantity int, cost int) {
+func AddToBasket(update tgbotapi.Update, item string, quantity int, cost int) {
 	if update.CallbackQuery.Message.Chat.ID == 0 {
 		logger.Errorf("нет данных для обработки update.CallbackQuery.Message.Chat.ID = %v ", update.CallbackQuery.Message.Chat.ID)
 		return
@@ -46,22 +46,22 @@ func AddToBasket(bot *tgbotapi.BotAPI, update tgbotapi.Update, item string, quan
 		Quantity: quantity,
 		Cost:     cost,
 	}
-	Baskets[chatID] = append(Baskets[chatID], purchase)
+	structs.Baskets[chatID] = append(structs.Baskets[chatID], purchase)
 
 	// Подсчет общей стоимости в корзине
 	totalCost := 0
-	for _, p := range Baskets[chatID] {
+	for _, p := range structs.Baskets[chatID] {
 		totalCost += p.Cost * p.Quantity
 	}
 
 	// Отправка всплывающего сообщения пользователю
 	popupText := fmt.Sprintf("Добавлено в корзину:\n %s, кол-во: %d, цена: %d руб.\n Общая стоимость: %d руб", item, quantity, cost, totalCost)
 
-	SendPopupMessage(bot, update, popupText)
+	SendPopupMessage(update, popupText)
 }
 
 // SendPopupMessage Отправка всплывающего сообщения.
-func SendPopupMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update, popupText string) {
+func SendPopupMessage(update tgbotapi.Update, popupText string) {
 	if update.CallbackQuery.ID == "" || update.CallbackQuery.Message == nil || popupText == "" {
 		logger.Errorf("нет данных для обработки update.CallbackQuery.Message = %v popupText = %v", update.CallbackQuery.Message, popupText)
 		return
@@ -76,8 +76,8 @@ func SendPopupMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update, popupText st
 }
 
 // ShowBasket Получение содержимого корзины.
-func ShowBasket(bot *tgbotapi.BotAPI, chatID int64) {
-	purchases := Baskets[chatID]
+func ShowBasket(chatID int64) {
+	purchases := structs.Baskets[chatID]
 	msg := tgbotapi.NewMessage(chatID, "Вы пока ничего не добавили в корзину")
 
 	if len(purchases) > 0 {
@@ -134,47 +134,15 @@ func ShowBasket(bot *tgbotapi.BotAPI, chatID int64) {
 	BasketMessages[chatID] = sentMsg.MessageID
 }
 
-// DeleteBasketContents Очищаем корзину.
-func DeleteBasketContents(bot *tgbotapi.BotAPI, chatID int64) {
-	if chatID == 0 {
-		logger.Errorf("нет данных для обработки chatID = %v", chatID)
-		return
-	}
-
-	// Очистка содержимого корзины пользователя
-	Baskets[chatID] = nil // Или 	baskets[chatID] = []Purchase{} //для обнуления без удаления ключа
-
-	// Удаление сообщения с содержимым корзины
-	if BasketMessages[chatID] == 0 {
-		logger.Errorf("нет данных для обработки BasketMessages[chatID] = %v", BasketMessages[chatID])
-		return
-	}
-
-	messageID := BasketMessages[chatID]
-
-	if messageID != 0 {
-		deleteMsg := tgbotapi.NewDeleteMessage(chatID, messageID)
-		if _, err := bot.Request(deleteMsg); err != nil {
-			logger.Errorf("Удаление сообщения с содержимым корзины %v", err)
-		}
-		// После успешного удаления сообщения можно обнулить идентификатор сообщения в basketMessages
-		BasketMessages[chatID] = 0
-	}
-
-	// Отправка подтверждающего сообщения пользователю, что корзина была очищена
-	sendMessage(bot, chatID, "Корзина успешно очищена.")
-
-}
-
 // RequestDeliveryDetails Пример ввода данных заказа дата доставки.
-func RequestDeliveryDetails(bot *tgbotapi.BotAPI, chatID int64) {
+func RequestDeliveryDetails(chatID int64) {
 	if chatID == 0 {
 		logger.Errorf("нет данных для обработки chatID = %v", chatID)
 		return
 	}
 
 	// Удаление сообщения
-	deleteMessages(bot, chatID)
+	deleteMessages(chatID)
 
 	DeliveryDate := "Дату доставки:"
 
@@ -197,99 +165,8 @@ func RequestDeliveryDetails(bot *tgbotapi.BotAPI, chatID int64) {
 	DeliveryDateChatID[chatID] = 1
 }
 
-// handleDeliveryDetailsMessage анализируем и извлекаем данные из сообщения.
-// Объединяем данные заказа с содержимым корзины.
-func handleDeliveryDetailsMessage(bot *tgbotapi.BotAPI, chatID int64) {
-	if chatID == 0 {
-		logger.Errorf("нет данных для обработки chatID = %v", chatID)
-		return
-	}
-
-	var MsgText string
-
-	if field, err := getFieldByChatID(chatID, "PhoneNumber"); err == nil {
-		str, _ := field.(string)
-		MsgText += "Номер телефона: " + str + "\n"
-	}
-
-	//"Адрес доставки: [ваш адрес]\n" +
-	if field, err := getFieldByChatID(chatID, "DeliveryAddress"); err == nil {
-		str, _ := field.(string)
-		MsgText += "Адрес доставки: " + str + "\n"
-	}
-
-	//"Дата доставки: [желаемая дата]\n" +
-	if field, err := getFieldByChatID(chatID, "DeliveryDate"); err == nil {
-		str, _ := field.(string)
-		MsgText += "Дата доставки: " + str + "\n"
-	}
-
-	//"ФИО: [ваше имя и фамилия]\n\n" +
-	if field, err := getFieldByChatID(chatID, "FullName"); err == nil {
-		str, _ := field.(string)
-		MsgText += "ФИО: " + str + "\n"
-	}
-
-	// Объединяем данные заказа с содержимым корзины
-	orderDetails[chatID] = "Детали заказа:\n" + MsgText // Сообщение с деталями заказа
-
-	// Получение содержимого корзины
-	purchases := Baskets[chatID]
-
-	//if len(purchases) > 0 {
-	groupedPurchases := make(map[string]structs.Purchase)
-	for _, p := range purchases {
-
-		key := p.Item
-		if existing, found := groupedPurchases[key]; found {
-
-			existing.Quantity += p.Quantity
-			existing.Cost += p.Cost
-			groupedPurchases[key] = existing
-
-		} else {
-
-			groupedPurchases[key] = p
-
-		}
-	}
-
-	var MsgTexts string
-	totalCost := 0
-	for _, p := range groupedPurchases {
-
-		itemTotalCost := p.Cost // Общая стоимость для этой группы товаров
-		MsgTexts += fmt.Sprintf("Товар: %s кол-во: %d цена: %d руб.\n", p.Item, p.Quantity, itemTotalCost)
-		totalCost += itemTotalCost
-
-	}
-
-	MsgTexts += fmt.Sprintf("Общая стоимость: %d руб.", totalCost)
-
-	//TODO
-	// Очищаем данные заказа
-	//clearOrder(chatID)
-
-	orderDetails[chatID] += MsgTexts
-
-	// Отправляем пользователю подтверждение с деталями заказа и кнопкой "Заказать"
-	btnOrder := tgbotapi.NewInlineKeyboardButtonData("Заказать", "confirm_order")
-	inlineKeyboard := tgbotapi.NewInlineKeyboardMarkup(tgbotapi.NewInlineKeyboardRow(btnOrder))
-
-	confirmMsg := tgbotapi.NewMessage(chatID, orderDetails[chatID])
-	confirmMsg.ReplyMarkup = inlineKeyboard
-
-	if sentMsg, err := bot.Send(confirmMsg); err != nil {
-		logger.Errorf("%v", err)
-		return
-	} else {
-		// Сохраняем идентификатор отправленного сообщения для последующего удаления
-		BasketMessages[chatID] = sentMsg.MessageID
-	}
-}
-
 // GroupMessagesChatID отправляем заказ.
-func GroupMessagesChatID(bot *tgbotapi.BotAPI, chatID int64) {
+func GroupMessagesChatID(chatID int64) {
 	if chatID == 0 {
 		logger.Errorf("нет данных для обработки chatID = %v", chatID)
 		return
@@ -309,36 +186,36 @@ func GroupMessagesChatID(bot *tgbotapi.BotAPI, chatID int64) {
 		}
 
 		// Отправляем сообщение в групповой чат.
-		sendMessage(bot, groupChatID, orderDetails[chatID])
+		sendMessage(groupChatID, orderDetails[chatID])
 		delete(orderDetails, groupChatID)
 
 		// Удаление сообщения
-		deleteMessages(bot, chatID)
+		deleteMessages(chatID)
 
 		//отправляем сообщение.
-		sendMessage(bot, chatID, "Ваш заказ успешно отправлен при сборе заказа мы Вас уведомим")
+		sendMessage(chatID, "Ваш заказ успешно отправлен при сборе заказа мы Вас уведомим")
 		delete(orderDetails, chatID)
 
-		delete(orders, chatID)
+		delete(bychat.Orders, chatID)
 
 		delete(BasketMessages, chatID)
 
 	} else {
 
 		//отправляем сообщение.
-		sendMessage(bot, chatID, "Нет данных для отправки")
+		sendMessage(chatID, "Нет данных для отправки")
 
 	}
 }
 
 // MainOrdersByUserID Выводим заказы пользователя в телеграмм.
-func MainOrdersByUserID(bot *tgbotapi.BotAPI, userID int64) {
+func MainOrdersByUserID(userID int64) {
 	if userID == 0 {
 		logger.Errorf("нет данных для обработки userID = %v", userID)
 		return
 	}
 
-	orders, err := dataSources.GetOrdersByUserID(dataSources.DB, userID, 6)
+	orders, err := dataSources.GetOrdersByUserID(userID, 6)
 
 	if err != nil {
 		logger.Errorf("Error getting orders: %v", err)
@@ -385,11 +262,11 @@ func MainOrdersByUserID(bot *tgbotapi.BotAPI, userID int64) {
 			}
 		}
 		//отправляем сообщение
-		sendMessage(bot, userID, msgText)
+		sendMessage(userID, msgText)
 
 	} else {
 		//отправляем сообщение
-		sendMessage(bot, userID, "Вы ничего у нас не заказывали")
+		sendMessage(userID, "Вы ничего у нас не заказывали")
 	}
 }
 
@@ -400,7 +277,7 @@ func addOrUpdateOrderField(chatID int64, fieldName string, value interface{}) er
 		return errors.New("нет chatID")
 	}
 
-	order, exists := orders[chatID]
+	order, exists := bychat.Orders[chatID]
 
 	if !exists {
 
@@ -429,174 +306,12 @@ func addOrUpdateOrderField(chatID int64, fieldName string, value interface{}) er
 
 	}
 
-	orders[chatID] = order
+	bychat.Orders[chatID] = order
 	return nil
 }
 
-// getFieldByChatID для получения значения поля по chatID и имени поля.
-func getFieldByChatID(chatID int64, fieldName string) (interface{}, error) {
-	if chatID == 0 {
-		logger.Errorf("нет данных для обработки chatID = %v", chatID)
-		return nil, errors.New("нет chatID")
-	}
-	order, exists := orders[chatID]
-
-	if !exists {
-		logger.Errorf("заказ с таким chatID = %v не найден", chatID)
-		return nil, errors.New("заказ с таким chatID не найден")
-	}
-
-	val := reflect.ValueOf(order)
-	fieldVal := val.FieldByName(fieldName)
-
-	if !fieldVal.IsValid() {
-		logger.Error("такого поля не существует")
-		return nil, errors.New("такого поля не существует")
-	}
-
-	return fieldVal.Interface(), nil
-}
-
-// formatDateString для очистки строки от пробелов и знаков препинания, а также форматирования даты.
-func formatDateString(dateStr string) (string, string) {
-	// Удаляем все пробелы и знаки препинания, кроме точки
-	re := regexp.MustCompile(`[^\d.]`)
-	cleaned := re.ReplaceAllString(dateStr, "")
-
-	// Разделяем строку на день, месяц и год
-	parts := strings.Split(cleaned, ".")
-	if len(parts) != 3 {
-
-		err := fmt.Errorf("")
-		logger.Infof("неправильный формат даты %v ошибка %v", parts, err)
-		return "", "неправильный формат даты"
-
-	}
-
-	// Приводим день и месяц к формату с ведущим нулем
-	day, err := strconv.Atoi(parts[0])
-	if err != nil {
-
-		logger.Infof("неправильный формат дня %v ошибка %v", day, err)
-		return "", "неправильный формат дня"
-
-	}
-
-	month, err := strconv.Atoi(parts[1])
-	if err != nil {
-
-		logger.Infof("неправильный формат месяца %v ошибка %v", month, err)
-		return "", "неправильный формат месяца"
-
-	}
-
-	year, err := strconv.Atoi(parts[2])
-	if err != nil {
-
-		logger.Infof("неправильный формат года %v ошибка %v", year, err)
-		return "", "неправильный формат года"
-
-	}
-
-	// Форматируем день и месяц с ведущими нулями
-	formattedDate := fmt.Sprintf("%02d.%02d.%04d", day, month, year)
-
-	// Проверяем правильность формата даты
-	parsedDate, err := time.Parse("02.01.2006", formattedDate)
-	if err != nil {
-
-		logger.Infof("неправильный формат даты %v ошибка %v", formattedDate, err)
-		return "", "неправильный формат даты"
-
-	}
-
-	// Получаем текущую дату
-	currentTime := time.Now()
-	currentYear := currentTime.Year()
-	currentMonth := int(currentTime.Month())
-
-	// Проверка, что год совпадает с текущим годом
-	if year != currentYear {
-
-		err = fmt.Errorf("год должен быть текущим")
-		logger.Infof("год %v ошибка %v", year, err)
-		return "", "год должен быть текущим"
-
-	}
-
-	// Проверка, что месяц текущий или следующий
-	if month != currentMonth && month != currentMonth+1 {
-
-		err = fmt.Errorf("месяц должен быть текущим или следующим")
-		logger.Infof("месяц %v ошибка %v", month, err)
-		return "", "месяц должен быть текущим или следующим"
-
-	}
-
-	// Проверка, что дата не прошедшая и не сегодняшняя
-	if parsedDate.Before(currentTime) || parsedDate.Equal(currentTime) {
-
-		err = fmt.Errorf("дата не должна быть прошедшей или сегодняшней")
-		logger.Infof("дата %v ошибка %v", currentTime, err)
-		return "", "дата не должна быть прошедшей или сегодняшней"
-
-	}
-
-	return formattedDate, ""
-}
-
-// formatPhoneNumber Функция для проверки и форматирования номера телефона
-func formatPhoneNumber(phone string) (string, string) {
-	// Удаляем все пробелы и знаки препинания
-	re := regexp.MustCompile(`[^\d+]`)
-	cleaned := re.ReplaceAllString(phone, "")
-
-	// Проверка и добавление + перед 7, если нужно
-	if strings.HasPrefix(cleaned, "7") && !strings.HasPrefix(cleaned, "+") {
-
-		cleaned = "+" + cleaned
-
-	}
-
-	// Замена 8 на +7
-	if strings.HasPrefix(cleaned, "8") {
-
-		cleaned = "+7" + cleaned[1:]
-
-	}
-
-	// Проверка формата номера
-	if strings.HasPrefix(cleaned, "+7") {
-
-		if len(cleaned) != 12 {
-
-			err := fmt.Errorf("номер должен содержать 10 цифр после +7 ")
-			logger.Infof("номер телефона %v ошибка %v", cleaned, err)
-			return "", "номер должен содержать 10 цифр после +7"
-
-		}
-
-	} else {
-
-		err := fmt.Errorf("номер должен начинаться с +7 ")
-		logger.Infof("номер телефона %v ошибка %v", cleaned, err)
-		return "", "номер должен начинаться с +7"
-
-	}
-
-	if cleaned == "+79345678901" {
-
-		err := fmt.Errorf("это номер телефона для примера введите свой номер телефона ")
-		logger.Infof("%v", err)
-		return "", "это номер телефона для примера введите свой номер телефона"
-
-	}
-
-	return cleaned, ""
-}
-
-// Функция для отправки сообщения и добавления его в BasketMessages
-func sendMessage(bot *tgbotapi.BotAPI, chatID int64, text string) {
+// sendMessage Функция для отправки сообщения и добавления его в BasketMessages
+func sendMessage(chatID int64, text string) {
 	if chatID == 0 || text == "" {
 		logger.Errorf("нет данных для обработки chatID = %v text = %v", chatID, text)
 		return

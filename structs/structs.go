@@ -41,6 +41,9 @@ type Category struct {
 // Categories Распаковка данных.
 var Categories map[string]Category
 
+// Baskets карта для хранения данных о покупках для каждого пользователя.
+var Baskets = make(map[int64][]Purchase)
+
 // QueryParams Структура для хранения параметров фильтрации и сортировки.
 type QueryParams struct {
 	OrderBy   string `json:"order_by,omitempty"`

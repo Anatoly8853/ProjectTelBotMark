@@ -210,7 +210,6 @@ func handleCallbackQueryData(update tgbotapi.Update) {
 
 			AddToBasket(update, parts[1], num1, num2) // Добавление товара с указанием названия, количества и стоимости
 		case "ignore":
-
 			break
 		case "confirm": // Оформляем заказ
 			if orderDetails[update.CallbackQuery.Message.Chat.ID] != "" {

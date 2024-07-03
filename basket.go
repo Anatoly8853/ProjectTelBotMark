@@ -194,11 +194,7 @@ func GroupMessagesChatID(chatID int64) {
 
 		//отправляем сообщение.
 		sendMessage(chatID, "Ваш заказ успешно отправлен при сборе заказа мы Вас уведомим")
-		delete(orderDetails, chatID)
-
-		delete(bychat.Orders, chatID)
-
-		delete(BasketMessages, chatID)
+		ScheduleOnce(chatID)
 
 	} else {
 
@@ -358,4 +354,42 @@ func trimFilePath(fullFilePath string) string {
 		return strings.Join(parts[len(parts)-2:], "/")
 	}
 	return fullFilePath
+}
+
+func ScheduleOnce(chatID int64) {
+	go func() {
+		time.Sleep(1 * time.Minute)
+		// Удаление сообщения
+		deleteMessages(chatID)
+
+		for chatIDs, messageIDs := range messagesToDelete {
+			for _, messageIDa := range messageIDs {
+				deleteMsg := tgbotapi.NewDeleteMessage(chatIDs, messageIDa)
+				if _, err := bot.Request(deleteMsg); err != nil {
+					//log.Printf("Ошибка при удалении сообщения: %v", err)
+					// Не используйте log.Panic, чтобы избежать прерывания работы бота из-за одной ошибки
+				}
+
+			}
+		}
+
+		delete(orderDetails, chatID)
+
+		delete(bychat.Orders, chatID)
+
+		delete(BasketMessages, chatID)
+
+		// Возвращаемся в основное меню
+		msg := tgbotapi.NewMessage(chatID, "Добро пожаловать! Нажмите 'Старт' для начала.")
+		msg.ReplyMarkup = tgbotapi.NewReplyKeyboard(
+			tgbotapi.NewKeyboardButtonRow(
+				tgbotapi.NewKeyboardButton("Старт"),
+			),
+		)
+		_, err := bot.Send(msg)
+		if err != nil {
+			logger.Errorf("Error sending message: = %v", err)
+		}
+
+	}()
 }

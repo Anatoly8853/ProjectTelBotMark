@@ -5,7 +5,7 @@ import (
 	"ProjectTelBotMark/dataSources"
 	"ProjectTelBotMark/loggers"
 	"ProjectTelBotMark/reminders"
-	"ProjectTelBotMark/routers"
+	`ProjectTelBotMark/routers`
 	"ProjectTelBotMark/structs"
 	"encoding/json"
 	"errors"
@@ -13,36 +13,38 @@ import (
 	"regexp"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"github.com/gookit/slog"
+	`github.com/gookit/slog`
 	"github.com/joho/godotenv"
 )
 
-var logger *slog.Logger // Глобальный логгер docs.
+var logger *slog.Logger
+
 var bot *tgbotapi.BotAPI
 
 func main() {
 
-	// Настраиваем логгер.
+	// Настраиваем логгер
 	logger = loggers.SetupLogger()
+	app := &structs.Application{Log: logger}
 
 	// Открываем соединение с базой данных SQLite.
 	var err error
 
-	dataSources.InitDB()
-	defer dataSources.CloseDB()
+	dataSources.InitDB(app)
+	defer dataSources.CloseDB(app)
 
 	// Загружаем токен бота из файла .env
 	err = godotenv.Load()
 	if err != nil {
 
-		logger.Fatalf("Не удалось открыть файл .env: %v", err)
+		app.Log.Fatalf("Не удалось открыть файл .env: %v", err)
 
 	}
 
 	bot, err = tgbotapi.NewBotAPI(os.Getenv("TELEGRAM_TOKEN"))
 	if err != nil {
 
-		logger.Fatalf("Неn токена TELEGRAM_TOKEN: %v", err)
+		app.Log.Fatalf("Нет токена TELEGRAM_TOKEN: %v", err)
 
 	}
 
@@ -50,7 +52,7 @@ func main() {
 	jsonData, er := os.ReadFile("data.json")
 	if er != nil {
 
-		logger.Fatalf("Ошибка чтения файла JSON: %v", er)
+		app.Log.Fatalf("Ошибка чтения файла JSON: %v", er)
 
 	}
 
@@ -58,7 +60,7 @@ func main() {
 	err = json.Unmarshal(jsonData, &structs.Categories)
 	if err != nil {
 
-		logger.Fatalf("Ошибка распаковки JSON: %v", err)
+		app.Log.Fatalf("Ошибка распаковки JSON: %v", err)
 
 	}
 
@@ -66,7 +68,7 @@ func main() {
 
 	_, err = dataSources.GetUsers()
 	if err != nil {
-		logger.Errorf("Error getting users: %v", err)
+		app.Log.Errorf("Error getting users: %v", err)
 		return
 	}
 
@@ -74,12 +76,13 @@ func main() {
 
 	dataSources.StartBackupRoutine()
 
-	routers.LoadCategories()
+	routers.LoadCategories(app)
 
 	// Запуск ежедневной проверки базы данных
 	reminders.StartDailyCheck(bot)
 
-	routers.GinRouter(bot)
+	// Запускаем сервер
+	routers.GinRouter(app, bot)
 
 }
 
@@ -174,7 +177,7 @@ func createCategoryMessage(update tgbotapi.Update, categoryName string) error {
 // SeparateEmojiAndText Паттерн для поиска эмотзи update.Message.Text.
 func SeparateEmojiAndText(text string) (string, string) {
 	// Паттерн для поиска эмотзи
-	emojiPattern := regexp.MustCompile(`[\p{So}]`)
+	emojiPattern := regexp.MustCompile(`\p{So}`)
 	// Ищем все эмотзи в тексте
 	emojis := emojiPattern.FindAllString(text, -1)
 

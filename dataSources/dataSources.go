@@ -7,7 +7,6 @@ import (
 	"database/sql"
 	"fmt"
 	"io"
-
 	"os"
 	"time"
 
@@ -18,10 +17,6 @@ import (
 
 // DB одк
 var DB *sql.DB
-
-type Queries struct {
-	DB *sql.DB
-}
 
 var UserBlack = make(map[int64]int)
 
@@ -105,15 +100,13 @@ LIMIT 1
 `
 
 // InitDB - инициализация базы данных.
-func InitDB() {
-	// Настраиваем логгер
-	logger := loggers.SetupLogger()
+func InitDB(app *structs.Application) {
 
 	// Открываем соединение с базой данных SQLite
 	var err error
 	DB, err = sql.Open("sqlite3", "./data.db")
 	if err != nil {
-		logger.Fatalf("Error opening database: %v", err)
+		app.Log.Fatalf("Error opening database: %v", err)
 	}
 
 	_, err = DB.Exec(`
@@ -125,7 +118,7 @@ func InitDB() {
 	)		
 	    `)
 	if err != nil {
-		logger.Fatalf("Error creating reminders table: %v", err)
+		app.Log.Fatalf("Error creating reminders table: %v", err)
 	}
 
 	_, err = DB.Exec(`
@@ -140,7 +133,7 @@ func InitDB() {
 	)
 	`)
 	if err != nil {
-		logger.Fatalf("Error creating reminders table: %v", err)
+		app.Log.Fatalf("Error creating reminders table: %v", err)
 	}
 
 	_, err = DB.Exec(`
@@ -150,7 +143,7 @@ func InitDB() {
 	)
 	`)
 	if err != nil {
-		logger.Fatalf("Error creating reminders table: %v", err)
+		app.Log.Fatalf("Error creating reminders table: %v", err)
 	}
 
 	_, err = DB.Exec(`
@@ -160,7 +153,7 @@ func InitDB() {
 	)
 	`)
 	if err != nil {
-		logger.Fatalf("Error creating reminders table: %v", err)
+		app.Log.Fatalf("Error creating reminders table: %v", err)
 	}
 
 	_, err = DB.Exec(`
@@ -170,7 +163,7 @@ func InitDB() {
 	)
 	`)
 	if err != nil {
-		logger.Fatalf("Error creating reminders table: %v", err)
+		app.Log.Fatalf("Error creating reminders table: %v", err)
 	}
 
 	_, err = DB.Exec(`
@@ -180,7 +173,7 @@ func InitDB() {
 	)
 	`)
 	if err != nil {
-		logger.Fatalf("Error creating reminders table: %v", err)
+		app.Log.Fatalf("Error creating reminders table: %v", err)
 	}
 
 	_, err = DB.Exec(`
@@ -200,30 +193,28 @@ func InitDB() {
 	)	
 	`)
 	if err != nil {
-		logger.Fatalf("Error creating reminders table: %v", err)
+		app.Log.Fatalf("Error creating reminders table: %v", err)
 	}
 
 }
 
 // CloseDB - закрытие соединения с базой данных.
-func CloseDB() {
-	// Настраиваем логгер
-	logger := loggers.SetupLogger()
+func CloseDB(app *structs.Application) {
+
 	if DB != nil {
 		err := DB.Close()
 		if err != nil {
-			logger.Errorf("Error closing database: %v", err)
+			app.Log.Errorf("Error closing database: %v", err)
 			return
 		}
 	}
 }
 
-func UserID() []structs.User {
-	// Настраиваем логгер
-	logger := loggers.SetupLogger()
+func UserID(app *structs.Application) []structs.User {
+
 	row, err := DB.Query(`SELECT user_id FROM tg_user_Chat_ID`)
 	if err != nil {
-		logger.Errorf("Error getting user id: %v", err)
+		app.Log.Errorf("Error getting user id: %v", err)
 		return nil
 	}
 
@@ -233,7 +224,7 @@ func UserID() []structs.User {
 		u := structs.User{}
 		err = row.Scan(&u.UserID)
 		if err != nil {
-			logger.Errorf("Error getting user id: %v", err)
+			app.Log.Errorf("Error getting user id: %v", err)
 			return nil
 		}
 		user = append(user, u)
@@ -407,9 +398,8 @@ func ProcessOrder(db *sql.DB, update tgbotapi.Update) error {
 	for _, p := range groupedPurchases {
 
 		itemTotalCost := p.Cost // Общая стоимость для этой группы товаров
-		//MsgTexts += fmt.Sprintf("Товар: %s кол-во: %d цена: %d руб.\n", p.Item, p.Quantity, itemTotalCost)
-		totalCost += itemTotalCost
 
+		totalCost += itemTotalCost
 	}
 
 	// Парсинг строки времени в тип time.Time
@@ -421,9 +411,6 @@ func ProcessOrder(db *sql.DB, update tgbotapi.Update) error {
 
 	// Преобразуем дату в строку формата "YYYY-MM-DD" для вставки в базу данных
 	formattedDeliveryDate := t.Format("2006-01-02")
-
-	// Извлечение информации о товарах
-	//items := itemRegex.FindAllStringSubmatch(order, -1)
 
 	// Начало транзакции
 	tx, err := db.Begin()

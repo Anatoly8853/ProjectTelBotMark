@@ -4,7 +4,7 @@
     <targets>
       <target name="pi@192.168.1.249:22" type="ssh/sftp" uuid="30d47ad6-cf6e-4514-8b4e-37890e6e4fd6">
         <config>
-          <option name="projectRootOnTarget" value="/home/pi/ProjectTelBotMark" />
+          <option name="projectRootOnTarget" value="/home/pi/Документы" />
           <option name="serverName" value="pi@192.168.1.249:22 password" />
         </config>
         <ContributedStateBase type="GoLanguageRuntime">
@@ -14,14 +14,17 @@
                 <option name="remotePath" value="/home/pi/Документы" />
               </VolumeState>
             </option>
-            <option name="goPath" value="/home/pi/Документы/ProjectTelBotMark" />
-            <option name="goRoot" value="/home/pi/Документы/ProjectTelBotMark" />
+            <option name="goPath" value="/home/pi/Документы" />
+            <option name="goRoot" value="/home/pi/Документы" />
             <option name="projectSourcesVolume">
               <VolumeState>
                 <option name="remotePath" value="/home/pi/Документы" />
               </VolumeState>
             </option>
           </config>
+        </ContributedStateBase>
+        <ContributedStateBase type="GoLanguageRuntime">
+          <config />
         </ContributedStateBase>
       </target>
       <target name="WSL - Ubuntu" type="wsl" uuid="29d75a4d-1015-4edf-bd47-29c1de7ff910">

@@ -1,25 +1,22 @@
 package routers
 
 import (
-	`ProjectTelBotMark/loggers`
 	"ProjectTelBotMark/structs"
 	"encoding/json"
-	"io/ioutil"
 	"net/http"
+	`os`
 
 	"github.com/gin-gonic/gin"
 )
 
-var categories map[string]structs.Category
+func LoadCategories(app *structs.Application) {
 
-func LoadCategories() {
-	logger := loggers.SetupLogger()
-	data, err := ioutil.ReadFile("buttons.json")
+	data, err := os.ReadFile("buttons.json")
 	if err != nil {
-		logger.Fatalf("Error reading JSON file: %v", err)
+		app.Log.Errorf("Error reading JSON file: %v", err)
 	}
-	if err = json.Unmarshal(data, &categories); err != nil {
-		logger.Fatalf("Error unmarshalling JSON: %v", err)
+	if err = json.Unmarshal(data, &structs.Categories); err != nil {
+		app.Log.Errorf("Error unmarshalling JSON: %v", err)
 	}
 }
 
@@ -36,11 +33,11 @@ func saveCategories(c *gin.Context) {
 		return
 	}
 
-	if err := ioutil.WriteFile("buttons.json", data, 0644); err != nil {
+	if err = os.WriteFile("buttons.json", data, 0644); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	categories = newCategories
+	structs.Categories = newCategories
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }

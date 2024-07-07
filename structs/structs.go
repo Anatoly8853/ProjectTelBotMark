@@ -1,5 +1,11 @@
 package structs
 
+import `github.com/gookit/slog`
+
+type Application struct {
+	Log *slog.Logger
+}
+
 type UserBlack struct {
 	UserName  string `json:"user_name,omitempty"`
 	UserBlack int    `json:"user_black,omitempty"`
@@ -39,7 +45,7 @@ type Category struct {
 }
 
 // Categories Распаковка данных.
-var Categories map[string]Category
+var Categories = make(map[string]Category)
 
 // Baskets карта для хранения данных о покупках для каждого пользователя.
 var Baskets = make(map[int64][]Purchase)

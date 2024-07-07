@@ -5,7 +5,7 @@ import (
 	"ProjectTelBotMark/dataSources"
 	"ProjectTelBotMark/loggers"
 	"ProjectTelBotMark/reminders"
-	"ProjectTelBotMark/routers"
+	`ProjectTelBotMark/routers`
 	"ProjectTelBotMark/structs"
 	"encoding/json"
 	"errors"
@@ -13,36 +13,50 @@ import (
 	"regexp"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"github.com/gookit/slog"
 	"github.com/joho/godotenv"
 )
 
-var logger *slog.Logger // Глобальный логгер docs.
+func SetupApplication() *structs.Application {
+	// Настройка логгера перед его инициализацией
+	loggers.SetLogConsole(false) // Логи будут записываться в файл
+	loggers.SetIsDebugMode(true)
+	loggers.SetIsInfoMode(true)
+	loggers.SetIsWarnMode(true)
+	// Настраиваем логгер
+	logger := loggers.SetupLogger()
+	// Создаем экземпляр Application с настроенным логгером
+	app = &structs.Application{Log: logger}
+	return app
+}
+
+//var logger *slog.Logger
+var app *structs.Application
+
 var bot *tgbotapi.BotAPI
 
 func main() {
 
-	// Настраиваем логгер.
-	logger = loggers.SetupLogger()
+	// Настраиваем логгер
+	app = SetupApplication()
 
 	// Открываем соединение с базой данных SQLite.
 	var err error
 
-	dataSources.InitDB()
-	defer dataSources.CloseDB()
+	dataSources.InitDB(app)
+	defer dataSources.CloseDB(app)
 
 	// Загружаем токен бота из файла .env
 	err = godotenv.Load()
 	if err != nil {
 
-		logger.Fatalf("Не удалось открыть файл .env: %v", err)
+		app.Log.Fatalf("Не удалось открыть файл .env: %v", err)
 
 	}
 
 	bot, err = tgbotapi.NewBotAPI(os.Getenv("TELEGRAM_TOKEN"))
 	if err != nil {
 
-		logger.Fatalf("Неn токена TELEGRAM_TOKEN: %v", err)
+		app.Log.Fatalf("Нет токена TELEGRAM_TOKEN: %v", err)
 
 	}
 
@@ -50,7 +64,7 @@ func main() {
 	jsonData, er := os.ReadFile("data.json")
 	if er != nil {
 
-		logger.Fatalf("Ошибка чтения файла JSON: %v", er)
+		app.Log.Fatalf("Ошибка чтения файла JSON: %v", er)
 
 	}
 
@@ -58,7 +72,7 @@ func main() {
 	err = json.Unmarshal(jsonData, &structs.Categories)
 	if err != nil {
 
-		logger.Fatalf("Ошибка распаковки JSON: %v", err)
+		app.Log.Fatalf("Ошибка распаковки JSON: %v", err)
 
 	}
 
@@ -66,7 +80,7 @@ func main() {
 
 	_, err = dataSources.GetUsers()
 	if err != nil {
-		logger.Errorf("Error getting users: %v", err)
+		app.Log.Errorf("Error getting users: %v", err)
 		return
 	}
 
@@ -74,19 +88,20 @@ func main() {
 
 	dataSources.StartBackupRoutine()
 
-	routers.LoadCategories()
+	routers.LoadCategories(app)
 
 	// Запуск ежедневной проверки базы данных
 	reminders.StartDailyCheck(bot)
 
-	routers.GinRouter(bot)
+	// Запускаем сервер
+	routers.GinRouter(app, bot)
 
 }
 
 // createCategoryMessage Вывод изображения продуктов и кнопки фасовки продукта.
 func createCategoryMessage(update tgbotapi.Update, categoryName string) error {
 	if update.Message.Chat.ID == 0 {
-		logger.Errorf("нет данных для обработки update.Message.Chat.ID = %v ", update.Message.Chat.ID)
+		app.Log.Errorf("нет данных для обработки update.Message.Chat.ID = %v ", update.Message.Chat.ID)
 		er := "нет данных для обработки update.Message.Chat.ID"
 		return errors.New(er)
 	}
@@ -108,7 +123,7 @@ func createCategoryMessage(update tgbotapi.Update, categoryName string) error {
 		keyboardReply, err := CreateCategoryKeyboardReply(categoryData.CategoryName)
 		if err != nil {
 			// Обработка ошибки
-			logger.Errorf("ошибка %v", err)
+			app.Log.Errorf("ошибка %v", err)
 			return err
 		}
 
@@ -120,7 +135,7 @@ func createCategoryMessage(update tgbotapi.Update, categoryName string) error {
 		// Отправляем сообщение с клавиатурой
 		sentMsg, err := bot.Send(msg)
 		if err != nil {
-			logger.Errorf("Ошибка при отправке сообщения: %v", err)
+			app.Log.Errorf("Ошибка при отправке сообщения: %v", err)
 			return err
 		} else {
 			messagesToDelete[chatID] = append(messagesToDelete[chatID], sentMsg.MessageID)
@@ -135,7 +150,7 @@ func createCategoryMessage(update tgbotapi.Update, categoryName string) error {
 		// Отправляем медиагруппу
 		sentMsgs, err := bot.SendMediaGroup(mediaGroup)
 		if err != nil {
-			logger.Errorf("Ошибка при отправке сообщения медиагруппу: %v", err)
+			app.Log.Errorf("Ошибка при отправке сообщения медиагруппу: %v", err)
 			return err
 		} else {
 			// Сохраняем идентификатор сообщения для последующего удаления
@@ -148,7 +163,7 @@ func createCategoryMessage(update tgbotapi.Update, categoryName string) error {
 		keyboard, err := CreateCategoryKeyboard(categoryData.CategoryName)
 		if err != nil {
 			// Обработка ошибки
-			logger.Errorf("Ошибка не удается создать кнопки клавиатуры %v", err)
+			app.Log.Errorf("Ошибка не удается создать кнопки клавиатуры %v", err)
 			return err
 		}
 
@@ -159,7 +174,7 @@ func createCategoryMessage(update tgbotapi.Update, categoryName string) error {
 		// Отправляем сообщение с клавиатурой
 		sentMsg, err := bot.Send(msg)
 		if err != nil {
-			logger.Errorf("Ошибка при отправке сообщения: %v", err)
+			app.Log.Errorf("Ошибка при отправке сообщения: %v", err)
 			return err
 		} else {
 			// Сохраняем идентификатор сообщения для последующего удаления
@@ -174,7 +189,7 @@ func createCategoryMessage(update tgbotapi.Update, categoryName string) error {
 // SeparateEmojiAndText Паттерн для поиска эмотзи update.Message.Text.
 func SeparateEmojiAndText(text string) (string, string) {
 	// Паттерн для поиска эмотзи
-	emojiPattern := regexp.MustCompile(`[\p{So}]`)
+	emojiPattern := regexp.MustCompile(`\p{So}`)
 	// Ищем все эмотзи в тексте
 	emojis := emojiPattern.FindAllString(text, -1)
 

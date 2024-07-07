@@ -13,19 +13,31 @@ import (
 	"regexp"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	`github.com/gookit/slog`
 	"github.com/joho/godotenv"
 )
 
-var logger *slog.Logger
+func SetupApplication() *structs.Application {
+	// Настройка логгера перед его инициализацией
+	loggers.SetLogConsole(false) // Логи будут записываться в файл
+	loggers.SetIsDebugMode(true)
+	loggers.SetIsInfoMode(true)
+	loggers.SetIsWarnMode(true)
+	// Настраиваем логгер
+	logger := loggers.SetupLogger()
+	// Создаем экземпляр Application с настроенным логгером
+	app = &structs.Application{Log: logger}
+	return app
+}
+
+//var logger *slog.Logger
+var app *structs.Application
 
 var bot *tgbotapi.BotAPI
 
 func main() {
 
 	// Настраиваем логгер
-	logger = loggers.SetupLogger()
-	app := &structs.Application{Log: logger}
+	app = SetupApplication()
 
 	// Открываем соединение с базой данных SQLite.
 	var err error
@@ -89,7 +101,7 @@ func main() {
 // createCategoryMessage Вывод изображения продуктов и кнопки фасовки продукта.
 func createCategoryMessage(update tgbotapi.Update, categoryName string) error {
 	if update.Message.Chat.ID == 0 {
-		logger.Errorf("нет данных для обработки update.Message.Chat.ID = %v ", update.Message.Chat.ID)
+		app.Log.Errorf("нет данных для обработки update.Message.Chat.ID = %v ", update.Message.Chat.ID)
 		er := "нет данных для обработки update.Message.Chat.ID"
 		return errors.New(er)
 	}
@@ -111,7 +123,7 @@ func createCategoryMessage(update tgbotapi.Update, categoryName string) error {
 		keyboardReply, err := CreateCategoryKeyboardReply(categoryData.CategoryName)
 		if err != nil {
 			// Обработка ошибки
-			logger.Errorf("ошибка %v", err)
+			app.Log.Errorf("ошибка %v", err)
 			return err
 		}
 
@@ -123,7 +135,7 @@ func createCategoryMessage(update tgbotapi.Update, categoryName string) error {
 		// Отправляем сообщение с клавиатурой
 		sentMsg, err := bot.Send(msg)
 		if err != nil {
-			logger.Errorf("Ошибка при отправке сообщения: %v", err)
+			app.Log.Errorf("Ошибка при отправке сообщения: %v", err)
 			return err
 		} else {
 			messagesToDelete[chatID] = append(messagesToDelete[chatID], sentMsg.MessageID)
@@ -138,7 +150,7 @@ func createCategoryMessage(update tgbotapi.Update, categoryName string) error {
 		// Отправляем медиагруппу
 		sentMsgs, err := bot.SendMediaGroup(mediaGroup)
 		if err != nil {
-			logger.Errorf("Ошибка при отправке сообщения медиагруппу: %v", err)
+			app.Log.Errorf("Ошибка при отправке сообщения медиагруппу: %v", err)
 			return err
 		} else {
 			// Сохраняем идентификатор сообщения для последующего удаления
@@ -151,7 +163,7 @@ func createCategoryMessage(update tgbotapi.Update, categoryName string) error {
 		keyboard, err := CreateCategoryKeyboard(categoryData.CategoryName)
 		if err != nil {
 			// Обработка ошибки
-			logger.Errorf("Ошибка не удается создать кнопки клавиатуры %v", err)
+			app.Log.Errorf("Ошибка не удается создать кнопки клавиатуры %v", err)
 			return err
 		}
 
@@ -162,7 +174,7 @@ func createCategoryMessage(update tgbotapi.Update, categoryName string) error {
 		// Отправляем сообщение с клавиатурой
 		sentMsg, err := bot.Send(msg)
 		if err != nil {
-			logger.Errorf("Ошибка при отправке сообщения: %v", err)
+			app.Log.Errorf("Ошибка при отправке сообщения: %v", err)
 			return err
 		} else {
 			// Сохраняем идентификатор сообщения для последующего удаления

@@ -11,19 +11,38 @@ import (
 	"github.com/gookit/slog/handler"
 )
 
-// Глобальные переменные.
-const (
-	logConsole  = true // Переключатель вывода логов в консоль.
-	IsDebugMode = true // Переключатель режима отладки.
+// Глобальные переменные с начальными значениями.
+var (
+	logConsole  = true
+	IsDebugMode = true
 	IsInfoMode  = true
 	IsWarnMode  = true
 )
+
+// SetLogConsole устанавливает значение для logConsole.
+func SetLogConsole(value bool) {
+	logConsole = value
+}
+
+// SetIsDebugMode устанавливает значение для IsDebugMode.
+func SetIsDebugMode(value bool) {
+	IsDebugMode = value
+}
+
+// SetIsInfoMode устанавливает значение для IsInfoMode.
+func SetIsInfoMode(value bool) {
+	IsInfoMode = value
+}
+
+// SetIsWarnMode устанавливает значение для IsWarnMode.
+func SetIsWarnMode(value bool) {
+	IsWarnMode = value
+}
 
 // CustomFormatter - кастомный формат для изменения формата даты.
 type CustomFormatter struct{}
 
 // Format реализует метод интерфейса slog.Formatter.
-/* funcName := getFunctionName(caller.PC)  Получаем имя функции */
 func (f *CustomFormatter) Format(record *slog.Record) ([]byte, error) {
 	//formattedTime := record.Time.Format("15:04:05 02.01.2006")
 	caller := record.Caller
@@ -41,18 +60,7 @@ func getFunctionName(pc uintptr) string {
 	}
 
 	// Извлекаем только короткое имя функции
-	/*
-		fullName := fn.Name()
-		parts := strings.Split(fullName, "/")
-		shortName := parts[len(parts)-1]
-
-		if dotIndex := strings.LastIndex(shortName, "."); dotIndex != -1 {
-			shortName = shortName[dotIndex+1:]
-		}
-
-		return shortName
-	*/
-	return fn.Name()
+	return filepath.Base(fn.Name())
 }
 
 // SetupLogger настраивает и возвращает логгер.

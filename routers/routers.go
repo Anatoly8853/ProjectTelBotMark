@@ -15,7 +15,6 @@ import (
 	"github.com/gin-gonic/gin"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/goccy/go-json"
-	`github.com/gookit/slog`
 )
 
 /*
@@ -37,12 +36,8 @@ OrderDir:  "ASC",
 orders, err := GetOrdersWithFilters(db, params)
 */
 
-type Application struct {
-	Log *slog.Logger
-}
-
 // Data представляет все данные из JSON файла
-type Data map[string]structs.Category
+//type Data map[string]structs.Category
 
 // router создаем роутер.
 var router *gin.Engine
@@ -52,12 +47,13 @@ func GinRouter(app *structs.Application, bot *tgbotapi.BotAPI) {
 
 	gin.SetMode(gin.ReleaseMode)
 	router = gin.Default()
-	router.SetFuncMap(template.FuncMap{
+	funcMap := template.FuncMap{
 		"toJSON": func(v interface{}) string {
 			a, _ := json.Marshal(v)
 			return string(a)
 		},
-	})
+	}
+	router.SetFuncMap(funcMap)
 	router.Static("/assets/", "front/")
 	router.Static("/jpeg", "./jpeg") // Новый маршрут для папки jpeg
 	router.LoadHTMLGlob("html/templates/*")
@@ -76,7 +72,6 @@ func GinRouter(app *structs.Application, bot *tgbotapi.BotAPI) {
 		})
 	})
 	router.POST("/jsonred/save", saveCategories)
-	app.Log.Info("Starting server on port 8080")
 	err := router.Run(":8090")
 	if err != nil {
 		app.Log.Errorf("GinRouter %v", err)
@@ -204,7 +199,7 @@ func blackList(app *structs.Application) gin.HandlerFunc {
 // handlerInfo код страницы инфо.
 func handlerInfo(c *gin.Context) {
 
-	c.HTML(200, "upload.html", gin.H{
+	c.HTML(http.StatusOK, "upload.html", gin.H{
 		"Title":    "Заказы Салаты корейские",
 		"Classupl": "current"})
 
@@ -347,12 +342,7 @@ func handlerIndex(app *structs.Application) gin.HandlerFunc {
 
 		now := time.Now().Format("02.01.2006") // формат даты в виде DD.MM.YYYY
 
-		params := structs.QueryParams{
-			//StartDate: time.Now().AddDate(0, 0, -1).Format("2006-01-02"),
-			//EndDate:   time.Now().Format("2006-01-02"),
-			OrderBy:  "tg_user_orders_date.delivery_date",
-			OrderDir: "DESC",
-		}
+		params := getQueryParams()
 
 		orders, err := dataSources.GetOrdersWithFilters(params)
 		if err != nil {
@@ -426,13 +416,7 @@ func handlerIndex(app *structs.Application) gin.HandlerFunc {
 			}
 		}
 
-		rty := mergeSlidesWithDeliveryDate(payloads, webnums)
-
-		c.HTML(http.StatusOK, "index.html", gin.H{
-			"Title":    "Заказы Салаты корейские",
-			"Classind": "current",
-			"payload":  rty})
-		app.Log.Info("Стартовая страница")
+		renderHTML(c, payloads, webnums)
 	}
 }
 
@@ -450,4 +434,19 @@ func mergeSlidesWithDeliveryDate(orders []structs.OrderInfo, nums []structs.Webn
 	}
 
 	return result
+}
+
+func getQueryParams() structs.QueryParams {
+	return structs.QueryParams{
+		OrderBy:  "tg_user_orders_date.delivery_date",
+		OrderDir: "DESC",
+	}
+}
+
+func renderHTML(c *gin.Context, payloads []structs.OrderInfo, webnums []structs.Webnums) {
+	rty := mergeSlidesWithDeliveryDate(payloads, webnums)
+	c.HTML(http.StatusOK, "index.html", gin.H{
+		"Title":    "Заказы Салаты корейские",
+		"Classind": "current",
+		"payload":  rty})
 }

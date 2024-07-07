@@ -660,7 +660,7 @@ func GetUsers() ([]structs.User, error) {
 	var users []structs.User
 	for rows.Next() {
 		var user structs.User
-		err := rows.Scan(&user.UserID, &user.UserBlack.UserName, &user.UserBlack.UserBlack)
+		err = rows.Scan(&user.UserID, &user.UserBlack.UserName, &user.UserBlack.UserBlack)
 		if err != nil {
 			logger.Errorf("Error scanning rows: %v", err)
 			return nil, err

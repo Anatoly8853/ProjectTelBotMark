@@ -2,7 +2,6 @@ package reminders
 
 import (
 	"ProjectTelBotMark/dataSources"
-	"ProjectTelBotMark/loggers"
 	"ProjectTelBotMark/structs"
 	"fmt"
 	"os"
@@ -13,9 +12,7 @@ import (
 )
 
 // CheckDatabase функция для проверки базы данных на совпадение по дате.
-func CheckDatabase(bot *tgbotapi.BotAPI) {
-	// Настраиваем логгер
-	logger := loggers.SetupLogger()
+func CheckDatabase(app *structs.Application, bot *tgbotapi.BotAPI) {
 
 	now := time.Now().Format("02.01.2006") // формат даты в виде DD.MM.YYYY
 
@@ -27,9 +24,9 @@ func CheckDatabase(bot *tgbotapi.BotAPI) {
 		//OrderDir: "ASC",
 	}
 
-	orders, err := dataSources.GetOrdersWithFilters(params)
+	orders, err := dataSources.GetOrdersWithFilters(app, params)
 	if err != nil {
-		logger.Errorf("ошибка запрос к базе %v", err)
+		app.Log.Errorf("ошибка запрос к базе %v", err)
 		return
 	}
 
@@ -44,7 +41,7 @@ func CheckDatabase(bot *tgbotapi.BotAPI) {
 			// Парсинг строки времени в тип time.Time
 			t, err := time.Parse(time.RFC3339, order.DeliveryDate)
 			if err != nil {
-				logger.Errorf("Ошибка парсинга строки времени: %v", err)
+				app.Log.Errorf("Ошибка парсинга строки времени: %v", err)
 				return
 			}
 
@@ -74,51 +71,21 @@ func CheckDatabase(bot *tgbotapi.BotAPI) {
 
 					// Отправляем сообщение в групповой чат
 					// Получите ID группового чата из переменной окружения
-					groupChatIDStr := os.Getenv("TELEGRAM_GROUPCHATID")
-					groupChatID, err := strconv.ParseInt(groupChatIDStr, 10, 64)
-
-					if err != nil {
-						logger.Errorf("Ошибка преобразования ID группового чата: %v", err)
-						return
-					}
-
-					message := tgbotapi.NewMessage(groupChatID, msgText)
-					_, err = bot.Send(message)
-					if err != nil {
-						logger.Errorf("%v", err)
-						return
-					}
 
 				}
 			}
 		}
+		if msgText != "" {
+			sendOrderMessage(bot, app, msgText)
+		}
 	} else {
-		var msgText string
-		msgText += "На "
-		msgText += now
-		msgText += " заказов нет отдыхаем"
-
-		// Отправляем сообщение в групповой чат
-		// Получите ID группового чата из переменной окружения
-		groupChatIDStr := os.Getenv("TELEGRAM_GROUPCHATID")
-		groupChatID, err := strconv.ParseInt(groupChatIDStr, 10, 64)
-
-		if err != nil {
-			logger.Errorf("Ошибка преобразования ID группового чата: %v", err)
-			return
-		}
-
-		message := tgbotapi.NewMessage(groupChatID, msgText)
-		_, err = bot.Send(message)
-		if err != nil {
-			logger.Errorf("%v", err)
-			return
-		}
+		msgText := fmt.Sprintf("На %s заказов нет, отдыхаем", now)
+		sendOrderMessage(bot, app, msgText)
 	}
 }
 
 // StartDailyCheck запускает Go-рутину для ежедневной проверки базы данных.
-func StartDailyCheck(bot *tgbotapi.BotAPI) {
+func StartDailyCheck(app *structs.Application, bot *tgbotapi.BotAPI) {
 	go func() {
 		for {
 			now := time.Now()
@@ -137,8 +104,24 @@ func StartDailyCheck(bot *tgbotapi.BotAPI) {
 			<-timer.C
 
 			// Выполняем проверку базы данных
-			CheckDatabase(bot)
+			CheckDatabase(app, bot)
 
 		}
 	}()
+}
+
+// sendOrderMessage отправляет сообщение с заказом
+func sendOrderMessage(bot *tgbotapi.BotAPI, app *structs.Application, msgText string) {
+	groupChatIDStr := os.Getenv("TELEGRAM_GROUPCHATID")
+	groupChatID, err := strconv.ParseInt(groupChatIDStr, 10, 64)
+	if err != nil {
+		app.Log.Errorf("Ошибка преобразования ID группового чата: %v", err)
+		return
+	}
+
+	message := tgbotapi.NewMessage(groupChatID, msgText)
+	_, err = bot.Send(message)
+	if err != nil {
+		app.Log.Errorf("%v", err)
+	}
 }

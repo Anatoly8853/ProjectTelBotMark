@@ -1,7 +1,6 @@
 package bychat
 
 import (
-	"ProjectTelBotMark/loggers"
 	"ProjectTelBotMark/structs"
 	"errors"
 	"fmt"
@@ -11,29 +10,22 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/gookit/slog"
 )
-
-// Настраиваем логгер
-var logger *slog.Logger // Глобальный логгер
 
 // Orders Map для хранения данных по chatID.
 var Orders = make(map[int64]structs.OrderDb)
 
 // GetFieldByChatID для получения значения поля по chatID и имени поля.
-func GetFieldByChatID(chatID int64, fieldName string) (interface{}, error) {
-	// Настраиваем логгер
-	logger = loggers.SetupLogger()
+func GetFieldByChatID(app *structs.Application, chatID int64, fieldName string) (interface{}, error) {
 
 	if chatID == 0 {
-		logger.Errorf("нет данных для обработки chatID = %v", chatID)
+		app.Log.Errorf("нет данных для обработки chatID = %v", chatID)
 		return nil, errors.New("нет chatID")
 	}
 	order, exists := Orders[chatID]
 
 	if !exists {
-		logger.Errorf("заказ с таким chatID = %v не найден", chatID)
+		app.Log.Errorf("заказ с таким chatID = %v не найден", chatID)
 		return nil, errors.New("заказ с таким chatID не найден")
 	}
 
@@ -41,7 +33,7 @@ func GetFieldByChatID(chatID int64, fieldName string) (interface{}, error) {
 	fieldVal := val.FieldByName(fieldName)
 
 	if !fieldVal.IsValid() {
-		logger.Error("такого поля не существует")
+		app.Log.Error("такого поля не существует")
 		return nil, errors.New("такого поля не существует")
 	}
 
@@ -49,9 +41,7 @@ func GetFieldByChatID(chatID int64, fieldName string) (interface{}, error) {
 }
 
 // FormatDateString для очистки строки от пробелов и знаков препинания, а также форматирования даты.
-func FormatDateString(dateStr string) (string, string) {
-	// Настраиваем логгер
-	logger = loggers.SetupLogger()
+func FormatDateString(app *structs.Application, dateStr string) (string, string) {
 
 	// Удаляем все пробелы и знаки препинания, кроме точки
 	re := regexp.MustCompile(`[^\d.]`)
@@ -62,7 +52,7 @@ func FormatDateString(dateStr string) (string, string) {
 	if len(parts) != 3 {
 
 		err := fmt.Errorf("")
-		logger.Infof("неправильный формат даты %v ошибка %v", parts, err)
+		app.Log.Infof("неправильный формат даты %v ошибка %v", parts, err)
 		return "", "неправильный формат даты"
 
 	}
@@ -71,7 +61,7 @@ func FormatDateString(dateStr string) (string, string) {
 	day, err := strconv.Atoi(parts[0])
 	if err != nil {
 
-		logger.Infof("неправильный формат дня %v ошибка %v", day, err)
+		app.Log.Infof("неправильный формат дня %v ошибка %v", day, err)
 		return "", "неправильный формат дня"
 
 	}
@@ -79,7 +69,7 @@ func FormatDateString(dateStr string) (string, string) {
 	month, err := strconv.Atoi(parts[1])
 	if err != nil {
 
-		logger.Infof("неправильный формат месяца %v ошибка %v", month, err)
+		app.Log.Infof("неправильный формат месяца %v ошибка %v", month, err)
 		return "", "неправильный формат месяца"
 
 	}
@@ -87,7 +77,7 @@ func FormatDateString(dateStr string) (string, string) {
 	year, err := strconv.Atoi(parts[2])
 	if err != nil {
 
-		logger.Infof("неправильный формат года %v ошибка %v", year, err)
+		app.Log.Infof("неправильный формат года %v ошибка %v", year, err)
 		return "", "неправильный формат года"
 
 	}
@@ -99,7 +89,7 @@ func FormatDateString(dateStr string) (string, string) {
 	parsedDate, err := time.Parse("02.01.2006", formattedDate)
 	if err != nil {
 
-		logger.Infof("неправильный формат даты %v ошибка %v", formattedDate, err)
+		app.Log.Infof("неправильный формат даты %v ошибка %v", formattedDate, err)
 		return "", "неправильный формат даты"
 
 	}
@@ -113,7 +103,7 @@ func FormatDateString(dateStr string) (string, string) {
 	if year != currentYear {
 
 		err = fmt.Errorf("год должен быть текущим")
-		logger.Infof("год %v ошибка %v", year, err)
+		app.Log.Infof("год %v ошибка %v", year, err)
 		return "", "год должен быть текущим"
 
 	}
@@ -122,7 +112,7 @@ func FormatDateString(dateStr string) (string, string) {
 	if month != currentMonth && month != currentMonth+1 {
 
 		err = fmt.Errorf("месяц должен быть текущим или следующим")
-		logger.Infof("месяц %v ошибка %v", month, err)
+		app.Log.Infof("месяц %v ошибка %v", month, err)
 		return "", "месяц должен быть текущим или следующим"
 
 	}
@@ -131,7 +121,7 @@ func FormatDateString(dateStr string) (string, string) {
 	if parsedDate.Before(currentTime) || parsedDate.Equal(currentTime) {
 
 		err = fmt.Errorf("дата не должна быть прошедшей или сегодняшней")
-		logger.Infof("дата %v ошибка %v", currentTime, err)
+		app.Log.Infof("дата %v ошибка %v", currentTime, err)
 		return "", "дата не должна быть прошедшей или сегодняшней"
 
 	}
@@ -140,9 +130,7 @@ func FormatDateString(dateStr string) (string, string) {
 }
 
 // FormatPhoneNumber Функция для проверки и форматирования номера телефона
-func FormatPhoneNumber(phone string) (string, string) {
-	// Настраиваем логгер
-	logger = loggers.SetupLogger()
+func FormatPhoneNumber(app *structs.Application, phone string) (string, string) {
 
 	// Удаляем все пробелы и знаки препинания
 	re := regexp.MustCompile(`[^\d+]`)
@@ -168,7 +156,7 @@ func FormatPhoneNumber(phone string) (string, string) {
 		if len(cleaned) != 12 {
 
 			err := fmt.Errorf("номер должен содержать 10 цифр после +7 ")
-			logger.Infof("номер телефона %v ошибка %v", cleaned, err)
+			app.Log.Infof("номер телефона %v ошибка %v", cleaned, err)
 			return "", "номер должен содержать 10 цифр после +7"
 
 		}
@@ -176,7 +164,7 @@ func FormatPhoneNumber(phone string) (string, string) {
 	} else {
 
 		err := fmt.Errorf("номер должен начинаться с +7 ")
-		logger.Infof("номер телефона %v ошибка %v", cleaned, err)
+		app.Log.Infof("номер телефона %v ошибка %v", cleaned, err)
 		return "", "номер должен начинаться с +7"
 
 	}
@@ -184,7 +172,7 @@ func FormatPhoneNumber(phone string) (string, string) {
 	if cleaned == "+79345678901" {
 
 		err := fmt.Errorf("это номер телефона для примера введите свой номер телефона ")
-		logger.Infof("%v", err)
+		app.Log.Infof("%v", err)
 		return "", "это номер телефона для примера введите свой номер телефона"
 
 	}

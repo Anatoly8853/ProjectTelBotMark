@@ -36,9 +36,6 @@ OrderDir:  "ASC",
 orders, err := GetOrdersWithFilters(db, params)
 */
 
-// Data представляет все данные из JSON файла
-//type Data map[string]structs.Category
-
 // router создаем роутер.
 var router *gin.Engine
 
@@ -90,7 +87,7 @@ func handlerHighchartsData(app *structs.Application) gin.HandlerFunc {
 			OrderDir: "ASC",
 		}
 
-		orders, err := dataSources.GetOrdersWithFilters(params)
+		orders, err := dataSources.GetOrdersWithFilters(app, params)
 		if err != nil {
 			app.Log.Errorf("ошибка запрос к базе %v", err)
 			return
@@ -151,14 +148,14 @@ func updateBlackList(app *structs.Application) gin.HandlerFunc {
 			userBlack = 1
 		}
 
-		err = dataSources.UpdateUserBlack(userID, userBlack)
+		err = dataSources.UpdateUserBlack(app, userID, userBlack)
 		if err != nil {
 			c.String(http.StatusInternalServerError, fmt.Sprintf("Error updating user: %v", err))
 			app.Log.Errorf("Error updating user: %v", err)
 			return
 		}
 
-		users, err := dataSources.GetUsers()
+		users, err := dataSources.GetUsers(app)
 		if err != nil {
 			app.Log.Errorf("Error getting users: %v", err)
 			return
@@ -177,7 +174,7 @@ func updateBlackList(app *structs.Application) gin.HandlerFunc {
 func blackList(app *structs.Application) gin.HandlerFunc {
 	return func(c *gin.Context) {
 
-		users, err := dataSources.GetUsers()
+		users, err := dataSources.GetUsers(app)
 		if err != nil {
 			app.Log.Errorf("Error getting users: %v", err)
 			c.HTML(http.StatusOK, "user_black.html", gin.H{
@@ -344,7 +341,7 @@ func handlerIndex(app *structs.Application) gin.HandlerFunc {
 
 		params := getQueryParams()
 
-		orders, err := dataSources.GetOrdersWithFilters(params)
+		orders, err := dataSources.GetOrdersWithFilters(app, params)
 		if err != nil {
 			app.Log.Errorf("ошибка запрос к базе %v", err)
 			return

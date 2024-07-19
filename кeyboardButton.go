@@ -158,7 +158,7 @@ func getMonthName(monthStr string) string {
 
 	monthName, exists := monthMap[monthStr]
 	if !exists {
-		logger.Errorf("invalid month format: %s", monthStr)
+		app.Log.Errorf("invalid month format: %s", monthStr)
 		return ""
 	}
 

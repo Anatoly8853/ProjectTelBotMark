@@ -2,11 +2,12 @@ package dataSources
 
 import (
 	`ProjectTelBotMark/bychat`
-	"ProjectTelBotMark/loggers"
+
 	"ProjectTelBotMark/structs"
 	"database/sql"
 	"fmt"
 	"io"
+
 	"os"
 	"time"
 
@@ -233,9 +234,7 @@ func UserID(app *structs.Application) []structs.User {
 }
 
 // getOrInsertValues Функция для получения или вставки значений в таблицы базы данных.
-func getOrInsertValues(tx *sql.Tx, tables []string, columns []string, values []interface{}) ([]int64, error) {
-	// Настраиваем логгер
-	logger := loggers.SetupLogger()
+func getOrInsertValues(app *structs.Application, tx *sql.Tx, tables []string, columns []string, values []interface{}) ([]int64, error) {
 
 	var ids []int64
 
@@ -272,7 +271,7 @@ func getOrInsertValues(tx *sql.Tx, tables []string, columns []string, values []i
 		err := tx.QueryRow(selectQuery, values...).Scan(&idd)
 
 		if err != nil && err != sql.ErrNoRows {
-			logger.Errorf("Ошибка при выборе строки: %v", err)
+			app.Log.Errorf("Ошибка при выборе строки: %v", err)
 			return nil, err
 		}
 
@@ -282,7 +281,7 @@ func getOrInsertValues(tx *sql.Tx, tables []string, columns []string, values []i
 			res, err := tx.Exec(insertQuery, values...)
 			if err != nil {
 
-				logger.Errorf("Ошибка при вставке строки: %v", err)
+				app.Log.Errorf("Ошибка при вставке строки: %v", err)
 				return nil, err
 
 			}
@@ -290,7 +289,7 @@ func getOrInsertValues(tx *sql.Tx, tables []string, columns []string, values []i
 			idd, err = res.LastInsertId()
 			if err != nil {
 
-				logger.Errorf("Ошибка при вставке строки: %v", err)
+				app.Log.Errorf("Ошибка при вставке строки: %v", err)
 				return nil, err
 
 			}
@@ -307,7 +306,7 @@ func getOrInsertValues(tx *sql.Tx, tables []string, columns []string, values []i
 			query := fmt.Sprintf("SELECT id FROM %s WHERE %s = ?", table, column)
 			err := tx.QueryRow(query, value).Scan(&idd)
 			if err != nil && err != sql.ErrNoRows {
-				logger.Errorf("Ошибка при выборе строки: %v", err)
+				app.Log.Errorf("Ошибка при выборе строки: %v", err)
 				return nil, err
 			}
 
@@ -315,13 +314,13 @@ func getOrInsertValues(tx *sql.Tx, tables []string, columns []string, values []i
 				insertQuery := fmt.Sprintf("INSERT INTO %s (%s) VALUES (?)", table, column)
 				res, err := tx.Exec(insertQuery, value)
 				if err != nil {
-					logger.Errorf("Ошибка при вставке строки: %v", err)
+					app.Log.Errorf("Ошибка при вставке строки: %v", err)
 					return nil, err
 				}
 
 				idd, err = res.LastInsertId()
 				if err != nil {
-					logger.Errorf("Ошибка при вставке строки: %v", err)
+					app.Log.Errorf("Ошибка при вставке строки: %v", err)
 					return nil, err
 				}
 			}
@@ -334,78 +333,37 @@ func getOrInsertValues(tx *sql.Tx, tables []string, columns []string, values []i
 }
 
 // ProcessOrder Функция для парсинга деталей заказа и добавления в базу данных.
-func ProcessOrder(db *sql.DB, update tgbotapi.Update) error {
-	// Настраиваем логгер
-	logger := loggers.SetupLogger()
+func ProcessOrder(app *structs.Application, update tgbotapi.Update) error {
 
 	userID := update.CallbackQuery.Message.Chat.ID
 	userName := update.CallbackQuery.From.UserName
 
-	logger.Infof("userName = %s", userName)
+	app.Log.Infof("userName = %s", userName)
 
 	// Регулярные выражения для извлечения информации
-	var phoneNumber string
-	var deliveryAddress string
-	var deliveryDate string
-	var fullName string
-	var totalCost int
+	fields := []string{"PhoneNumber", "DeliveryAddress", "DeliveryDate", "FullName"}
+	values := make(map[string]string)
 
-	// Извлечение основной информации о заказе
-	//"Номер телефона: [ваш номер]\n" +
-	if field, err := bychat.GetFieldByChatID(userID, "PhoneNumber"); err == nil {
-		str, _ := field.(string)
-		phoneNumber = str
-	}
-
-	//"Адрес доставки: [ваш адрес]\n" +
-	if field, err := bychat.GetFieldByChatID(userID, "DeliveryAddress"); err == nil {
-		str, _ := field.(string)
-		deliveryAddress = str
-	}
-
-	//"Дата доставки: [желаемая дата]\n" +
-	if field, err := bychat.GetFieldByChatID(userID, "DeliveryDate"); err == nil {
-		str, _ := field.(string)
-		deliveryDate = str
-	}
-
-	//"ФИО: [ваше имя и фамилия]\n\n" +
-	if field, err := bychat.GetFieldByChatID(userID, "FullName"); err == nil {
-		str, _ := field.(string)
-		fullName = str
+	for _, field := range fields {
+		if value, err := bychat.GetFieldByChatID(app, userID, field); err == nil {
+			values[field] = value.(string)
+		} else {
+			app.Log.Errorf("Error getting field %s: %v", field, err)
+			return err
+		}
 	}
 
 	// Получение содержимого корзины
 	purchases := structs.Baskets[userID]
 
-	groupedPurchases := make(map[string]structs.Purchase)
-	for _, p := range purchases {
+	groupedPurchases := groupPurchases(purchases)
 
-		key := p.Item
-		if existing, found := groupedPurchases[key]; found {
-
-			existing.Quantity += p.Quantity
-			existing.Cost += p.Cost
-			groupedPurchases[key] = existing
-
-		} else {
-
-			groupedPurchases[key] = p
-
-		}
-	}
-
-	for _, p := range groupedPurchases {
-
-		itemTotalCost := p.Cost // Общая стоимость для этой группы товаров
-
-		totalCost += itemTotalCost
-	}
+	totalCost := calculateTotalCost(groupedPurchases)
 
 	// Парсинг строки времени в тип time.Time
-	t, err := time.Parse("02.01.2006", deliveryDate)
+	t, err := time.Parse("02.01.2006", values["DeliveryDate"])
 	if err != nil {
-		logger.Errorf("Ошибка парсинга строки времени: %v", err)
+		app.Log.Errorf("Ошибка парсинга строки времени: %v", err)
 		return err
 	}
 
@@ -413,29 +371,29 @@ func ProcessOrder(db *sql.DB, update tgbotapi.Update) error {
 	formattedDeliveryDate := t.Format("2006-01-02")
 
 	// Начало транзакции
-	tx, err := db.Begin()
+	tx, err := DB.Begin()
 	if err != nil {
-		logger.Errorf("Error starting transaction: %v", err)
+		app.Log.Errorf("Error starting transaction: %v", err)
 		return err
 	}
 
 	defer func() {
 		if err != nil {
 			if rbErr := tx.Rollback(); rbErr != nil {
-				logger.Errorf("tx.Rollback() failed: %v", rbErr)
+				app.Log.Errorf("tx.Rollback() failed: %v", rbErr)
 			}
 		} else {
 			if cmErr := tx.Commit(); cmErr != nil {
-				logger.Errorf("tx.Commit() failed: %v", cmErr)
+				app.Log.Errorf("tx.Commit() failed: %v", cmErr)
 			}
 		}
 	}()
 
 	userBlack := 0
 
-	err = UpsertUser(tx, userID, userName, userBlack)
+	err = UpsertUser(app, tx, userID, userName, userBlack)
 	if err != nil {
-		logger.Errorf("Error upserting user: %v", err)
+		app.Log.Errorf("Error upserting user: %v", err)
 	}
 
 	// Форматирование текущей даты и времени в указанный формат
@@ -444,12 +402,12 @@ func ProcessOrder(db *sql.DB, update tgbotapi.Update) error {
 	// Вставка новой записи в tg_user_Chat_ID
 	tables := []string{"tg_user_Chat_ID", "tg_user_full_name", "tg_user_phone_number", "tg_user_delivery_address"}
 	columns := []string{"user_id", "full_name", "phone_number", "delivery_address"}
-	values := []interface{}{userID, fullName, phoneNumber, deliveryAddress}
+	valueList := []interface{}{userID, values["FullName"], values["PhoneNumber"], values["DeliveryAddress"]}
 
-	ids, err := getOrInsertValues(tx, tables, columns, values)
+	ids, err := getOrInsertValues(app, tx, tables, columns, valueList)
 	if err != nil {
 		// Обработать ошибку
-		logger.Errorf("Error inserting row: %v", err)
+		app.Log.Errorf("Error inserting row: %v", err)
 		return err
 	}
 
@@ -463,12 +421,12 @@ func ProcessOrder(db *sql.DB, update tgbotapi.Update) error {
 
 	tables = []string{"tg_user_orders_date"}
 	columns = []string{"user_id", "phone_number_id", "full_name_id", "delivery_address_id", "date_time", "delivery_date", "total_cost"}
-	values = []interface{}{existingUserID, existingPhoneID, existingFullNameID, existingAddressID, formattedDateTime, formattedDeliveryDate, totalCost}
+	valueList = []interface{}{existingUserID, existingPhoneID, existingFullNameID, existingAddressID, formattedDateTime, formattedDeliveryDate, totalCost}
 
-	ids, err = getOrInsertValues(tx, tables, columns, values)
+	ids, err = getOrInsertValues(app, tx, tables, columns, valueList)
 	if err != nil {
 		// Обработать ошибку
-		logger.Errorf("Error inserting row: %v", err)
+		app.Log.Errorf("Error inserting row: %v", err)
 		return err
 	}
 
@@ -477,7 +435,7 @@ func ProcessOrder(db *sql.DB, update tgbotapi.Update) error {
 	// Вставляем новые записи в tg_user_orders
 	stmt, err := tx.Prepare(`INSERT INTO tg_user_orders (order_id, item_name, quantity, cost) VALUES (?, ?, ?, ?)`)
 	if err != nil {
-		logger.Errorf("Error inserting row: %v", err)
+		app.Log.Errorf("Error inserting row: %v", err)
 		return err
 	}
 
@@ -491,18 +449,18 @@ func ProcessOrder(db *sql.DB, update tgbotapi.Update) error {
 		// Проверяем, существует ли пользователь с таким user_id
 		tables = []string{"tg_user_order_id"}
 		columns = []string{"item_name"}
-		values = []interface{}{itemName}
+		valueList = []interface{}{itemName}
 
-		ids, err = getOrInsertValues(tx, tables, columns, values)
+		ids, err = getOrInsertValues(app, tx, tables, columns, valueList)
 		if err != nil {
 			// Обработать ошибку
-			logger.Errorf("Error inserting row: %v", err)
+			app.Log.Errorf("Error inserting row: %v", err)
 			return err
 		}
 
 		_, err = stmt.Exec(existingOrdersDateID, ids[0], quantity, cost)
 		if err != nil {
-			logger.Errorf("Error inserting row: %v", err)
+			app.Log.Errorf("Error inserting row: %v", err)
 			return err
 		}
 	}
@@ -511,9 +469,7 @@ func ProcessOrder(db *sql.DB, update tgbotapi.Update) error {
 }
 
 // processRows функция для обработки строк результата SQL-запроса.
-func processRows(rows *sql.Rows) ([]structs.OrderDb, error) {
-	// Настраиваем логгер
-	logger := loggers.SetupLogger()
+func processRows(app *structs.Application, rows *sql.Rows) ([]structs.OrderDb, error) {
 
 	var orders []structs.OrderDb
 
@@ -532,14 +488,14 @@ func processRows(rows *sql.Rows) ([]structs.OrderDb, error) {
 			&order.Purchase.Cost,
 		)
 		if err != nil {
-			logger.Errorf("Error scanning rows: %v", err)
+			app.Log.Errorf("Error scanning rows: %v", err)
 			return nil, err
 		}
 		orders = append(orders, order)
 	}
 
 	if err := rows.Err(); err != nil {
-		logger.Errorf("Error after rows.Next(): %v", err)
+		app.Log.Errorf("Error after rows.Next(): %v", err)
 		return nil, err
 	}
 
@@ -547,24 +503,20 @@ func processRows(rows *sql.Rows) ([]structs.OrderDb, error) {
 }
 
 // GetOrdersByUserID Функция для выбора из базы данных.
-func GetOrdersByUserID(userID int64, limit uint8) ([]structs.OrderDb, error) {
-	// Настраиваем логгер
-	logger := loggers.SetupLogger()
+func GetOrdersByUserID(app *structs.Application, userID int64, limit uint8) ([]structs.OrderDb, error) {
 
 	// Выполняем запрос для получения заказов
 	rows, err := DB.Query(limitedOrdersQuery, userID, limit)
 	if err != nil {
-		logger.Printf("Error preparing query: %v", err)
+		app.Log.Printf("Error preparing query: %v", err)
 		return nil, err
 	}
 
-	return processRows(rows)
+	return processRows(app, rows)
 }
 
 // GetOrdersWithFilters Функция для выбора данных из базы данных с фильтрацией и сортировкой.
-func GetOrdersWithFilters(params structs.QueryParams) ([]structs.OrderDb, error) {
-	// Настраиваем логгер
-	logger := loggers.SetupLogger()
+func GetOrdersWithFilters(app *structs.Application, params structs.QueryParams) ([]structs.OrderDb, error) {
 
 	query := baseQuery
 
@@ -603,23 +555,21 @@ func GetOrdersWithFilters(params structs.QueryParams) ([]structs.OrderDb, error)
 
 	rows, err := DB.Query(query, queryArgs...)
 	if err != nil {
-		logger.Errorf("Error preparing query %v ", err)
+		app.Log.Errorf("Error preparing query %v ", err)
 		return nil, err
 	}
 
-	return processRows(rows)
+	return processRows(app, rows)
 }
 
-func UpsertUser(tx *sql.Tx, userID int64, userName string, userBlack int) error {
-	// Настраиваем логгер
-	logger := loggers.SetupLogger()
+func UpsertUser(app *structs.Application, tx *sql.Tx, userID int64, userName string, userBlack int) error {
 
 	// Вставляем запись, если её нет
 	_, err := tx.Exec(`
 		INSERT OR IGNORE INTO tg_user_Chat_ID (user_id, user_name, user_black)
 		VALUES (?, ?, ?)`, userID, userName, userBlack)
 	if err != nil {
-		logger.Errorf("error inserting record: %v", err)
+		app.Log.Errorf("error inserting record: %v", err)
 		return fmt.Errorf("error inserting record: %v", err)
 	}
 
@@ -630,7 +580,7 @@ func UpsertUser(tx *sql.Tx, userID int64, userName string, userBlack int) error 
 		WHERE user_id = ?
 		  AND user_name != ?`, userName, userID, userName)
 	if err != nil {
-		logger.Errorf("error updating user_name: %v", err)
+		app.Log.Errorf("error updating user_name: %v", err)
 		return fmt.Errorf("error updating user_name: %v", err)
 	}
 
@@ -641,19 +591,18 @@ func UpsertUser(tx *sql.Tx, userID int64, userName string, userBlack int) error 
 		WHERE user_id = ?
 		  AND user_black != ?`, userBlack, userID, userBlack)
 	if err != nil {
-		logger.Errorf("error updating user_black: %v", err)
+		app.Log.Errorf("error updating user_black: %v", err)
 		return fmt.Errorf("error updating user_black: %v", err)
 	}
 
 	return nil
 }
 
-func GetUsers() ([]structs.User, error) {
-	// Настраиваем логгер
-	logger := loggers.SetupLogger()
+func GetUsers(app *structs.Application) ([]structs.User, error) {
+
 	rows, err := DB.Query("SELECT user_id, user_name, user_black FROM tg_user_Chat_ID")
 	if err != nil {
-		logger.Errorf("Error preparing query: %v", err)
+		app.Log.Errorf("Error preparing query: %v", err)
 		return nil, err
 	}
 
@@ -662,7 +611,7 @@ func GetUsers() ([]structs.User, error) {
 		var user structs.User
 		err = rows.Scan(&user.UserID, &user.UserBlack.UserName, &user.UserBlack.UserBlack)
 		if err != nil {
-			logger.Errorf("Error scanning rows: %v", err)
+			app.Log.Errorf("Error scanning rows: %v", err)
 			return nil, err
 		}
 
@@ -675,28 +624,26 @@ func GetUsers() ([]structs.User, error) {
 	}
 
 	if err = rows.Err(); err != nil {
-		logger.Errorf("Error after iterating rows: %v", err)
+		app.Log.Errorf("Error after iterating rows: %v", err)
 		return nil, err
 	}
 
 	return users, nil
 }
 
-func UpdateUserBlack(userID, userBlack int) error {
-	// Настраиваем логгер
-	logger := loggers.SetupLogger()
+func UpdateUserBlack(app *structs.Application, userID, userBlack int) error {
+
 	_, err := DB.Exec("UPDATE tg_user_Chat_ID SET user_black = ? WHERE user_id = ?", userBlack, userID)
 	if err != nil {
-		logger.Errorf("Error updating user_name: %v", err)
+		app.Log.Errorf("Error updating user_name: %v", err)
 	}
 
 	return err
 }
 
 // backupDatabase резервного копирования базы данных SQLite.
-func backupDatabase() {
-	// Настраиваем логгер
-	logger := loggers.SetupLogger()
+func backupDatabase(app *structs.Application) {
+
 	// Путь к файлу текущей и новой резервной копии
 	oldBackupPath := "./backup_old.db"
 	newBackupPath := "./backup.db"
@@ -704,7 +651,7 @@ func backupDatabase() {
 	// Создаем новую резервную копию
 	inputFile, err := os.Open("./data.db")
 	if err != nil {
-		logger.Errorf("Ошибка не удается открыть базу данных: %v", err)
+		app.Log.Errorf("Ошибка не удается открыть базу данных: %v", err)
 	}
 	defer func(inputFile *os.File) {
 		_ = inputFile.Close()
@@ -712,11 +659,11 @@ func backupDatabase() {
 
 	outputFile, err := os.Create(newBackupPath)
 	if err != nil {
-		logger.Errorf("Ошибка при создании нового файла резервной копии: %v", err)
+		app.Log.Errorf("Ошибка при создании нового файла резервной копии: %v", err)
 	}
 	_, err = io.Copy(outputFile, inputFile)
 	if err != nil {
-		logger.Errorf("Ошибка при копировании базы данных в файл резервной копии: %v", err)
+		app.Log.Errorf("Ошибка при копировании базы данных в файл резервной копии: %v", err)
 	}
 	_ = outputFile.Close() // Закрываем файл перед переименованием
 
@@ -724,26 +671,26 @@ func backupDatabase() {
 	time.Sleep(500 * time.Millisecond)
 
 	// Удаляем старую резервную копию, если она существует
-	if _, err := os.Stat(oldBackupPath); err == nil {
+	if _, err = os.Stat(oldBackupPath); err == nil {
 		err = os.Remove(oldBackupPath)
 		if err != nil {
-			logger.Errorf("Ошибка при удалении старого файла резервной копии: %v", err)
+			app.Log.Errorf("Ошибка при удалении старого файла резервной копии: %v", err)
 		}
 	} else if !os.IsNotExist(err) {
-		logger.Errorf("Error checking old backup file: %v", err)
+		app.Log.Errorf("Error checking old backup file: %v", err)
 	}
 
 	// Переименовываем новую резервную копию в старую
 	err = os.Rename(newBackupPath, oldBackupPath)
 	if err != nil {
-		logger.Fatalf("Error renaming new backup file to old: %v", err)
+		app.Log.Fatalf("Error renaming new backup file to old: %v", err)
 	}
 
-	logger.Info("Backup completed successfully and old backup removed.")
+	app.Log.Info("Backup completed successfully and old backup removed.")
 }
 
 // StartBackupRoutine запускает Go-рутину для ежедневного копирования базы данных SQLite.
-func StartBackupRoutine() {
+func StartBackupRoutine(app *structs.Application, ) {
 	go func() {
 		for {
 			now := time.Now()
@@ -762,7 +709,7 @@ func StartBackupRoutine() {
 			<-timer.C
 
 			// Выполняем резервное копирование
-			backupDatabase()
+			backupDatabase(app)
 
 			// Останавливаем таймер и переустанавливаем его на следующие 24 часа
 			//timer.Stop()
@@ -780,4 +727,29 @@ func GetByUserID(userID int64) structs.OrderDb {
 	_ = DB.QueryRow(baseQueryOrders, userID).Scan(&o.UserID.UserID, &o.FullName, &o.PhoneNumber, &o.DeliveryAddress)
 
 	return o
+}
+
+//groupPurchases группируем товары.
+func groupPurchases(purchases []structs.Purchase) map[string]structs.Purchase {
+	groupedPurchases := make(map[string]structs.Purchase)
+	for _, p := range purchases {
+		key := p.Item
+		if existing, found := groupedPurchases[key]; found {
+			existing.Quantity += p.Quantity
+			existing.Cost += p.Cost
+			groupedPurchases[key] = existing
+		} else {
+			groupedPurchases[key] = p
+		}
+	}
+	return groupedPurchases
+}
+
+// calculateTotalCost суммируем товары.
+func calculateTotalCost(groupedPurchases map[string]structs.Purchase) int {
+	totalCost := 0
+	for _, p := range groupedPurchases {
+		totalCost += p.Cost
+	}
+	return totalCost
 }

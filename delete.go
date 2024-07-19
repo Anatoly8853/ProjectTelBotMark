@@ -52,7 +52,7 @@ func keyboardMessagesDelete(chatID int64) {
 // clearOrder Функция для очистки данных заказа по chatID.
 func clearOrder(chatID int64) {
 	if chatID == 0 {
-		logger.Errorf("нет данных для обработки chatID = %v", chatID)
+		app.Log.Errorf("нет данных для обработки chatID = %v", chatID)
 		return
 	}
 	delete(bychat.Orders, chatID)
@@ -61,7 +61,7 @@ func clearOrder(chatID int64) {
 // deletePreviousMessages Удаляем сообщения.
 func deletePreviousMessages(chatID int64, messageID int) {
 	if chatID == 0 || messageID == 0 {
-		logger.Errorf("нет данных для обработки chatID = %v messageID = %v", chatID, messageID)
+		app.Log.Errorf("нет данных для обработки chatID = %v messageID = %v", chatID, messageID)
 		return
 	}
 
@@ -97,7 +97,7 @@ func deletePreviousMessages(chatID int64, messageID int) {
 // deleteMessages Удаляем сообщения.
 func deleteMessages(chatID int64) {
 	if chatID == 0 {
-		logger.Errorf("нет данных для обработки chatID = %v", chatID)
+		app.Log.Errorf("нет данных для обработки chatID = %v", chatID)
 		return
 	}
 	// Удаление сообщения
@@ -111,7 +111,7 @@ func deleteMessages(chatID int64) {
 // DeleteBasketContents Очищаем корзину.
 func DeleteBasketContents(chatID int64) {
 	if chatID == 0 {
-		logger.Errorf("нет данных для обработки chatID = %v", chatID)
+		app.Log.Errorf("нет данных для обработки chatID = %v", chatID)
 		return
 	}
 
@@ -120,7 +120,7 @@ func DeleteBasketContents(chatID int64) {
 
 	// Удаление сообщения с содержимым корзины
 	if BasketMessages[chatID] == 0 {
-		logger.Errorf("нет данных для обработки BasketMessages[chatID] = %v", BasketMessages[chatID])
+		app.Log.Errorf("нет данных для обработки BasketMessages[chatID] = %v", BasketMessages[chatID])
 		return
 	}
 
@@ -129,7 +129,7 @@ func DeleteBasketContents(chatID int64) {
 	if messageID != 0 {
 		deleteMsg := tgbotapi.NewDeleteMessage(chatID, messageID)
 		if _, err := bot.Request(deleteMsg); err != nil {
-			logger.Errorf("Удаление сообщения с содержимым корзины %v", err)
+			app.Log.Errorf("Удаление сообщения с содержимым корзины %v", err)
 		}
 		// После успешного удаления сообщения можно обнулить идентификатор сообщения в basketMessages
 		BasketMessages[chatID] = 0

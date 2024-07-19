@@ -25,8 +25,7 @@ func SetupApplication() *structs.Application {
 	// Настраиваем логгер
 	logger := loggers.SetupLogger()
 	// Создаем экземпляр Application с настроенным логгером
-	app = &structs.Application{Log: logger}
-	return app
+	return &structs.Application{Log: logger}
 }
 
 //var logger *slog.Logger
@@ -78,7 +77,7 @@ func main() {
 
 	bot.Debug = false //false //true   // выводим лог или нет
 
-	_, err = dataSources.GetUsers()
+	_, err = dataSources.GetUsers(app)
 	if err != nil {
 		app.Log.Errorf("Error getting users: %v", err)
 		return
@@ -86,12 +85,12 @@ func main() {
 
 	UpdateMessage()
 
-	dataSources.StartBackupRoutine()
+	dataSources.StartBackupRoutine(app)
 
 	routers.LoadCategories(app)
 
 	// Запуск ежедневной проверки базы данных
-	reminders.StartDailyCheck(bot)
+	reminders.StartDailyCheck(app, bot)
 
 	// Запускаем сервер
 	routers.GinRouter(app, bot)

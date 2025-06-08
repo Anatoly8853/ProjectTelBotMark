@@ -1,0 +1,85 @@
+{{ template "header.html" .}}
+<div class="container-form py-4">
+  <h1 class="mb-4">{{if .p.ID}}Редактировать{{else}}Добавить{{end}} товар</h1>
+
+  <form method="POST" enctype="multipart/form-data" action="{{if .p.ID}}/product/update/{{.p.ID}}{{else}}/product/add{{end}}">
+    <div class="mb-3 row align-items-center">
+      <label class="col-auto col-form-label">Категория:</label>
+      <div class="col">
+        <input type="text" name="category" class="form-control" required value="{{.p.Category}}">
+      </div>
+    </div>
+
+    <div class="mb-3 row align-items-center">
+      <label class="col-auto col-form-label">Название:</label>
+      <div class="col">
+        <input type="text" name="title" class="form-control" required value="{{.p.Title}}">
+      </div>
+    </div>
+
+    <div class="mb-3 row align-items-center">
+      <label class="col-auto col-form-label">Описание:</label>
+      <div class="col">
+        <textarea name="description" class="form-control" required>{{.p.Description}}</textarea>
+      </div>
+    </div>
+
+    <div class="mb-3 row align-items-center">
+      <label class="col-auto col-form-label">Фасовка:</label>
+      <div class="col">
+        <input type="text" name="packaging" class="form-control" required value="{{.p.Packaging}}">
+      </div>
+    </div>
+
+    <div class="mb-3 row align-items-center">
+      <label class="col-auto col-form-label">Цена:</label>
+      <div class="col">
+        <input type="number" step="0.01" name="price" class="form-control" value="{{.p.Price}}">
+      </div>
+    </div>
+
+    <div class="mb-3 row align-items-center">
+      <div class="mb-3">
+        <label for="imageUpload" class="form-label">Фото:</label>
+        <div class="d-flex align-items-center gap-2">
+          <!-- Скрытое поле для выбора файла -->
+          <input class="form-control d-none" type="file" id="imageUpload" name="image">
+          <!-- Кастомная кнопка -->
+          <label for="imageUpload" class="btn btn-outline-secondary mb-0 ">Выбрать файл</label>
+          <!-- Имя выбранного файла -->
+          <span id="file-name" class="form-control text-muted">Файл не выбран</span>
+        </div>
+
+        {{if .p.Image}}
+        <!-- Скрытое поле с текущим изображением -->
+        <input type="hidden" name="existing_image" value="{{.p.Image}}">
+        <!-- Превью изображения -->
+        <div class="mt-2">
+          <p class="mb-1 text-muted">Текущее изображение:</p>
+          <img src="/{{.p.Image}}" alt="Превью" class="img-thumbnail" style="max-height: 200px;">
+        </div>
+        {{end}}
+      </div>
+
+    <div class="row">
+      <div class="col">
+        <button class="btn btn-primary">{{if .p.ID}}💾 Сохранить{{else}}➕ Добавить{{end}}</button>
+        <a href="/product" class="btn btn-secondary ms-2">Назад</a>
+      </div>
+    </div>
+  </form>
+</div>
+
+<script>
+  const input = document.getElementById('imageUpload');
+  const fileNameSpan = document.getElementById('file-name');
+
+  input.addEventListener('change', function () {
+    if (this.files.length > 0) {
+      fileNameSpan.textContent = this.files[0].name;
+    } else {
+      fileNameSpan.textContent = 'Файл не выбран';
+    }
+  });
+</script>
+{{ template "footer.html" .}}

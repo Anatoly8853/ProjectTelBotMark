@@ -1,64 +1,40 @@
-// main пакет.
 package main
 
 import (
-	"ProjectTelBotMark/dataSources"
-	"ProjectTelBotMark/loggers"
-	"ProjectTelBotMark/reminders"
-	`ProjectTelBotMark/routers`
-	"ProjectTelBotMark/structs"
+	"ProjectTelBotMark/config"
+	"ProjectTelBotMark/internal/dataSources"
+	"ProjectTelBotMark/internal/reminders"
+	"ProjectTelBotMark/internal/routers"
+	"ProjectTelBotMark/internal/structs"
 	"encoding/json"
 	"errors"
+	slogavp "github.com/Anatoly8853/slog-avp/v2"
 	"os"
 	"regexp"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"github.com/joho/godotenv"
 )
 
-func SetupApplication() *structs.Application {
-	// Настройка логгера перед его инициализацией
-	loggers.SetLogConsole(false) // Логи будут записываться в файл
-	loggers.SetIsDebugMode(true)
-	loggers.SetIsInfoMode(true)
-	loggers.SetIsWarnMode(true)
-	// Настраиваем логгер
-	logger := loggers.SetupLogger()
-	// Создаем экземпляр Application с настроенным логгером
-	return &structs.Application{Log: logger}
-}
-
-//var logger *slog.Logger
-var app *structs.Application
-
-var bot *tgbotapi.BotAPI
+const UploadsDir = "./internal/routers/html"
 
 func main() {
-
 	// Настраиваем логгер
-	app = SetupApplication()
+	app := slogavp.SetupApplication()
+	cfg := config.LoadConfig(app)
+
+	//bot, err = tgbotapi.NewBotAPI(os.Getenv("TELEGRAM_TOKEN"))
+	bot, err := tgbotapi.NewBotAPI(cfg.TGtoken)
+	if err != nil {
+		app.Log.Fatalf("Нет токена TELEGRAM_TOKEN: %v", err)
+	}
 
 	// Открываем соединение с базой данных SQLite.
-	var err error
-
-	dataSources.InitDB(app)
-	defer dataSources.CloseDB(app)
-
-	// Загружаем токен бота из файла .env
-	err = godotenv.Load()
+	db, err := dataSources.InitDB(app)
 	if err != nil {
-
-		app.Log.Fatalf("Не удалось открыть файл .env: %v", err)
-
+		app.Log.Fatalf("Error initializing databases: %v", err)
 	}
 
-	bot, err = tgbotapi.NewBotAPI(os.Getenv("TELEGRAM_TOKEN"))
-	if err != nil {
-
-		app.Log.Fatalf("Нет токена TELEGRAM_TOKEN: %v", err)
-
-	}
-
+	repo := dataSources.NewRepository(db, app, bot)
 	// 1. Чтение файла JSON
 	jsonData, er := os.ReadFile("data.json")
 	if er != nil {
@@ -74,39 +50,40 @@ func main() {
 		app.Log.Fatalf("Ошибка распаковки JSON: %v", err)
 
 	}
+	defer repo.CloseDB()
 
 	bot.Debug = false //false //true   // выводим лог или нет
 
-	_, err = dataSources.GetUsers(app)
+	_, err = repo.GetUsers()
 	if err != nil {
 		app.Log.Errorf("Error getting users: %v", err)
 		return
 	}
 
-	UpdateMessage()
+	updatemessage := NewUpdateMessage(repo, app, bot)
+	updatemessage.UpdateMessage(cfg)
 
-	dataSources.StartBackupRoutine(app)
-
-	routers.LoadCategories(app)
+	repo.StartBackupRoutine()
 
 	// Запуск ежедневной проверки базы данных
-	reminders.StartDailyCheck(app, bot)
+	messageservice := reminders.NewMessageService(repo, app, bot)
+	messageservice.StartDailyCheck()
 
 	// Запускаем сервер
-	routers.GinRouter(app, bot)
-
+	haydler := routers.NewGinRouter(repo, app, bot)
+	haydler.GinRouter()
 }
 
 // createCategoryMessage Вывод изображения продуктов и кнопки фасовки продукта.
-func createCategoryMessage(update tgbotapi.Update, categoryName string) error {
+func (m *MessageService) createCategoryMessage(update tgbotapi.Update, categoryName string) error {
+
 	if update.Message.Chat.ID == 0 {
-		app.Log.Errorf("нет данных для обработки update.Message.Chat.ID = %v ", update.Message.Chat.ID)
+		m.app.Log.Errorf("нет данных для обработки update.Message.Chat.ID = %v ", update.Message.Chat.ID)
 		er := "нет данных для обработки update.Message.Chat.ID"
 		return errors.New(er)
 	}
 
 	chatID := update.Message.Chat.ID
-
 	// Поиск категории в данных
 	categoryData, found := structs.Categories[categoryName]
 	if !found {
@@ -114,15 +91,14 @@ func createCategoryMessage(update tgbotapi.Update, categoryName string) error {
 		return errors.New(er)
 	}
 
-	photoMessagesDelete(chatID)
-
-	keyboardMessagesDelete(chatID)
+	m.photoMessagesDelete(chatID)
+	m.keyboardMessagesDelete(chatID)
 
 	if categoryData.Photo == "" {
 		keyboardReply, err := CreateCategoryKeyboardReply(categoryData.CategoryName)
 		if err != nil {
 			// Обработка ошибки
-			app.Log.Errorf("ошибка %v", err)
+			m.app.Log.Errorf("ошибка %v", err)
 			return err
 		}
 
@@ -132,9 +108,9 @@ func createCategoryMessage(update tgbotapi.Update, categoryName string) error {
 		msg.ReplyMarkup = tgbotapi.NewReplyKeyboard(keyboardReply...)
 
 		// Отправляем сообщение с клавиатурой
-		sentMsg, err := bot.Send(msg)
+		sentMsg, err := m.bot.Send(msg)
 		if err != nil {
-			app.Log.Errorf("Ошибка при отправке сообщения: %v", err)
+			m.app.Log.Errorf("Ошибка при отправке сообщения: %v", err)
 			return err
 		} else {
 			messagesToDelete[chatID] = append(messagesToDelete[chatID], sentMsg.MessageID)
@@ -147,9 +123,9 @@ func createCategoryMessage(update tgbotapi.Update, categoryName string) error {
 		mediaGroup := tgbotapi.NewMediaGroup(chatID, []interface{}{photo})
 
 		// Отправляем медиагруппу
-		sentMsgs, err := bot.SendMediaGroup(mediaGroup)
+		sentMsgs, err := m.bot.SendMediaGroup(mediaGroup)
 		if err != nil {
-			app.Log.Errorf("Ошибка при отправке сообщения медиагруппу: %v", err)
+			m.app.Log.Errorf("Ошибка при отправке сообщения медиагруппу: %v", err)
 			return err
 		} else {
 			// Сохраняем идентификатор сообщения для последующего удаления
@@ -162,7 +138,7 @@ func createCategoryMessage(update tgbotapi.Update, categoryName string) error {
 		keyboard, err := CreateCategoryKeyboard(categoryData.CategoryName)
 		if err != nil {
 			// Обработка ошибки
-			app.Log.Errorf("Ошибка не удается создать кнопки клавиатуры %v", err)
+			m.app.Log.Errorf("Ошибка не удается создать кнопки клавиатуры %v", err)
 			return err
 		}
 
@@ -171,9 +147,9 @@ func createCategoryMessage(update tgbotapi.Update, categoryName string) error {
 		msg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(keyboard...)
 
 		// Отправляем сообщение с клавиатурой
-		sentMsg, err := bot.Send(msg)
+		sentMsg, err := m.bot.Send(msg)
 		if err != nil {
-			app.Log.Errorf("Ошибка при отправке сообщения: %v", err)
+			m.app.Log.Errorf("Ошибка при отправке сообщения: %v", err)
 			return err
 		} else {
 			// Сохраняем идентификатор сообщения для последующего удаления
@@ -197,11 +173,11 @@ func SeparateEmojiAndText(text string) (string, string) {
 	// Удаляем лишние пробелы
 	cleanText = regexp.MustCompile(`\s+`).ReplaceAllString(cleanText, " ")
 
-	return JoinStrings(emojis), cleanText
+	return joinStrings(emojis), cleanText
 }
 
-// JoinStrings Объединяем все строки из среза в одну строку из update.Message.Text.
-func JoinStrings(str []string) string {
+// joinStrings Объединяем все строки из среза в одну строку из update.Message.Text.
+func joinStrings(str []string) string {
 	// Объединяем все строки из среза в одну строку
 	result := ""
 	for _, s := range str {

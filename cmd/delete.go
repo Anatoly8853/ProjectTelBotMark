@@ -1,10 +1,10 @@
 package main
 
 import (
-	`ProjectTelBotMark/bychat`
-	`ProjectTelBotMark/structs`
+	"ProjectTelBotMark/internal/bychat"
+	"ProjectTelBotMark/internal/structs"
 
-	tgbotapi `github.com/go-telegram-bot-api/telegram-bot-api/v5`
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
 // photoMessagesToDelete структура для хранения идентификаторов сообщений с фото.
@@ -20,12 +20,12 @@ var messagesToDelete = make(map[int64][]int)
 var BasketMessages = make(map[int64]int)
 
 // photoMessagesDelete удаляем предыдущее сообщение с фото, если оно есть.
-func photoMessagesDelete(chatID int64) {
+func (m *MessageService) photoMessagesDelete(chatID int64) {
 
 	// Удаляем предыдущее сообщение с фото, если оно есть
 	if msgID, ok := photoMessagesToDelete[chatID]; ok {
 		deleteMessage := tgbotapi.NewDeleteMessage(chatID, msgID)
-		if _, err := bot.Send(deleteMessage); err != nil {
+		if _, err := m.bot.Send(deleteMessage); err != nil {
 			//logger.Errorf("Ошибка при удалении предыдущего сообщения с фото: %v", err)
 		} else {
 			delete(photoMessagesToDelete, chatID) // Удаляем запись из карты после успешного удаления
@@ -35,12 +35,12 @@ func photoMessagesDelete(chatID int64) {
 }
 
 // keyboardMessagesDelete удаляем предыдущее сообщение с клавиатурой, если оно есть.
-func keyboardMessagesDelete(chatID int64) {
+func (m *MessageService) keyboardMessagesDelete(chatID int64) {
 
 	// Удаляем предыдущее сообщение с клавиатурой, если оно есть
 	if msgID, ok := keyboardMessagesToDelete[chatID]; ok {
 		deleteMessage := tgbotapi.NewDeleteMessage(chatID, msgID)
-		if _, err := bot.Send(deleteMessage); err != nil {
+		if _, err := m.bot.Send(deleteMessage); err != nil {
 			//logger.Errorf("Ошибка при удалении предыдущего сообщения с клавиатурой: %v", err)
 		} else {
 			delete(keyboardMessagesToDelete, chatID) // Удаляем запись из карты после успешного удаления
@@ -50,18 +50,18 @@ func keyboardMessagesDelete(chatID int64) {
 }
 
 // clearOrder Функция для очистки данных заказа по chatID.
-func clearOrder(chatID int64) {
+func (m *MessageService) clearOrder(chatID int64) {
 	if chatID == 0 {
-		app.Log.Errorf("нет данных для обработки chatID = %v", chatID)
+		m.app.Log.Errorf("нет данных для обработки chatID = %v", chatID)
 		return
 	}
 	delete(bychat.Orders, chatID)
 }
 
 // deletePreviousMessages Удаляем сообщения.
-func deletePreviousMessages(chatID int64, messageID int) {
+func (m *MessageService) deletePreviousMessages(chatID int64, messageID int) {
 	if chatID == 0 || messageID == 0 {
-		app.Log.Errorf("нет данных для обработки chatID = %v messageID = %v", chatID, messageID)
+		m.app.Log.Errorf("нет данных для обработки chatID = %v messageID = %v", chatID, messageID)
 		return
 	}
 
@@ -69,7 +69,7 @@ func deletePreviousMessages(chatID int64, messageID int) {
 	if _, found := messagesToDelete[chatID]; found {
 		// Проходимся по каждому идентификатору сообщения и удаляем его
 		deleteMsg := tgbotapi.NewDeleteMessage(chatID, messageID)
-		if _, err := bot.Request(deleteMsg); err != nil {
+		if _, err := m.bot.Request(deleteMsg); err != nil {
 			//log.Printf("Ошибка при удалении сообщения: %v", err)
 			// Не используйте log.Panic, чтобы избежать прерывания работы бота из-за одной ошибки
 		}
@@ -95,23 +95,23 @@ func deletePreviousMessages(chatID int64, messageID int) {
 }
 
 // deleteMessages Удаляем сообщения.
-func deleteMessages(chatID int64) {
+func (m *MessageService) deleteMessages(chatID int64) {
 	if chatID == 0 {
-		app.Log.Errorf("нет данных для обработки chatID = %v", chatID)
+		m.app.Log.Errorf("нет данных для обработки chatID = %v", chatID)
 		return
 	}
 	// Удаление сообщения
 	messageIDs := BasketMessages[chatID]
 	deleteMsg := tgbotapi.NewDeleteMessage(chatID, messageIDs)
-	if _, err := bot.Request(deleteMsg); err != nil {
+	if _, err := m.bot.Request(deleteMsg); err != nil {
 		//log.Panic(err) // Обработка ошибки по вашему усмотрению
 	}
 }
 
 // DeleteBasketContents Очищаем корзину.
-func DeleteBasketContents(chatID int64) {
+func (m *MessageService) DeleteBasketContents(chatID int64) {
 	if chatID == 0 {
-		app.Log.Errorf("нет данных для обработки chatID = %v", chatID)
+		m.app.Log.Errorf("нет данных для обработки chatID = %v", chatID)
 		return
 	}
 
@@ -120,7 +120,7 @@ func DeleteBasketContents(chatID int64) {
 
 	// Удаление сообщения с содержимым корзины
 	if BasketMessages[chatID] == 0 {
-		app.Log.Errorf("нет данных для обработки BasketMessages[chatID] = %v", BasketMessages[chatID])
+		m.app.Log.Errorf("нет данных для обработки BasketMessages[chatID] = %v", BasketMessages[chatID])
 		return
 	}
 
@@ -128,14 +128,14 @@ func DeleteBasketContents(chatID int64) {
 
 	if messageID != 0 {
 		deleteMsg := tgbotapi.NewDeleteMessage(chatID, messageID)
-		if _, err := bot.Request(deleteMsg); err != nil {
-			app.Log.Errorf("Удаление сообщения с содержимым корзины %v", err)
+		if _, err := m.bot.Request(deleteMsg); err != nil {
+			m.app.Log.Errorf("Удаление сообщения с содержимым корзины %v", err)
 		}
 		// После успешного удаления сообщения можно обнулить идентификатор сообщения в basketMessages
 		BasketMessages[chatID] = 0
 	}
 
 	// Отправка подтверждающего сообщения пользователю, что корзина была очищена
-	sendMessage(chatID, "Корзина успешно очищена.")
+	m.sendMessage(chatID, "Корзина успешно очищена.")
 
 }

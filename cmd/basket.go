@@ -1,12 +1,13 @@
 package main
 
 import (
-	`ProjectTelBotMark/bychat`
-	"ProjectTelBotMark/dataSources"
-	"ProjectTelBotMark/structs"
+	"ProjectTelBotMark/config"
+	"ProjectTelBotMark/internal/bychat"
+	"ProjectTelBotMark/internal/dataSources"
+	"ProjectTelBotMark/internal/structs"
 	"errors"
 	"fmt"
-	"os"
+	slogavp "github.com/Anatoly8853/slog-avp/v2"
 	"reflect"
 	"runtime"
 	"strconv"
@@ -19,6 +20,16 @@ import (
 // Baskets карта для хранения данных о покупках для каждого пользователя.
 //var Baskets = make(map[int64][]structs.Purchase)
 
+type MessageService struct {
+	repo *dataSources.Repository
+	app  *slogavp.Application
+	bot  *tgbotapi.BotAPI
+}
+
+func NewUpdateMessage(repo *dataSources.Repository, app *slogavp.Application, bot *tgbotapi.BotAPI) *MessageService {
+	return &MessageService{repo: repo, app: app, bot: bot}
+}
+
 var DeliveryDateChatID = make(map[int64]int)
 
 // orderDetails содержание корзины.
@@ -28,14 +39,14 @@ var orderDetails = make(map[int64]string)
 //var orders = make(map[int64]structs.OrderDb)
 
 // AddToBasket добавление товаров в корзину.
-func AddToBasket(update tgbotapi.Update, item string, quantity int, cost int) {
+func (m *MessageService) AddToBasket(update tgbotapi.Update, item string, quantity int, cost int) {
 	if update.CallbackQuery.Message.Chat.ID == 0 {
-		app.Log.Errorf("нет данных для обработки update.CallbackQuery.Message.Chat.ID = %v ", update.CallbackQuery.Message.Chat.ID)
+		m.app.Log.Errorf("нет данных для обработки update.CallbackQuery.Message.Chat.ID = %v ", update.CallbackQuery.Message.Chat.ID)
 		return
 	}
 
 	if item == "" || quantity == 0 || cost == 0 {
-		app.Log.Errorf("нет данных для обработки item = %v quantity = %v cost = %v", item, quantity, cost)
+		m.app.Log.Errorf("нет данных для обработки item = %v quantity = %v cost = %v", item, quantity, cost)
 		return
 	}
 	chatID := update.CallbackQuery.Message.Chat.ID
@@ -57,26 +68,26 @@ func AddToBasket(update tgbotapi.Update, item string, quantity int, cost int) {
 	// Отправка всплывающего сообщения пользователю
 	popupText := fmt.Sprintf("Добавлено в корзину:\n %s, кол-во: %d, цена: %d руб.\n Общая стоимость: %d руб", item, quantity, cost, totalCost)
 
-	SendPopupMessage(update, popupText)
+	m.SendPopupMessage(update, popupText)
 }
 
 // SendPopupMessage Отправка всплывающего сообщения.
-func SendPopupMessage(update tgbotapi.Update, popupText string) {
+func (m *MessageService) SendPopupMessage(update tgbotapi.Update, popupText string) {
 	if update.CallbackQuery.ID == "" || update.CallbackQuery.Message == nil || popupText == "" {
-		app.Log.Errorf("нет данных для обработки update.CallbackQuery.Message = %v popupText = %v", update.CallbackQuery.Message, popupText)
+		m.app.Log.Errorf("нет данных для обработки update.CallbackQuery.Message = %v popupText = %v", update.CallbackQuery.Message, popupText)
 		return
 	}
 	callbackConfig := tgbotapi.NewCallback(update.CallbackQuery.ID, popupText)
 	callbackConfig.ShowAlert = true // Для отображения в виде всплывающего уведомления
 
-	if _, err := bot.Request(callbackConfig); err != nil {
-		app.Log.Errorf("не удается создать всплывающее сообщение %v", err)
+	if _, err := m.bot.Request(callbackConfig); err != nil {
+		m.app.Log.Errorf("не удается создать всплывающее сообщение %v", err)
 		return
 	}
 }
 
 // ShowBasket Получение содержимого корзины.
-func ShowBasket(chatID int64) {
+func (m *MessageService) ShowBasket(chatID int64) {
 	purchases := structs.Baskets[chatID]
 	msg := tgbotapi.NewMessage(chatID, "Вы пока ничего не добавили в корзину")
 
@@ -123,42 +134,40 @@ func ShowBasket(chatID int64) {
 
 	}
 
-	sentMsg, err := bot.Send(msg)
+	sentMsg, err := m.bot.Send(msg)
 	if err != nil {
-
-		app.Log.Errorf("не удается вывести содержимое корзины %v", err)
+		m.app.Log.Errorf("не удается вывести содержимое корзины %v", err)
 		return
-
 	}
 
 	BasketMessages[chatID] = sentMsg.MessageID
 }
 
 // RequestDeliveryDetails Пример ввода данных заказа дата доставки.
-func RequestDeliveryDetails(chatID int64) {
+func (m *MessageService) RequestDeliveryDetails(chatID int64) {
 	if chatID == 0 {
-		app.Log.Errorf("нет данных для обработки chatID = %v", chatID)
+		m.app.Log.Errorf("нет данных для обработки chatID = %v", chatID)
 		return
 	}
 
 	// Удаление сообщения
-	deleteMessages(chatID)
+	m.deleteMessages(chatID)
 
 	DeliveryDate := "Дату доставки:"
 
-	err := addOrUpdateOrderField(chatID, "DeliveryDate", DeliveryDate)
+	err := m.addOrUpdateOrderField(chatID, "DeliveryDate", DeliveryDate)
 	if err != nil {
-		app.Log.Errorf("Ошибка при добавлении или обновлении поля DeliveryDate: %v", err)
+		m.app.Log.Errorf("Ошибка при добавлении или обновлении поля DeliveryDate: %v", err)
 		return
 	}
 
 	msg := tgbotapi.NewMessage(chatID, "Выберите дату доставки:")
 	now := time.Now()
-	msg.ReplyMarkup = createCalendarKeyboard(now)
+	msg.ReplyMarkup = m.createCalendarKeyboard(now)
 
-	_, err = bot.Send(msg)
+	_, err = m.bot.Send(msg)
 	if err != nil {
-		app.Log.Errorf("не удается вывести содержимое корзины %v", err)
+		m.app.Log.Errorf("не удается вывести содержимое корзины %v", err)
 		return
 	}
 
@@ -166,55 +175,56 @@ func RequestDeliveryDetails(chatID int64) {
 }
 
 // GroupMessagesChatID отправляем заказ.
-func GroupMessagesChatID(chatID int64) {
+func (m *MessageService) GroupMessagesChatID(cfg config.Config, chatID int64) {
 	if chatID == 0 {
-		app.Log.Errorf("нет данных для обработки chatID = %v", chatID)
+		m.app.Log.Errorf("нет данных для обработки chatID = %v", chatID)
 		return
 	}
 
 	if orderDetails[chatID] != "" {
 
 		// Получите ID группового чата из переменной окружения
-		groupChatIDStr := os.Getenv("TELEGRAM_GROUPCHATID")
-		groupChatID, err := strconv.ParseInt(groupChatIDStr, 10, 64)
+		//groupChatIDStr := os.Getenv("TELEGRAM_GROUPCHATID")
+		//groupChatID, err := strconv.ParseInt(groupChatIDStr, 10, 64)
+		groupChatID, err := strconv.ParseInt(cfg.TGgrouptoken, 10, 64)
 
 		if err != nil {
 
-			app.Log.Errorf("Ошибка преобразования ID группового чата: %v", err)
+			m.app.Log.Errorf("Ошибка преобразования ID группового чата: %v", err)
 			return
 
 		}
 
 		// Отправляем сообщение в групповой чат.
-		sendMessage(groupChatID, orderDetails[chatID])
+		m.sendMessage(groupChatID, orderDetails[chatID])
 		delete(orderDetails, groupChatID)
 
 		// Удаление сообщения
-		deleteMessages(chatID)
+		m.deleteMessages(chatID)
 
 		//отправляем сообщение.
-		sendMessage(chatID, "Ваш заказ успешно отправлен при сборе заказа мы Вас уведомим")
-		ScheduleOnce(chatID)
+		m.sendMessage(chatID, "Ваш заказ успешно отправлен при сборе заказа мы Вас уведомим")
+		m.ScheduleOnce(chatID)
 
 	} else {
 
 		//отправляем сообщение.
-		sendMessage(chatID, "Нет данных для отправки")
+		m.sendMessage(chatID, "Нет данных для отправки")
 
 	}
 }
 
 // MainOrdersByUserID Выводим заказы пользователя в телеграмм.
-func MainOrdersByUserID(userID int64) {
+func (m *MessageService) MainOrdersByUserID(userID int64) {
 	if userID == 0 {
-		app.Log.Errorf("нет данных для обработки userID = %v", userID)
+		m.app.Log.Errorf("нет данных для обработки userID = %v", userID)
 		return
 	}
 
-	orders, err := dataSources.GetOrdersByUserID(app, userID, 6)
+	orders, err := m.repo.GetOrdersByUserID(userID, 6)
 
 	if err != nil {
-		app.Log.Errorf("Error getting orders: %v", err)
+		m.app.Log.Errorf("Error getting orders: %v", err)
 		return
 	}
 
@@ -230,7 +240,7 @@ func MainOrdersByUserID(userID int64) {
 			// Парсинг строки времени в тип time.Time
 			t, err := time.Parse(time.RFC3339, order.DeliveryDate)
 			if err != nil {
-				app.Log.Errorf("Ошибка парсинга строки времени: %v", err)
+				m.app.Log.Errorf("Ошибка парсинга строки времени: %v", err)
 				return
 			}
 
@@ -258,18 +268,18 @@ func MainOrdersByUserID(userID int64) {
 			}
 		}
 		//отправляем сообщение
-		sendMessage(userID, msgText)
+		m.sendMessage(userID, msgText)
 
 	} else {
 		//отправляем сообщение
-		sendMessage(userID, "Вы ничего у нас не заказывали")
+		m.sendMessage(userID, "Вы ничего у нас не заказывали")
 	}
 }
 
 // addOrUpdateOrderField для добавления или обновления конкретного поля заказа.
-func addOrUpdateOrderField(chatID int64, fieldName string, value interface{}) error {
+func (m *MessageService) addOrUpdateOrderField(chatID int64, fieldName string, value interface{}) error {
 	if chatID == 0 {
-		app.Log.Errorf("нет данных для обработки chatID = %v", chatID)
+		m.app.Log.Errorf("нет данных для обработки chatID = %v", chatID)
 		return errors.New("нет chatID")
 	}
 
@@ -286,7 +296,7 @@ func addOrUpdateOrderField(chatID int64, fieldName string, value interface{}) er
 
 	if !fieldVal.IsValid() {
 
-		app.Log.Error("такого поля не существует")
+		m.app.Log.Error("такого поля не существует")
 		return errors.New("такого поля не существует")
 
 	}
@@ -297,7 +307,7 @@ func addOrUpdateOrderField(chatID int64, fieldName string, value interface{}) er
 
 	} else {
 
-		app.Log.Error("не удалось установить значение поля")
+		m.app.Log.Error("не удалось установить значение поля")
 		return errors.New("не удалось установить значение поля")
 
 	}
@@ -307,14 +317,14 @@ func addOrUpdateOrderField(chatID int64, fieldName string, value interface{}) er
 }
 
 // sendMessage Функция для отправки сообщения и добавления его в BasketMessages
-func sendMessage(chatID int64, text string) {
+func (m *MessageService) sendMessage(chatID int64, text string) {
 	if chatID == 0 || text == "" {
-		app.Log.Errorf("нет данных для обработки chatID = %v text = %v", chatID, text)
+		m.app.Log.Errorf("нет данных для обработки chatID = %v text = %v", chatID, text)
 		return
 	}
 
 	msg := tgbotapi.NewMessage(chatID, text)
-	sentMsg, err := bot.Send(msg)
+	sentMsg, err := m.bot.Send(msg)
 
 	if err != nil {
 
@@ -325,9 +335,9 @@ func sendMessage(chatID int64, text string) {
 			funcName := runtime.FuncForPC(pc).Name()
 			funcName = trimFuncName(funcName) // Укорачиваем имя функции
 			file = trimFilePath(file)         // Укорачиваем путь к файлу
-			app.Log.Errorf("не удается отправить сообщение chatID = %v в функции %s (строка %d, файл %s): %v", chatID, funcName, line, file, err)
+			m.app.Log.Errorf("не удается отправить сообщение chatID = %v в функции %s (строка %d, файл %s): %v", chatID, funcName, line, file, err)
 		} else {
-			app.Log.Errorf("не удается отправить сообщение: %v", err)
+			m.app.Log.Errorf("не удается отправить сообщение: %v", err)
 		}
 		return
 
@@ -356,20 +366,19 @@ func trimFilePath(fullFilePath string) string {
 	return fullFilePath
 }
 
-func ScheduleOnce(chatID int64) {
+func (m *MessageService) ScheduleOnce(chatID int64) {
 	go func() {
 		time.Sleep(1 * time.Minute)
 		// Удаление сообщения
-		deleteMessages(chatID)
+		m.deleteMessages(chatID)
 
 		for chatIDs, messageIDs := range messagesToDelete {
 			for _, messageIDa := range messageIDs {
 				deleteMsg := tgbotapi.NewDeleteMessage(chatIDs, messageIDa)
-				if _, err := bot.Request(deleteMsg); err != nil {
+				if _, err := m.bot.Request(deleteMsg); err != nil {
 					//log.Printf("Ошибка при удалении сообщения: %v", err)
 					// Не используйте log.Panic, чтобы избежать прерывания работы бота из-за одной ошибки
 				}
-
 			}
 		}
 
@@ -386,10 +395,9 @@ func ScheduleOnce(chatID int64) {
 				tgbotapi.NewKeyboardButton("Старт"),
 			),
 		)
-		_, err := bot.Send(msg)
+		_, err := m.bot.Send(msg)
 		if err != nil {
-			app.Log.Errorf("Error sending message: = %v", err)
+			m.app.Log.Errorf("Error sending message: = %v", err)
 		}
-
 	}()
 }

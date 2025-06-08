@@ -1,9 +1,10 @@
 package bychat
 
 import (
-	"ProjectTelBotMark/structs"
+	"ProjectTelBotMark/internal/structs"
 	"errors"
 	"fmt"
+	slogavp "github.com/Anatoly8853/slog-avp/v2"
 
 	"reflect"
 	"regexp"
@@ -16,7 +17,7 @@ import (
 var Orders = make(map[int64]structs.OrderDb)
 
 // GetFieldByChatID для получения значения поля по chatID и имени поля.
-func GetFieldByChatID(app *structs.Application, chatID int64, fieldName string) (interface{}, error) {
+func GetFieldByChatID(app *slogavp.Application, chatID int64, fieldName string) (interface{}, error) {
 
 	if chatID == 0 {
 		app.Log.Errorf("нет данных для обработки chatID = %v", chatID)
@@ -41,7 +42,7 @@ func GetFieldByChatID(app *structs.Application, chatID int64, fieldName string) 
 }
 
 // FormatDateString для очистки строки от пробелов и знаков препинания, а также форматирования даты.
-func FormatDateString(app *structs.Application, dateStr string) (string, string) {
+func FormatDateString(app *slogavp.Application, dateStr string) (string, string) {
 
 	// Удаляем все пробелы и знаки препинания, кроме точки
 	re := regexp.MustCompile(`[^\d.]`)
@@ -130,7 +131,7 @@ func FormatDateString(app *structs.Application, dateStr string) (string, string)
 }
 
 // FormatPhoneNumber Функция для проверки и форматирования номера телефона
-func FormatPhoneNumber(app *structs.Application, phone string) (string, string) {
+func FormatPhoneNumber(app *slogavp.Application, phone string) (string, string) {
 
 	// Удаляем все пробелы и знаки препинания
 	re := regexp.MustCompile(`[^\d+]`)

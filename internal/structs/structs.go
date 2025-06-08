@@ -1,11 +1,5 @@
 package structs
 
-import `github.com/gookit/slog`
-
-type Application struct {
-	Log *slog.Logger
-}
-
 type UserBlack struct {
 	UserName  string `json:"user_name,omitempty"`
 	UserBlack int    `json:"user_black,omitempty"`
@@ -86,4 +80,30 @@ type OrderInfo struct {
 type Order struct {
 	DeliveryDate string `json:"delivery_date,omitempty"`
 	TotalCost    int    `json:"total_cost,omitempty"`
+}
+
+type Product struct {
+	ID           int
+	Title        string
+	Description  string
+	Price        float64
+	Category     string
+	Image        string
+	Packaging    string
+	PackagingCal string
+}
+
+type PageData struct {
+	Products   []Product
+	Categories []string
+}
+
+type PageProduct struct {
+	Search     string
+	Category   string
+	Sort       string
+	Page       int
+	Limit      int
+	Total      int
+	TotalPages int
 }

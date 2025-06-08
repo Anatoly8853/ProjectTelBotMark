@@ -1,0 +1,149 @@
+{{ template "header.html" .}}
+<div class="container-poisc">
+    <div class="card-poisc">
+<div class="containerprod mt-2">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="mb-0">Каталог товаров</h1>
+        <div>
+            <a href="/product/add" class="btn btn-success">➕ Добавить товар</a>
+            <a href="/export" class="btn btn-outline-secondary ms-2">📁 Экспорт в CSV</a>
+        </div>
+    </div>
+
+    <form id="filterForm" class="row g-3 mb-4">
+        <div class="col-md-4">
+            <input type="text" id="searchInput" name="search" class="form-control" placeholder="Поиск...">
+        </div>
+        <div class="col-md-3">
+            <select id="categoryInput" name="category" class="form-select">
+                <option value="">Все категории</option>
+                {{range .Categories}}
+                <option value="{{.}}">{{.}}</option>
+                {{end}}
+            </select>
+        </div>
+        <div class="col-md-3">
+            <select id="sortInput" name="sort" class="form-select">
+                <option value="">Без сортировки</option>
+                <option value="title">По названию</option>
+                <option value="title_desc">По названию (убыв.)</option>
+                <option value="price">По цене</option>
+                <option value="price_desc">По цене (убыв.)</option>
+            </select>
+        </div>
+        <div class="col-md-2 d-grid">
+            <button type="submit" class="btn btn-primary">Применить</button>
+        </div>
+    </form>
+
+    <div id="products" class="row"></div>
+    <ul id="pagination" class="pagination justify-content-center mt-4"></ul>
+</div>
+
+<script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+<!--script src="/static/js/script.js"></script-->
+        <script>
+            window.renderProducts = function(products) {
+                const container = $('#products');
+                container.empty();
+
+                if (products.length === 0) {
+                    container.append('<p class="text-center">Товары не найдены.</p>');
+                    return;
+                }
+
+                products.forEach(p => {
+                    const card = `
+        <div class="col">
+    <div class="card h-100">
+        <img src="/${p.Image}" class="card-img-top product-img">
+        <div class="card-body">
+            <h5 class="card-title">• ${p.Category} ${p.Title} •</h5>
+            <p class="card-text">${p.Description}</p>
+            <p class="card-text fw-bold">Фасовка ${p.Packaging} Цена ${p.Price} ₽</p>
+            <div class="card-footer bg-transparent border-0 px-0 pb-0 pt-2">
+                <div class="d-flex justify-content-between">
+                    <a href="/product/edit/${p.ID}" class="text-decoration-none text-muted small">✏️ Редактировать</a>
+                    <a href="/product/delete/${p.ID}" onclick="return confirm('Удалить?')" class="text-decoration-none text-danger small">🗑 Удалить</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>`;
+                    container.append(card);
+                });
+            };
+
+            window.renderPagination = function(totalPages, currentPage) {
+                const pagination = $('#pagination');
+                pagination.empty();
+
+                for (let i = 1; i <= totalPages; i++) {
+                    const active = i === currentPage ? 'active' : '';
+                    pagination.append(`
+        <li class="page-item ${active}">
+            <a class="page-link" href="#" data-page="${i}">${i}</a>
+        </li>`);
+                }
+            };
+
+            $(document).ready(function () {
+                function getFiltersFromURL() {
+                    const params = new URLSearchParams(window.location.search);
+                    return {
+                        search: params.get("search") || "",
+                        category: params.get("category") || "",
+                        sort: params.get("sort") || "",
+                        page: parseInt(params.get("page") || "1", 10),
+                    };
+                }
+
+                function updateURL(params) {
+                    const searchParams = new URLSearchParams(params).toString();
+                    history.replaceState(null, '', '?' + searchParams);
+                }
+
+                function loadProducts(page = 1, sort = "", category = "", search = "") {
+                    const params = { page, sort, category, search };
+                    updateURL(params);
+
+                    $.get('/products', params, function (data) {
+                        window.renderProducts(data.products);
+                        window.renderPagination(data.totalPages, data.currentPage);
+                    });
+                }
+
+                $('#filterForm').on('submit', function (e) {
+                    e.preventDefault();
+                    const category = $('#categoryInput').val();
+                    const sort = $('#sortInput').val();
+                    const search = $('#searchInput').val();
+                    loadProducts(1, sort, category, search);
+                });
+
+                $('#pagination').on('click', '.page-link', function (e) {
+                    e.preventDefault();
+                    const page = $(this).data('page');
+                    const filters = getFiltersFromURL();
+                    loadProducts(page, filters.sort, filters.category, filters.search);
+                });
+
+                $('#sortInput').on('change', function () {
+                    const sort = $(this).val();
+                    const filters = getFiltersFromURL();
+                    loadProducts(1, sort, filters.category, filters.search);
+                });
+
+                const initial = getFiltersFromURL();
+                $('#searchInput').val(initial.search);
+                $('#categoryInput').val(initial.category);
+                $('#sortInput').val(initial.sort);
+                loadProducts(initial.page, initial.sort, initial.category, initial.search);
+            });
+        </script>
+
+    </div>
+</div>
+
+<!--Embed the footer.html template at this location-->
+{{ template "footer.html" .}}

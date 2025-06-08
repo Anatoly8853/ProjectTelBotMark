@@ -1,13 +1,15 @@
 package main
 
 import (
-	"ProjectTelBotMark/structs"
+	"ProjectTelBotMark/internal/structs"
 	"errors"
 	"fmt"
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
+
+//var Page int
 
 // CreateCategoryKeyboardReply Массив кнопки под меню.
 func CreateCategoryKeyboardReply(categoryName string) ([][]tgbotapi.KeyboardButton, error) {
@@ -67,7 +69,7 @@ func CreateCategoryKeyboard(categoryName string) ([][]tgbotapi.InlineKeyboardBut
 }
 
 // createCalendarKeyboard календать клавиатура.
-func createCalendarKeyboard(month time.Time) tgbotapi.InlineKeyboardMarkup {
+func (m *MessageService) createCalendarKeyboard(month time.Time) tgbotapi.InlineKeyboardMarkup {
 	currentYear, currentMonth, _ := month.Date()
 	currentLocation := month.Location()
 
@@ -81,7 +83,7 @@ func createCalendarKeyboard(month time.Time) tgbotapi.InlineKeyboardMarkup {
 
 	// Заголовок с названием месяца
 	monthYear := month.Format("01")
-	monthName := getMonthName(monthYear)
+	monthName := m.getMonthName(monthYear)
 	row = append(row, tgbotapi.NewInlineKeyboardButtonData(monthName, "ignore"))
 	buttons = append(buttons, row)
 
@@ -140,7 +142,7 @@ func createCalendarKeyboard(month time.Time) tgbotapi.InlineKeyboardMarkup {
 	}
 }
 
-func getMonthName(monthStr string) string {
+func (m *MessageService) getMonthName(monthStr string) string {
 	monthMap := map[string]string{
 		"01": "Январь",
 		"02": "Февраль",
@@ -158,7 +160,7 @@ func getMonthName(monthStr string) string {
 
 	monthName, exists := monthMap[monthStr]
 	if !exists {
-		app.Log.Errorf("invalid month format: %s", monthStr)
+		m.app.Log.Errorf("invalid month format: %s", monthStr)
 		return ""
 	}
 

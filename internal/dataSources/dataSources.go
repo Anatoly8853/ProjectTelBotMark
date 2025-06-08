@@ -1,23 +1,30 @@
 package dataSources
 
 import (
-	`ProjectTelBotMark/bychat`
+	"ProjectTelBotMark/internal/bychat"
+	"ProjectTelBotMark/internal/structs"
+	"context"
+	slogavp "github.com/Anatoly8853/slog-avp/v2"
 
-	"ProjectTelBotMark/structs"
 	"database/sql"
 	"fmt"
 	"io"
-
 	"os"
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-
 	_ "github.com/mattn/go-sqlite3"
 )
 
-// DB одк
-var DB *sql.DB
+type Repository struct {
+	db  *sql.DB
+	app *slogavp.Application
+	bot *tgbotapi.BotAPI
+}
+
+func NewRepository(db *sql.DB, app *slogavp.Application, bot *tgbotapi.BotAPI) *Repository {
+	return &Repository{db, app, bot}
+}
 
 var UserBlack = make(map[int64]int)
 
@@ -101,28 +108,30 @@ LIMIT 1
 `
 
 // InitDB - инициализация базы данных.
-func InitDB(app *structs.Application) {
-
+func InitDB(app *slogavp.Application) (db *sql.DB, err error) {
 	// Открываем соединение с базой данных SQLite
-	var err error
-	DB, err = sql.Open("sqlite3", "./data.db")
+	ctx := context.Background()
+
+	db, err = sql.Open("sqlite3", "./sqlite/data.db")
 	if err != nil {
 		app.Log.Fatalf("Error opening database: %v", err)
+		return nil, err
 	}
 
-	_, err = DB.Exec(`
+	_, err = db.ExecContext(ctx, `
 	CREATE TABLE IF NOT EXISTS tg_user_Chat_ID (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER UNIQUE,
     user_name TEXT,
-    user_black INTEGER    	
+    user_black INTEGER DEFAULT 0 	
 	)		
 	    `)
 	if err != nil {
-		app.Log.Fatalf("Error creating reminders table: %v", err)
+		app.Log.Fatalf("Ошибка создания таблицы tg_user_Chat_ID: %v", err)
+		return nil, err
 	}
 
-	_, err = DB.Exec(`
+	_, err = db.ExecContext(ctx, `
 	CREATE TABLE IF NOT EXISTS tg_user_orders (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     order_id INTEGER,
@@ -134,50 +143,55 @@ func InitDB(app *structs.Application) {
 	)
 	`)
 	if err != nil {
-		app.Log.Fatalf("Error creating reminders table: %v", err)
+		app.Log.Fatalf("Error creating reminders table tg_user_orders: %v", err)
+		return nil, err
 	}
 
-	_, err = DB.Exec(`
+	_, err = db.ExecContext(ctx, `
 	CREATE TABLE IF NOT EXISTS tg_user_order_id (
     id INTEGER PRIMARY KEY AUTOINCREMENT,    
     item_name TEXT     
 	)
 	`)
 	if err != nil {
-		app.Log.Fatalf("Error creating reminders table: %v", err)
+		app.Log.Fatalf("Error creating reminders table tg_user_order_id: %v", err)
+		return nil, err
 	}
 
-	_, err = DB.Exec(`
+	_, err = db.ExecContext(ctx, `
 	CREATE TABLE IF NOT EXISTS tg_user_phone_number (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	phone_number TEXT UNIQUE
 	)
 	`)
 	if err != nil {
-		app.Log.Fatalf("Error creating reminders table: %v", err)
+		app.Log.Fatalf("Error creating reminders table tg_user_phone_number: %v", err)
+		return nil, err
 	}
 
-	_, err = DB.Exec(`
+	_, err = db.ExecContext(ctx, `
 	CREATE TABLE IF NOT EXISTS tg_user_full_name (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
     full_name TEXT UNIQUE
 	)
 	`)
 	if err != nil {
-		app.Log.Fatalf("Error creating reminders table: %v", err)
+		app.Log.Fatalf("Error creating reminders table tg_user_full_name: %v", err)
+		return nil, err
 	}
 
-	_, err = DB.Exec(`
+	_, err = db.ExecContext(ctx, `
 	CREATE TABLE IF NOT EXISTS tg_user_delivery_address (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	delivery_address TEXT UNIQUE
 	)
 	`)
 	if err != nil {
-		app.Log.Fatalf("Error creating reminders table: %v", err)
+		app.Log.Fatalf("Error creating reminders table tg_user_delivery_address: %v", err)
+		return nil, err
 	}
 
-	_, err = DB.Exec(`
+	_, err = db.ExecContext(ctx, `
 	CREATE TABLE IF NOT EXISTS tg_user_orders_date (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER,
@@ -194,28 +208,132 @@ func InitDB(app *structs.Application) {
 	)	
 	`)
 	if err != nil {
-		app.Log.Fatalf("Error creating reminders table: %v", err)
+		app.Log.Fatalf("Error creating reminders table tg_user_orders_date: %v", err)
+		return nil, err
 	}
 
+	_, err = db.ExecContext(ctx, `
+	CREATE TABLE IF NOT EXISTS products (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT,
+    description TEXT,
+    price REAL,
+    category_id INTEGER,  -- Внешний ключ для связи с категорией
+    image TEXT,
+    packaging TEXT,
+    packaging_cal TEXT,
+    FOREIGN KEY (category_id) REFERENCES products_category(id)  -- Связь с таблицей категорий
+)
+	`)
+	if err != nil {
+		app.Log.Fatalf("Error creating reminders table products: %v", err)
+		return nil, err
+	}
+
+	_, err = db.ExecContext(ctx, `
+    CREATE TABLE IF NOT EXISTS products_category (
+       id INTEGER PRIMARY KEY AUTOINCREMENT,
+       category TEXT UNIQUE NOT NULL  -- Уникальные названия категорий
+    )
+    `)
+	if err != nil {
+		app.Log.Fatalf("Error creating reminders table products_category: %v", err)
+		return nil, err
+	}
+
+	// Создаем индексы
+	_, err = db.ExecContext(ctx, `
+    CREATE INDEX IF NOT EXISTS idx_products_category ON products(category_id)`)
+	if err != nil {
+		app.Log.Fatalf("Error creating reminders table products_category: %v", err)
+		return nil, err
+	}
+
+	_, err = db.ExecContext(ctx, `
+    CREATE INDEX IF NOT EXISTS idx_category_name ON products_category(category)`)
+	if err != nil {
+		app.Log.Fatalf("Error creating reminders table products_category: %v", err)
+		return nil, err
+	}
+
+	_, err = db.ExecContext(ctx, `
+	CREATE TABLE IF NOT EXISTS categories (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    display_name TEXT,         -- например, 🥬Капуста🥬
+    photo TEXT                 -- путь к изображению, если есть
+    )
+	`)
+	if err != nil {
+		app.Log.Fatalf("Error creating reminders table categories: %v", err)
+		return nil, err
+	}
+
+	_, err = db.ExecContext(ctx, `
+	CREATE TABLE IF NOT EXISTS product (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,                      -- "Шампиньоны"
+    description TEXT,                        -- "Грибы шампиньоны"
+    category_id INTEGER NOT NULL,            -- связь с "Грибы"
+    FOREIGN KEY (category_id) REFERENCES categories(id),
+    UNIQUE(name, category_id)                -- чтобы не было дубликатов
+   )
+	`)
+	if err != nil {
+		app.Log.Fatalf("Error creating reminders table product: %v", err)
+		return nil, err
+	}
+
+	_, err = db.ExecContext(ctx, `
+	CREATE TABLE IF NOT EXISTS packagings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    label TEXT NOT NULL,                     -- "ведёрко 0,9"
+    weight_kg REAL,                          -- 0.9
+    price_rub INTEGER NOT NULL               -- 350
+    )
+	`)
+	if err != nil {
+		app.Log.Fatalf("Error creating reminders table packagings: %v", err)
+		return nil, err
+	}
+
+	_, err = db.ExecContext(ctx, `
+	CREATE TABLE IF NOT EXISTS product_packagings (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	product_id INTEGER NOT NULL,
+	packaging_id INTEGER NOT NULL,
+	button_str TEXT NOT NULL, -- одна строка: "⚖...","callback":"..."
+	UNIQUE(product_id, packaging_id),
+	FOREIGN KEY(product_id) REFERENCES products(id),
+	FOREIGN KEY(packaging_id) REFERENCES packagings(id)
+)
+	`)
+	if err != nil {
+		app.Log.Fatalf("Error creating reminders table packagings: %v", err)
+		return nil, err
+	}
+
+	return db, nil
 }
 
 // CloseDB - закрытие соединения с базой данных.
-func CloseDB(app *structs.Application) {
+func (r *Repository) CloseDB() {
 
-	if DB != nil {
-		err := DB.Close()
+	if r.db != nil {
+		err := r.db.Close()
 		if err != nil {
-			app.Log.Errorf("Error closing database: %v", err)
+			r.app.Log.Errorf("Error closing database: %v", err)
 			return
 		}
 	}
 }
 
-func UserID(app *structs.Application) []structs.User {
+func (r *Repository) UserID() []structs.User {
 
-	row, err := DB.Query(`SELECT user_id FROM tg_user_Chat_ID`)
+	ctx := context.Background()
+	row, err := r.db.QueryContext(ctx, `SELECT user_id FROM tg_user_Chat_ID`)
 	if err != nil {
-		app.Log.Errorf("Error getting user id: %v", err)
+		r.app.Log.Errorf("Error getting user id: %v", err)
 		return nil
 	}
 
@@ -225,7 +343,7 @@ func UserID(app *structs.Application) []structs.User {
 		u := structs.User{}
 		err = row.Scan(&u.UserID)
 		if err != nil {
-			app.Log.Errorf("Error getting user id: %v", err)
+			r.app.Log.Errorf("Error getting user id: %v", err)
 			return nil
 		}
 		user = append(user, u)
@@ -234,8 +352,8 @@ func UserID(app *structs.Application) []structs.User {
 }
 
 // getOrInsertValues Функция для получения или вставки значений в таблицы базы данных.
-func getOrInsertValues(app *structs.Application, tx *sql.Tx, tables []string, columns []string, values []interface{}) ([]int64, error) {
-
+func (r *Repository) getOrInsertValues(tx *sql.Tx, tables []string, columns []string, values []interface{}) ([]int64, error) {
+	ctx := context.Background()
 	var ids []int64
 
 	// Проверяем, вставляем ли данные в одну таблицу
@@ -268,20 +386,20 @@ func getOrInsertValues(app *structs.Application, tx *sql.Tx, tables []string, co
 		insertQuery += ") " + valuesPlaceholders + ")"
 
 		// Проверяем, существует ли строка
-		err := tx.QueryRow(selectQuery, values...).Scan(&idd)
+		err := tx.QueryRowContext(ctx, selectQuery, values...).Scan(&idd)
 
 		if err != nil && err != sql.ErrNoRows {
-			app.Log.Errorf("Ошибка при выборе строки: %v", err)
+			r.app.Log.Errorf("Ошибка при выборе строки: %v", err)
 			return nil, err
 		}
 
 		if idd == 0 {
 
 			// Вставляем новую строку, если она не существует
-			res, err := tx.Exec(insertQuery, values...)
+			res, err := tx.ExecContext(ctx, insertQuery, values...)
 			if err != nil {
 
-				app.Log.Errorf("Ошибка при вставке строки: %v", err)
+				r.app.Log.Errorf("Ошибка при вставке строки: %v", err)
 				return nil, err
 
 			}
@@ -289,7 +407,7 @@ func getOrInsertValues(app *structs.Application, tx *sql.Tx, tables []string, co
 			idd, err = res.LastInsertId()
 			if err != nil {
 
-				app.Log.Errorf("Ошибка при вставке строки: %v", err)
+				r.app.Log.Errorf("Ошибка при вставке строки: %v", err)
 				return nil, err
 
 			}
@@ -304,23 +422,23 @@ func getOrInsertValues(app *structs.Application, tx *sql.Tx, tables []string, co
 
 			var idd int64
 			query := fmt.Sprintf("SELECT id FROM %s WHERE %s = ?", table, column)
-			err := tx.QueryRow(query, value).Scan(&idd)
+			err := tx.QueryRowContext(ctx, query, value).Scan(&idd)
 			if err != nil && err != sql.ErrNoRows {
-				app.Log.Errorf("Ошибка при выборе строки: %v", err)
+				r.app.Log.Errorf("Ошибка при выборе строки: %v", err)
 				return nil, err
 			}
 
 			if idd == 0 {
 				insertQuery := fmt.Sprintf("INSERT INTO %s (%s) VALUES (?)", table, column)
-				res, err := tx.Exec(insertQuery, value)
+				res, err := tx.ExecContext(ctx, insertQuery, value)
 				if err != nil {
-					app.Log.Errorf("Ошибка при вставке строки: %v", err)
+					r.app.Log.Errorf("Ошибка при вставке строки: %v", err)
 					return nil, err
 				}
 
 				idd, err = res.LastInsertId()
 				if err != nil {
-					app.Log.Errorf("Ошибка при вставке строки: %v", err)
+					r.app.Log.Errorf("Ошибка при вставке строки: %v", err)
 					return nil, err
 				}
 			}
@@ -333,22 +451,22 @@ func getOrInsertValues(app *structs.Application, tx *sql.Tx, tables []string, co
 }
 
 // ProcessOrder Функция для парсинга деталей заказа и добавления в базу данных.
-func ProcessOrder(app *structs.Application, update tgbotapi.Update) error {
-
+func (r *Repository) ProcessOrder(update tgbotapi.Update) error {
+	ctx := context.Background()
 	userID := update.CallbackQuery.Message.Chat.ID
 	userName := update.CallbackQuery.From.UserName
 
-	app.Log.Infof("userName = %s", userName)
+	r.app.Log.Infof("userName = %s", userName)
 
 	// Регулярные выражения для извлечения информации
 	fields := []string{"PhoneNumber", "DeliveryAddress", "DeliveryDate", "FullName"}
 	values := make(map[string]string)
 
 	for _, field := range fields {
-		if value, err := bychat.GetFieldByChatID(app, userID, field); err == nil {
+		if value, err := bychat.GetFieldByChatID(r.app, userID, field); err == nil {
 			values[field] = value.(string)
 		} else {
-			app.Log.Errorf("Error getting field %s: %v", field, err)
+			r.app.Log.Errorf("Error getting field %s: %v", field, err)
 			return err
 		}
 	}
@@ -363,7 +481,7 @@ func ProcessOrder(app *structs.Application, update tgbotapi.Update) error {
 	// Парсинг строки времени в тип time.Time
 	t, err := time.Parse("02.01.2006", values["DeliveryDate"])
 	if err != nil {
-		app.Log.Errorf("Ошибка парсинга строки времени: %v", err)
+		r.app.Log.Errorf("Ошибка парсинга строки времени: %v", err)
 		return err
 	}
 
@@ -371,29 +489,29 @@ func ProcessOrder(app *structs.Application, update tgbotapi.Update) error {
 	formattedDeliveryDate := t.Format("2006-01-02")
 
 	// Начало транзакции
-	tx, err := DB.Begin()
+	tx, err := r.db.Begin()
 	if err != nil {
-		app.Log.Errorf("Error starting transaction: %v", err)
+		r.app.Log.Errorf("Error starting transaction: %v", err)
 		return err
 	}
 
 	defer func() {
 		if err != nil {
 			if rbErr := tx.Rollback(); rbErr != nil {
-				app.Log.Errorf("tx.Rollback() failed: %v", rbErr)
+				r.app.Log.Errorf("tx.Rollback() failed: %v", rbErr)
 			}
 		} else {
 			if cmErr := tx.Commit(); cmErr != nil {
-				app.Log.Errorf("tx.Commit() failed: %v", cmErr)
+				r.app.Log.Errorf("tx.Commit() failed: %v", cmErr)
 			}
 		}
 	}()
 
 	userBlack := 0
 
-	err = UpsertUser(app, tx, userID, userName, userBlack)
+	err = r.UpsertUser(tx, userID, userName, userBlack)
 	if err != nil {
-		app.Log.Errorf("Error upserting user: %v", err)
+		r.app.Log.Errorf("Error upserting user: %v", err)
 	}
 
 	// Форматирование текущей даты и времени в указанный формат
@@ -404,10 +522,10 @@ func ProcessOrder(app *structs.Application, update tgbotapi.Update) error {
 	columns := []string{"user_id", "full_name", "phone_number", "delivery_address"}
 	valueList := []interface{}{userID, values["FullName"], values["PhoneNumber"], values["DeliveryAddress"]}
 
-	ids, err := getOrInsertValues(app, tx, tables, columns, valueList)
+	ids, err := r.getOrInsertValues(tx, tables, columns, valueList)
 	if err != nil {
 		// Обработать ошибку
-		app.Log.Errorf("Error inserting row: %v", err)
+		r.app.Log.Errorf("Error inserting row: %v", err)
 		return err
 	}
 
@@ -423,19 +541,19 @@ func ProcessOrder(app *structs.Application, update tgbotapi.Update) error {
 	columns = []string{"user_id", "phone_number_id", "full_name_id", "delivery_address_id", "date_time", "delivery_date", "total_cost"}
 	valueList = []interface{}{existingUserID, existingPhoneID, existingFullNameID, existingAddressID, formattedDateTime, formattedDeliveryDate, totalCost}
 
-	ids, err = getOrInsertValues(app, tx, tables, columns, valueList)
+	ids, err = r.getOrInsertValues(tx, tables, columns, valueList)
 	if err != nil {
 		// Обработать ошибку
-		app.Log.Errorf("Error inserting row: %v", err)
+		r.app.Log.Errorf("Error inserting row: %v", err)
 		return err
 	}
 
 	existingOrdersDateID = ids[0]
 
 	// Вставляем новые записи в tg_user_orders
-	stmt, err := tx.Prepare(`INSERT INTO tg_user_orders (order_id, item_name, quantity, cost) VALUES (?, ?, ?, ?)`)
+	stmt, err := tx.PrepareContext(ctx, `INSERT INTO tg_user_orders (order_id, item_name, quantity, cost) VALUES (?, ?, ?, ?)`)
 	if err != nil {
-		app.Log.Errorf("Error inserting row: %v", err)
+		r.app.Log.Errorf("Error inserting row: %v", err)
 		return err
 	}
 
@@ -451,16 +569,16 @@ func ProcessOrder(app *structs.Application, update tgbotapi.Update) error {
 		columns = []string{"item_name"}
 		valueList = []interface{}{itemName}
 
-		ids, err = getOrInsertValues(app, tx, tables, columns, valueList)
+		ids, err = r.getOrInsertValues(tx, tables, columns, valueList)
 		if err != nil {
 			// Обработать ошибку
-			app.Log.Errorf("Error inserting row: %v", err)
+			r.app.Log.Errorf("Error inserting row: %v", err)
 			return err
 		}
 
 		_, err = stmt.Exec(existingOrdersDateID, ids[0], quantity, cost)
 		if err != nil {
-			app.Log.Errorf("Error inserting row: %v", err)
+			r.app.Log.Errorf("Error inserting row: %v", err)
 			return err
 		}
 	}
@@ -469,7 +587,7 @@ func ProcessOrder(app *structs.Application, update tgbotapi.Update) error {
 }
 
 // processRows функция для обработки строк результата SQL-запроса.
-func processRows(app *structs.Application, rows *sql.Rows) ([]structs.OrderDb, error) {
+func (r *Repository) processRows(rows *sql.Rows) ([]structs.OrderDb, error) {
 
 	var orders []structs.OrderDb
 
@@ -488,14 +606,14 @@ func processRows(app *structs.Application, rows *sql.Rows) ([]structs.OrderDb, e
 			&order.Purchase.Cost,
 		)
 		if err != nil {
-			app.Log.Errorf("Error scanning rows: %v", err)
+			r.app.Log.Errorf("Error scanning rows: %v", err)
 			return nil, err
 		}
 		orders = append(orders, order)
 	}
 
 	if err := rows.Err(); err != nil {
-		app.Log.Errorf("Error after rows.Next(): %v", err)
+		r.app.Log.Errorf("Error after rows.Next(): %v", err)
 		return nil, err
 	}
 
@@ -503,21 +621,21 @@ func processRows(app *structs.Application, rows *sql.Rows) ([]structs.OrderDb, e
 }
 
 // GetOrdersByUserID Функция для выбора из базы данных.
-func GetOrdersByUserID(app *structs.Application, userID int64, limit uint8) ([]structs.OrderDb, error) {
-
+func (r *Repository) GetOrdersByUserID(userID int64, limit uint8) ([]structs.OrderDb, error) {
+	ctx := context.Background()
 	// Выполняем запрос для получения заказов
-	rows, err := DB.Query(limitedOrdersQuery, userID, limit)
+	rows, err := r.db.QueryContext(ctx, limitedOrdersQuery, userID, limit)
 	if err != nil {
-		app.Log.Printf("Error preparing query: %v", err)
+		r.app.Log.Printf("Error preparing query: %v", err)
 		return nil, err
 	}
 
-	return processRows(app, rows)
+	return r.processRows(rows)
 }
 
 // GetOrdersWithFilters Функция для выбора данных из базы данных с фильтрацией и сортировкой.
-func GetOrdersWithFilters(app *structs.Application, params structs.QueryParams) ([]structs.OrderDb, error) {
-
+func (r *Repository) GetOrdersWithFilters(params structs.QueryParams) ([]structs.OrderDb, error) {
+	ctx := context.Background()
 	query := baseQuery
 
 	// Инициализация пустого среза с помощью make
@@ -553,56 +671,56 @@ func GetOrdersWithFilters(app *structs.Application, params structs.QueryParams) 
 		}
 	}
 
-	rows, err := DB.Query(query, queryArgs...)
+	rows, err := r.db.QueryContext(ctx, query, queryArgs...)
 	if err != nil {
-		app.Log.Errorf("Error preparing query %v ", err)
+		r.app.Log.Errorf("Error preparing query %v ", err)
 		return nil, err
 	}
 
-	return processRows(app, rows)
+	return r.processRows(rows)
 }
 
-func UpsertUser(app *structs.Application, tx *sql.Tx, userID int64, userName string, userBlack int) error {
-
+func (r *Repository) UpsertUser(tx *sql.Tx, userID int64, userName string, userBlack int) error {
+	ctx := context.Background()
 	// Вставляем запись, если её нет
-	_, err := tx.Exec(`
+	_, err := tx.ExecContext(ctx, `
 		INSERT OR IGNORE INTO tg_user_Chat_ID (user_id, user_name, user_black)
 		VALUES (?, ?, ?)`, userID, userName, userBlack)
 	if err != nil {
-		app.Log.Errorf("error inserting record: %v", err)
+		r.app.Log.Errorf("error inserting record: %v", err)
 		return fmt.Errorf("error inserting record: %v", err)
 	}
 
 	// Обновляем user_name, если он отличается
-	_, err = tx.Exec(`
+	_, err = tx.ExecContext(ctx, `
 		UPDATE tg_user_Chat_ID
 		SET user_name = ?
 		WHERE user_id = ?
 		  AND user_name != ?`, userName, userID, userName)
 	if err != nil {
-		app.Log.Errorf("error updating user_name: %v", err)
+		r.app.Log.Errorf("error updating user_name: %v", err)
 		return fmt.Errorf("error updating user_name: %v", err)
 	}
 
 	// Обновляем user_black, если он отличается
-	_, err = tx.Exec(`
+	_, err = tx.ExecContext(ctx, `
 		UPDATE tg_user_Chat_ID
 		SET user_black = ?
 		WHERE user_id = ?
 		  AND user_black != ?`, userBlack, userID, userBlack)
 	if err != nil {
-		app.Log.Errorf("error updating user_black: %v", err)
+		r.app.Log.Errorf("error updating user_black: %v", err)
 		return fmt.Errorf("error updating user_black: %v", err)
 	}
 
 	return nil
 }
 
-func GetUsers(app *structs.Application) ([]structs.User, error) {
-
-	rows, err := DB.Query("SELECT user_id, user_name, user_black FROM tg_user_Chat_ID")
+func (r *Repository) GetUsers() ([]structs.User, error) {
+	ctx := context.Background()
+	rows, err := r.db.QueryContext(ctx, "SELECT user_id, user_name, user_black FROM tg_user_Chat_ID")
 	if err != nil {
-		app.Log.Errorf("Error preparing query: %v", err)
+		r.app.Log.Errorf("Error preparing query: %v", err)
 		return nil, err
 	}
 
@@ -611,38 +729,34 @@ func GetUsers(app *structs.Application) ([]structs.User, error) {
 		var user structs.User
 		err = rows.Scan(&user.UserID, &user.UserBlack.UserName, &user.UserBlack.UserBlack)
 		if err != nil {
-			app.Log.Errorf("Error scanning rows: %v", err)
+			r.app.Log.Errorf("Error scanning rows: %v", err)
 			return nil, err
 		}
 
 		users = append(users, user)
-
-		// Добавляем в мапу, если user_black не равен 0
-		//if user.UserBlack.UserBlack != 0 {
 		UserBlack[user.UserID] = user.UserBlack.UserBlack
-		//}
 	}
 
 	if err = rows.Err(); err != nil {
-		app.Log.Errorf("Error after iterating rows: %v", err)
+		r.app.Log.Errorf("Error after iterating rows: %v", err)
 		return nil, err
 	}
 
 	return users, nil
 }
 
-func UpdateUserBlack(app *structs.Application, userID, userBlack int) error {
-
-	_, err := DB.Exec("UPDATE tg_user_Chat_ID SET user_black = ? WHERE user_id = ?", userBlack, userID)
+func (r *Repository) UpdateUserBlack(userID, userBlack int) error {
+	ctx := context.Background()
+	_, err := r.db.ExecContext(ctx, "UPDATE tg_user_Chat_ID SET user_black = ? WHERE user_id = ?", userBlack, userID)
 	if err != nil {
-		app.Log.Errorf("Error updating user_name: %v", err)
+		r.app.Log.Errorf("Error updating user_name: %v", err)
 	}
 
 	return err
 }
 
 // backupDatabase резервного копирования базы данных SQLite.
-func backupDatabase(app *structs.Application) {
+func (r *Repository) backupDatabase() {
 
 	// Путь к файлу текущей и новой резервной копии
 	oldBackupPath := "./backup_old.db"
@@ -651,7 +765,7 @@ func backupDatabase(app *structs.Application) {
 	// Создаем новую резервную копию
 	inputFile, err := os.Open("./data.db")
 	if err != nil {
-		app.Log.Errorf("Ошибка не удается открыть базу данных: %v", err)
+		r.app.Log.Errorf("Ошибка не удается открыть базу данных: %v", err)
 	}
 	defer func(inputFile *os.File) {
 		_ = inputFile.Close()
@@ -659,11 +773,11 @@ func backupDatabase(app *structs.Application) {
 
 	outputFile, err := os.Create(newBackupPath)
 	if err != nil {
-		app.Log.Errorf("Ошибка при создании нового файла резервной копии: %v", err)
+		r.app.Log.Errorf("Ошибка при создании нового файла резервной копии: %v", err)
 	}
 	_, err = io.Copy(outputFile, inputFile)
 	if err != nil {
-		app.Log.Errorf("Ошибка при копировании базы данных в файл резервной копии: %v", err)
+		r.app.Log.Errorf("Ошибка при копировании базы данных в файл резервной копии: %v", err)
 	}
 	_ = outputFile.Close() // Закрываем файл перед переименованием
 
@@ -674,29 +788,29 @@ func backupDatabase(app *structs.Application) {
 	if _, err = os.Stat(oldBackupPath); err == nil {
 		err = os.Remove(oldBackupPath)
 		if err != nil {
-			app.Log.Errorf("Ошибка при удалении старого файла резервной копии: %v", err)
+			r.app.Log.Errorf("Ошибка при удалении старого файла резервной копии: %v", err)
 		}
 	} else if !os.IsNotExist(err) {
-		app.Log.Errorf("Error checking old backup file: %v", err)
+		r.app.Log.Errorf("Error checking old backup file: %v", err)
 	}
 
 	// Переименовываем новую резервную копию в старую
 	err = os.Rename(newBackupPath, oldBackupPath)
 	if err != nil {
-		app.Log.Fatalf("Error renaming new backup file to old: %v", err)
+		r.app.Log.Fatalf("Error renaming new backup file to old: %v", err)
 	}
 
-	app.Log.Info("Backup completed successfully and old backup removed.")
+	r.app.Log.Info("Backup completed successfully and old backup removed.")
 }
 
 // StartBackupRoutine запускает Go-рутину для ежедневного копирования базы данных SQLite.
-func StartBackupRoutine(app *structs.Application, ) {
+func (r *Repository) StartBackupRoutine() {
 	go func() {
 		for {
 			now := time.Now()
 			// Вычисляем время до следующей полуночи
 			// Устанавливаем время следующего запуска на 8:00 утра текущего дня
-			next := time.Date(now.Year(), now.Month(), now.Day(), 17, 10, 0, 0, now.Location())
+			next := time.Date(now.Year(), now.Month(), now.Day(), 4, 10, 0, 0, now.Location())
 
 			// Если текущее время уже после 8:00 утра, то устанавливаем следующий запуск на 8:00 утра следующего дня
 			if now.After(next) {
@@ -709,7 +823,7 @@ func StartBackupRoutine(app *structs.Application, ) {
 			<-timer.C
 
 			// Выполняем резервное копирование
-			backupDatabase(app)
+			r.backupDatabase()
 
 			// Останавливаем таймер и переустанавливаем его на следующие 24 часа
 			//timer.Stop()
@@ -720,16 +834,16 @@ func StartBackupRoutine(app *structs.Application, ) {
 }
 
 // GetByUserID Функция для выбора из базы данных.
-func GetByUserID(userID int64) structs.OrderDb {
-
+func (r *Repository) GetByUserID(userID int64) structs.OrderDb {
+	ctx := context.Background()
 	var o structs.OrderDb
 	// Выполняем запрос для получения заказов
-	_ = DB.QueryRow(baseQueryOrders, userID).Scan(&o.UserID.UserID, &o.FullName, &o.PhoneNumber, &o.DeliveryAddress)
+	_ = r.db.QueryRowContext(ctx, baseQueryOrders, userID).Scan(&o.UserID.UserID, &o.FullName, &o.PhoneNumber, &o.DeliveryAddress)
 
 	return o
 }
 
-//groupPurchases группируем товары.
+// groupPurchases группируем товары.
 func groupPurchases(purchases []structs.Purchase) map[string]structs.Purchase {
 	groupedPurchases := make(map[string]structs.Purchase)
 	for _, p := range purchases {

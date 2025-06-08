@@ -25,22 +25,7 @@ body {
     gap: 10px;
     padding: 5px;
 }
-button.button{
-    width: 180px;
-    height: 50px;
-}
-.button {
-    padding: 10px 20px;
-    background-color: #007bff;
-    color: #fff;
-    border: none;
-    border-radius: 5px;
-    cursor: pointer;
-    text-align: center;
-    flex: 1 1 calc(33.333% - 20px);
-    box-sizing: border-box;
-}
-.button:hover { background-color: #0056b3; }
+
 .back-button { background-color: #6c757d; }
 .back-button:hover {  background-color: #5a6268; }
 .error { color: red; }
@@ -71,6 +56,11 @@ img{width: 400px; height: 400px;}
     display: flex;
     justify-content: center;
     align-items: center;
+}
+
+.containerprod{
+    margin-left: auto;
+    margin-right: auto;
 }
 
 .container-poisc {
@@ -166,22 +156,6 @@ img{width: 400px; height: 400px;}
 .form-group input:focus {
     border-color: #007bff;
 }
-
-.btn {
-    background-color: #007bff;
-    color: #ffffff;
-    border: none;
-    border-radius: 8px;
-    padding: 14px 20px;
-    cursor: pointer;
-    transition: background-color 0.3s ease;
-    width: 100%;
-}
-
-.btn:hover {
-    background-color: #0056b3;
-}
-
 
 .containerbody{
     margin-left: auto;
@@ -303,3 +277,25 @@ table.center{
 }
 .menu-main a:hover:before, .menu-main .current:before {left: 0;}
 .menu-main a:hover:after, .menu-main .current:after {right: 0;}
+
+.container-form{
+    margin: auto;
+    width: 450px;
+}
+
+.product-img {
+    margin: auto;
+    width: 60%;
+    height: 60%;
+    object-fit: cover;
+    border-radius: 0.5rem;
+}
+
+/* Для плавного появления кнопок при наведении */
+.card .btn-actions {
+    opacity: 0.3;
+    transition: opacity 0.2s;
+}
+.card:hover .btn-actions {
+    opacity: 1;
+}

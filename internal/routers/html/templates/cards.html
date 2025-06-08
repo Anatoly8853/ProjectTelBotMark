@@ -1,0 +1,16 @@
+{{range .}}
+<div class="col">
+  <div class="card h-100">
+    {{if .Image}}<img src="{{.Image}}" class="card-img-top product-img">{{end}}
+    <div class="card-body">
+      <h5 class="card-title">• {{.Category}}  {{.Title}} •</h5>
+      <p class="card-text">{{.Description}}</p>
+      <p class="text-muted">Фасовка {{.Packaging}} Цена {{.Price}} ₽ </p>
+    </div>
+    <div class="card-footer d-flex justify-content-between">
+      <a href="/edit/{{.ID}}" class="btn btn-sm btn-outline-primary">✏️ Редактировать</a>
+      <a href="/delete/{{.ID}}" onclick="return confirm('Удалить?')" class="btn btn-sm btn-outline-danger">🗑</a>
+    </div>
+  </div>
+</div>
+{{end}}

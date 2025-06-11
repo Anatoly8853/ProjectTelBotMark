@@ -3,9 +3,10 @@ package dataSources
 import (
 	"ProjectTelBotMark/internal/structs"
 	"context"
+	"strings"
 )
 
-// GetCategoriesWithProducts основная функция выводит все продукты из всех таблиц в map[string]structs.Category.
+// GetCategoriesWithProducts основная функция выводит все продукты из всех таблиц.
 func (r *Repository) GetCategoriesWithProducts() (map[string]structs.Category, error) {
 	ctx := context.Background()
 	categories := make(map[string]structs.Category)
@@ -71,8 +72,7 @@ func (r *Repository) GetCategoriesWithProducts() (map[string]structs.Category, e
 }
 
 // Вспомогательные функции
-
-// Получает фото для категории из первого продукта
+// getPhotoForCategory Получает фото для категории из первого продукта.
 func getPhotoForCategory(products []structs.Category) string {
 	if len(products) > 0 {
 		return products[0].Photo
@@ -80,7 +80,7 @@ func getPhotoForCategory(products []structs.Category) string {
 	return ""
 }
 
-// Возвращает стандартные кнопки меню
+// getDefaultButtonsM Возвращает стандартные кнопки меню.
 func getDefaultButtonsM() []structs.ButtonData {
 	return []structs.ButtonData{
 		{Text: "🔙Назад🔙"},
@@ -135,7 +135,7 @@ func (r *Repository) getAllMainCategories(ctx context.Context) (map[string]struc
 	return result, nil
 }
 
-// Проверяет, есть ли подкатегории у основной категории
+// hasSubcategories Проверяет, есть ли подкатегории у основной категории.
 func (r *Repository) hasSubcategories(ctx context.Context, mainCatID int) (bool, error) {
 	var count int
 	err := r.db.QueryRowContext(ctx, `
@@ -150,7 +150,7 @@ func (r *Repository) hasSubcategories(ctx context.Context, mainCatID int) (bool,
 	return count > 0, nil
 }
 
-// Получает подкатегории для основной категории
+// getSubCategories Получает подкатегории для основной категории.
 func (r *Repository) getSubCategories(ctx context.Context, mainCatID int) ([]structs.Category, error) {
 	rows, err := r.db.QueryContext(ctx, `
         SELECT c2.id, c2.name
@@ -182,7 +182,7 @@ func (r *Repository) getSubCategories(ctx context.Context, mainCatID int) ([]str
 	return subCats, nil
 }
 
-// Получает продукты для основной категории (без подкатегорий)
+// getProductsForMainCategory Получает продукты для основной категории (без подкатегорий).
 func (r *Repository) getProductsForMainCategory(ctx context.Context, mainCatID int) ([]structs.Category, error) {
 	rows, err := r.db.QueryContext(ctx, `
         SELECT p.weight_kg, p.price_rub, p.callback, ph.name AS photo_path
@@ -218,7 +218,7 @@ func (r *Repository) getProductsForMainCategory(ctx context.Context, mainCatID i
 	return categories, nil
 }
 
-// Получает продукты для подкатегории
+// getProductsForSubCategory Получает продукты для подкатегории.
 func (r *Repository) getProductsForSubCategory(ctx context.Context, mainCatID, subCatID int) ([]structs.Category, error) {
 	rows, err := r.db.QueryContext(ctx, `
         SELECT p.text, p.callback, ph.name AS photo_path
@@ -253,4 +253,28 @@ func (r *Repository) getProductsForSubCategory(ctx context.Context, mainCatID, s
 	}
 
 	return categories, nil
+}
+
+// NormalizeWords NormalizeWord Первое слово как есть все остальные в нижнем регистре, удаляет повторы слов (регистр не учитывается).
+func NormalizeWords(input string) string {
+	words := strings.Fields(input)
+	seen := make(map[string]bool)
+	var result []string
+
+	for i, word := range words {
+		normalized := word
+		lower := strings.ToLower(word)
+
+		if seen[lower] {
+			continue // пропустить дубликат
+		}
+		seen[lower] = true
+
+		if i == 0 {
+			result = append(result, normalized)
+		} else {
+			result = append(result, lower)
+		}
+	}
+	return strings.Join(result, " ")
 }

@@ -5,5 +5,5 @@
 /workspace.xml
 # Editor-based HTTP Client requests
 /httpRequests/
-# Игнорирование файлов с расширением .env
-.env
+# Игнорирование файлов с расширением app.env
+app.env

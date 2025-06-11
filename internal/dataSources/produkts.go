@@ -10,6 +10,7 @@ import (
 	"strings"
 )
 
+// HandlerProducts Основная функция загружает все данные.
 func (r *Repository) HandlerProducts(category string, sort string) (structs.PageData, error) {
 	query := `
 		SELECT 
@@ -120,7 +121,12 @@ func (r *Repository) HandlerProductsPage(page structs.PageProduct) ([]structs.Pr
 	if err != nil {
 		return nil, page, fmt.Errorf("failed to prepare products query: %w", err)
 	}
-	defer stmt.Close()
+	defer func(stmt *sql.Stmt) {
+		err := stmt.Close()
+		if err != nil {
+			return
+		}
+	}(stmt)
 
 	rows, err := stmt.QueryContext(ctx,
 		"%"+page.Search+"%",
@@ -133,7 +139,12 @@ func (r *Repository) HandlerProductsPage(page structs.PageProduct) ([]structs.Pr
 	if err != nil {
 		return nil, page, fmt.Errorf("failed to query products: %w", err)
 	}
-	defer rows.Close()
+	defer func(rows *sql.Rows) {
+		err := rows.Close()
+		if err != nil {
+			return
+		}
+	}(rows)
 
 	var products []structs.Product
 	for rows.Next() {
@@ -169,7 +180,12 @@ func (r *Repository) HandlerProductsPage(page structs.PageProduct) ([]structs.Pr
 	if err != nil {
 		return nil, page, fmt.Errorf("failed to prepare count query: %w", err)
 	}
-	defer countStmt.Close()
+	defer func(countStmt *sql.Stmt) {
+		err := countStmt.Close()
+		if err != nil {
+			return
+		}
+	}(countStmt)
 
 	err = countStmt.QueryRowContext(ctx,
 		"%"+page.Search+"%",
@@ -200,7 +216,10 @@ func (r *Repository) AddProduct(product structs.Product) error {
 	}
 	defer func() {
 		if err != nil {
-			tx.Rollback()
+			err := tx.Rollback()
+			if err != nil {
+				return
+			}
 		}
 	}()
 
@@ -223,9 +242,10 @@ func (r *Repository) AddProduct(product structs.Product) error {
 
 	// 2. Подкатегория (продукт)
 	var subcategoryID int64
-	err = tx.QueryRowContext(ctx, `SELECT id FROM categories_2 WHERE name = ?`, product.Title).Scan(&subcategoryID)
+	err = tx.QueryRowContext(ctx, `SELECT id FROM categories_2 WHERE display_name = ?`, product.Title).Scan(&subcategoryID)
 	if err == sql.ErrNoRows {
-		res, err := tx.ExecContext(ctx, `INSERT INTO categories_2(name, description) VALUES (?, ?)`, product.Title, product.Description)
+		res, err := tx.ExecContext(ctx, `INSERT INTO categories_2(name, display_name, description) VALUES (?, ?, ?)`,
+			stripEmojis(product.Title), product.Title, NormalizeWords(stripEmojis(product.Category)+stripEmojis(product.Title)))
 		if err != nil {
 			return fmt.Errorf("failed to insert subcategory: %w", err)
 		}
@@ -287,7 +307,7 @@ func (r *Repository) EditProduct(productID int) (structs.Product, error) {
 		SELECT 
 			pc.id,
 			c.display_name AS category,
-			c2.name AS title,
+			c2.display_name AS title,
 			c2.description,
 			ph.name AS image,
 			pc.weight_kg,
@@ -301,10 +321,15 @@ func (r *Repository) EditProduct(productID int) (structs.Product, error) {
 		WHERE pc.id = ?
 	`)
 	if err != nil {
-		r.app.Log.Errorf("Failed to prepare product select: %v", err)
 		return structs.Product{}, fmt.Errorf("failed to prepare query: %w", err)
 	}
-	defer stmt.Close()
+	defer func(stmt *sql.Stmt) {
+		err := stmt.Close()
+		if err != nil {
+			r.app.Log.Errorf("Failed to close product select: %v", err)
+			return
+		}
+	}(stmt)
 
 	var p structs.Product
 	err = stmt.QueryRowContext(ctx, productID).Scan(
@@ -320,13 +345,10 @@ func (r *Repository) EditProduct(productID int) (structs.Product, error) {
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			r.app.Log.Warnf("Product not found with ID: %d", productID)
 			return structs.Product{}, fmt.Errorf("product with ID %d not found", productID)
 		}
-		r.app.Log.Errorf("Failed to scan product: %v", err)
 		return structs.Product{}, fmt.Errorf("failed to scan product: %w", err)
 	}
-
 	return p, nil
 }
 
@@ -341,12 +363,15 @@ func (r *Repository) UpdateProduct(p structs.Product) (err error) {
 	ctx := context.Background()
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
-		r.app.Log.Errorf("Failed to begin transaction: %v", err)
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer func() {
 		if err != nil {
-			tx.Rollback()
+			err := tx.Rollback()
+			if err != nil {
+				r.app.Log.Errorf("Failed to close product select: %v", err)
+				return
+			}
 		}
 	}()
 
@@ -368,9 +393,10 @@ func (r *Repository) UpdateProduct(p structs.Product) (err error) {
 
 	// --- 2. Подкатегория (товар)
 	var subID int64
-	err = tx.QueryRowContext(ctx, `SELECT id FROM categories_2 WHERE name = ?`, p.Title).Scan(&subID)
+	err = tx.QueryRowContext(ctx, `SELECT id FROM categories_2 WHERE display_name = ?`, p.Title).Scan(&subID)
 	if err == sql.ErrNoRows {
-		res, err := tx.ExecContext(ctx, `INSERT INTO categories_2(name, description) VALUES (?, ?)`, p.Title, p.Description)
+		res, err := tx.ExecContext(ctx, `INSERT INTO categories_2(name, display_name, description) VALUES (?, ?, ?)`,
+			stripEmojis(p.Title), p.Title, NormalizeWords(stripEmojis(p.Category)+stripEmojis(p.Title)))
 		if err != nil {
 			return fmt.Errorf("failed to insert subcategory: %w", err)
 		}
@@ -476,19 +502,21 @@ func (r *Repository) UpdateProduct(p structs.Product) (err error) {
 
 func (r *Repository) DeleteProduct(productID int) error {
 	if productID <= 0 {
-		r.app.Log.Error("invalid product ID")
 		return errors.New("invalid product ID")
 	}
 
 	ctx := context.Background()
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
-		r.app.Log.Errorf("Failed to begin transaction: %v", err)
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer func() {
 		if err != nil {
-			tx.Rollback()
+			err := tx.Rollback()
+			if err != nil {
+				r.app.Log.Error(err)
+				return
+			}
 		}
 	}()
 
@@ -501,7 +529,6 @@ func (r *Repository) DeleteProduct(productID int) error {
 
 	if err != nil {
 		if err == sql.ErrNoRows {
-			r.app.Log.Warnf("Product with ID %d not found", productID)
 			return fmt.Errorf("product with ID %d not found", productID)
 		}
 		return fmt.Errorf("failed to fetch product metadata: %w", err)
@@ -637,14 +664,19 @@ func (r *Repository) Categories() ([]string, error) {
 		r.app.Log.Error("Ошибка при получении категорий: " + err.Error())
 		return nil, err
 	}
-	defer categoryRows.Close()
+	defer func(categoryRows *sql.Rows) {
+		err := categoryRows.Close()
+		if err != nil {
+			r.app.Log.Error("<UNK> <UNK> <UNK> <UNK>: " + err.Error())
+			return
+		}
+	}(categoryRows)
 
 	var categories []string
 	for categoryRows.Next() {
 		var cat string
 		err = categoryRows.Scan(&cat)
 		if err != nil {
-			r.app.Log.Error("Ошибка при сканировании категории: " + err.Error())
 			return nil, err
 		}
 		categories = append(categories, cat)

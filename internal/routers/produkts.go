@@ -21,7 +21,7 @@ func (h *Handler) handlerProducts(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	//h.app.Log.Info(data)
+
 	c.HTML(http.StatusOK, "products.html", gin.H{
 		//"Title":    "Заказы Салаты корейские",
 		"Categories": data.Categories,
@@ -164,10 +164,9 @@ func (h *Handler) updateProduct(c *gin.Context) {
 
 	existingImage := c.PostForm("existing_image")
 	file, err := c.FormFile("image")
-	h.app.Log.Info("Путь к файлу изображения: ", existingImage)
+
 	imagePath := ""
 	if err == nil {
-
 		// загружаем новый файл
 		ext := filepath.Ext(file.Filename)
 		filename := fmt.Sprintf("img_%d%s", time.Now().UnixNano(), ext)
@@ -234,7 +233,8 @@ func (h *Handler) deleteProduct(c *gin.Context) {
 	}
 	err = h.repo.DeleteProduct(id)
 	if err != nil {
-		h.app.Log.Error("Ошибка удаления: " + err.Error())
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
 	}
 	c.Redirect(http.StatusSeeOther, "/product")
 }

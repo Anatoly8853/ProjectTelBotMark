@@ -6,7 +6,7 @@
         <h1 class="mb-0">Каталог товаров</h1>
         <div>
             <a href="/product/add" class="btn btn-success">➕ Добавить товар</a>
-            <a href="/export" class="btn btn-outline-secondary ms-2">📁 Экспорт в CSV</a>
+            <a href="/product/export" class="btn btn-outline-secondary ms-2">📁 Экспорт в CSV</a>
         </div>
     </div>
 
@@ -54,7 +54,7 @@
 
                 products.forEach(p => {
                     const card = `
-        <div class="col">
+<div class="col-md-4 mb-5">
     <div class="card h-100">
         <img src="/${p.Image}" class="card-img-top product-img">
         <div class="card-body">
@@ -70,6 +70,7 @@
         </div>
     </div>
 </div>`;
+
                     container.append(card);
                 });
             };

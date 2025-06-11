@@ -27,10 +27,12 @@ type Purchase struct {
 type ButtonData struct {
 	Text     string `json:"text,omitempty"`
 	Callback string `json:"callback,omitempty"`
+	Photo    string `json:"photo,omitempty"`
 }
 
 // Category представляет категорию с именем и кнопками.
 type Category struct {
+	ID           int          `json:"id,omitempty"`
 	CategoryName string       `json:"categoryName,omitempty"`
 	CategoryMsg  string       `json:"categoryMsg,omitempty"`
 	Photo        string       `json:"photo,omitempty"`
@@ -83,14 +85,15 @@ type Order struct {
 }
 
 type Product struct {
-	ID           int
-	Title        string
-	Description  string
-	Price        float64
-	Category     string
-	Image        string
-	Packaging    string
-	PackagingCal string
+	ID          int
+	Title       string
+	Description string
+	Price       int
+	Category    string
+	Image       string
+	Packaging   string
+	Text        string `json:"texy ,omitempty"`
+	Callback    string `json:"callback ,omitempty"`
 }
 
 type PageData struct {

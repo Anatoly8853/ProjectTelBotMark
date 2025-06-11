@@ -6,10 +6,8 @@ import (
 	"ProjectTelBotMark/internal/reminders"
 	"ProjectTelBotMark/internal/routers"
 	"ProjectTelBotMark/internal/structs"
-	"encoding/json"
 	"errors"
 	slogavp "github.com/Anatoly8853/slog-avp/v2"
-	"os"
 	"regexp"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -35,21 +33,29 @@ func main() {
 	}
 
 	repo := dataSources.NewRepository(db, app, bot)
-	// 1. Чтение файла JSON
-	jsonData, er := os.ReadFile("data.json")
-	if er != nil {
+	/*
+		// 1. Чтение файла JSON
+		jsonData, er := os.ReadFile("data.json")
+		if er != nil {
 
-		app.Log.Fatalf("Ошибка чтения файла JSON: %v", er)
+			app.Log.Fatalf("Ошибка чтения файла JSON: %v", er)
 
-	}
+		}
 
-	// 2. Распаковка данных
-	err = json.Unmarshal(jsonData, &structs.Categories)
+		// 2. Распаковка данных
+		err = json.Unmarshal(jsonData, &structs.Categories)
+		if err != nil {
+
+			app.Log.Fatalf("Ошибка распаковки JSON: %v", err)
+
+		}
+	*/
+	cat, err := repo.GetCategoriesWithProducts()
 	if err != nil {
-
-		app.Log.Fatalf("Ошибка распаковки JSON: %v", err)
-
+		//app.Log.Error("GetCategoriesWithProducts", err)
 	}
+	structs.Categories = cat
+	//app.Log.Info("GetCategoriesWithProducts", cat)
 	defer repo.CloseDB()
 
 	bot.Debug = false //false //true   // выводим лог или нет
@@ -117,7 +123,7 @@ func (m *MessageService) createCategoryMessage(update tgbotapi.Update, categoryN
 		}
 	} else {
 		// Создаем медиа-объект для изображения
-		photo := tgbotapi.NewInputMediaPhoto(tgbotapi.FilePath(categoryData.Photo))
+		photo := tgbotapi.NewInputMediaPhoto(tgbotapi.FilePath(UploadsDir + "/" + categoryData.Photo))
 
 		// Создаем медиагруппу с изображением и URL
 		mediaGroup := tgbotapi.NewMediaGroup(chatID, []interface{}{photo})

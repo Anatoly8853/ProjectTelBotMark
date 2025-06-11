@@ -38,8 +38,6 @@ OrderDir:  "ASC",
 orders, err := GetOrdersWithFilters(db, params)
 */
 
-/*//go:embed templates/*.html*/
-//var templatesFS embed.FS
 const UploadsDir = "./internal/routers/html/uploads"
 
 type Handler struct {
@@ -93,6 +91,7 @@ func (h *Handler) GinRouter() {
 	router.GET("/product/edit/:id", h.editProduct)      // форма редактирования
 	router.POST("/product/update/:id", h.updateProduct) // обработка редактирования
 	router.GET("/product/delete/:id", h.deleteProduct)  // удаление
+	router.GET("/product/export", h.exportExcel)
 
 	err := router.Run(":8090")
 	if err != nil {

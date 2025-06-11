@@ -139,7 +139,7 @@ func (m *MessageService) handleMessageText(update tgbotapi.Update) {
 				m.MainOrdersByUserID(update.Message.Chat.ID)
 			case "Назад":
 				// Возвращаемся в основное меню
-				err = m.createCategoryMessage(update, "Меню")
+				err = m.createCategoryMessage(update, "Старт")
 				if err != nil {
 					m.app.Log.Errorf("Ошибка создания сообщения %v ", err)
 					return

@@ -213,55 +213,10 @@ func InitDB(app *slogavp.Application) (db *sql.DB, err error) {
 	}
 
 	_, err = db.ExecContext(ctx, `
-	CREATE TABLE IF NOT EXISTS products (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    title TEXT,
-    description TEXT,
-    price REAL,
-    category_id INTEGER,  -- Внешний ключ для связи с категорией
-    image TEXT,
-    packaging TEXT,
-    packaging_cal TEXT,
-    FOREIGN KEY (category_id) REFERENCES products_category(id)  -- Связь с таблицей категорий
-)
-	`)
-	if err != nil {
-		app.Log.Fatalf("Error creating reminders table products: %v", err)
-		return nil, err
-	}
-
-	_, err = db.ExecContext(ctx, `
-    CREATE TABLE IF NOT EXISTS products_category (
-       id INTEGER PRIMARY KEY AUTOINCREMENT,
-       category TEXT UNIQUE NOT NULL  -- Уникальные названия категорий
-    )
-    `)
-	if err != nil {
-		app.Log.Fatalf("Error creating reminders table products_category: %v", err)
-		return nil, err
-	}
-
-	// Создаем индексы
-	_, err = db.ExecContext(ctx, `
-    CREATE INDEX IF NOT EXISTS idx_products_category ON products(category_id)`)
-	if err != nil {
-		app.Log.Fatalf("Error creating reminders table products_category: %v", err)
-		return nil, err
-	}
-
-	_, err = db.ExecContext(ctx, `
-    CREATE INDEX IF NOT EXISTS idx_category_name ON products_category(category)`)
-	if err != nil {
-		app.Log.Fatalf("Error creating reminders table products_category: %v", err)
-		return nil, err
-	}
-
-	_, err = db.ExecContext(ctx, `
 	CREATE TABLE IF NOT EXISTS categories (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL UNIQUE,
-    display_name TEXT,         -- например, 🥬Капуста🥬
-    photo TEXT                 -- путь к изображению, если есть
+    display_name TEXT       -- например, 🥬Капуста🥬   
     )
 	`)
 	if err != nil {
@@ -270,14 +225,11 @@ func InitDB(app *slogavp.Application) (db *sql.DB, err error) {
 	}
 
 	_, err = db.ExecContext(ctx, `
-	CREATE TABLE IF NOT EXISTS product (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,                      -- "Шампиньоны"
-    description TEXT,                        -- "Грибы шампиньоны"
-    category_id INTEGER NOT NULL,            -- связь с "Грибы"
-    FOREIGN KEY (category_id) REFERENCES categories(id),
-    UNIQUE(name, category_id)                -- чтобы не было дубликатов
-   )
+	CREATE TABLE IF NOT EXISTS categories_2 (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	name TEXT NOT NULL UNIQUE,
+	description TEXT NOT NULL
+    )
 	`)
 	if err != nil {
 		app.Log.Fatalf("Error creating reminders table product: %v", err)
@@ -285,11 +237,9 @@ func InitDB(app *slogavp.Application) (db *sql.DB, err error) {
 	}
 
 	_, err = db.ExecContext(ctx, `
-	CREATE TABLE IF NOT EXISTS packagings (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    label TEXT NOT NULL,                     -- "ведёрко 0,9"
-    weight_kg REAL,                          -- 0.9
-    price_rub INTEGER NOT NULL               -- 350
+	CREATE TABLE IF NOT EXISTS photo (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	name TEXT
     )
 	`)
 	if err != nil {
@@ -298,15 +248,19 @@ func InitDB(app *slogavp.Application) (db *sql.DB, err error) {
 	}
 
 	_, err = db.ExecContext(ctx, `
-	CREATE TABLE IF NOT EXISTS product_packagings (
+	CREATE TABLE IF NOT EXISTS products_categories (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	product_id INTEGER NOT NULL,
-	packaging_id INTEGER NOT NULL,
-	button_str TEXT NOT NULL, -- одна строка: "⚖...","callback":"..."
-	UNIQUE(product_id, packaging_id),
-	FOREIGN KEY(product_id) REFERENCES products(id),
-	FOREIGN KEY(packaging_id) REFERENCES packagings(id)
-)
+	category_id INTEGER NOT NULL,
+	categories_2_id INTEGER NOT NULL,
+	photo_id INTEGER NOT NULL,
+	weight_kg TEXT NOT NULL,
+	price_rub INTEGER NOT NULL,
+	text TEXT NOT NULL,
+	callback TEXT NOT NULL,
+	FOREIGN KEY (category_id) REFERENCES categories(id),
+	FOREIGN KEY (categories_2_id) REFERENCES categories_2(id),
+	FOREIGN KEY (photo_id) REFERENCES photo(id)	
+    )
 	`)
 	if err != nil {
 		app.Log.Fatalf("Error creating reminders table packagings: %v", err)

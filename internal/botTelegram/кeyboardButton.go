@@ -1,6 +1,7 @@
-package main
+package botTelegram
 
 import (
+	"ProjectTelBotMark/internal/dataSources"
 	"ProjectTelBotMark/internal/structs"
 	"errors"
 	"fmt"
@@ -9,14 +10,13 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
-//var Page int
-
-// CreateCategoryKeyboardReply Массив кнопки под меню.
+// CreateCategoryKeyboardReply строит клавиатуру с учётом пагинации и возврата
 func CreateCategoryKeyboardReply(categoryName string) ([][]tgbotapi.KeyboardButton, error) {
 	// Получаем данные для выбранной категории
-	categoryData, found := structs.Categories[categoryName]
+	cat := dataSources.StripEmojis(categoryName)
+	categoryData, found := structs.Categories[cat]
 	if !found {
-		return nil, errors.New("категория не найдена в createCategoryKeyboard")
+		return nil, errors.New("категория не найдена в CreateCategoryKeyboardReply")
 	}
 
 	// Создаем первый ряд кнопок с кнопками категории
@@ -62,8 +62,16 @@ func CreateCategoryKeyboard(categoryName string) ([][]tgbotapi.InlineKeyboardBut
 	for _, button := range categoryData.Buttons {
 		btn := tgbotapi.NewInlineKeyboardButtonData(button.Text, button.Callback)
 		row = append(row, btn)
+		if len(row) == 3 {
+			// Если в ряду уже три кнопки, добавляем его к клавиатуре и создаем новый ряд
+			inlineKeyboard = append(inlineKeyboard, row)
+			row = []tgbotapi.InlineKeyboardButton{}
+		}
 	}
-	inlineKeyboard = append(inlineKeyboard, row)
+	// Если остались кнопки, добавляем последний ряд
+	if len(row) > 0 {
+		inlineKeyboard = append(inlineKeyboard, row)
+	}
 
 	return inlineKeyboard, nil
 }

@@ -16,6 +16,12 @@ import (
 // Orders Map для хранения данных по chatID.
 var Orders = make(map[int64]structs.OrderDb)
 
+// LogValidationError логирует ошибку и возвращает стандартный формат для валидаторов.
+func LogValidationError(app *slogavp.Application, msg string, val interface{}) (string, string) {
+	app.Log.Infof("%s %v", msg, val)
+	return "", msg
+}
+
 // GetFieldByChatID для получения значения поля по chatID и имени поля.
 func GetFieldByChatID(app *slogavp.Application, chatID int64, fieldName string) (interface{}, error) {
 
@@ -23,6 +29,7 @@ func GetFieldByChatID(app *slogavp.Application, chatID int64, fieldName string) 
 		app.Log.Errorf("нет данных для обработки chatID = %v", chatID)
 		return nil, errors.New("нет chatID")
 	}
+
 	order, exists := Orders[chatID]
 
 	if !exists {
@@ -41,141 +48,89 @@ func GetFieldByChatID(app *slogavp.Application, chatID int64, fieldName string) 
 	return fieldVal.Interface(), nil
 }
 
-// FormatDateString для очистки строки от пробелов и знаков препинания, а также форматирования даты.
+// FormatDateString очищает строку от лишних символов и проверяет корректность даты
 func FormatDateString(app *slogavp.Application, dateStr string) (string, string) {
-
-	// Удаляем все пробелы и знаки препинания, кроме точки
-	re := regexp.MustCompile(`[^\d.]`)
-	cleaned := re.ReplaceAllString(dateStr, "")
-
-	// Разделяем строку на день, месяц и год
+	// Убираем всё, кроме цифр и точки
+	cleaned := regexp.MustCompile(`[^\d.]`).ReplaceAllString(dateStr, "")
 	parts := strings.Split(cleaned, ".")
 	if len(parts) != 3 {
-
-		err := fmt.Errorf("")
-		app.Log.Infof("неправильный формат даты %v ошибка %v", parts, err)
-		return "", "неправильный формат даты"
-
+		return LogValidationError(app, "неправильный формат даты", parts)
 	}
 
-	// Приводим день и месяц к формату с ведущим нулем
-	day, err := strconv.Atoi(parts[0])
-	if err != nil {
-
-		app.Log.Infof("неправильный формат дня %v ошибка %v", day, err)
-		return "", "неправильный формат дня"
-
+	// Парсинг чисел с проверкой
+	toInt := func(val string, msg string) (int, string) {
+		num, err := strconv.Atoi(val)
+		if err != nil {
+			_, s := LogValidationError(app, msg, val)
+			return 0, s
+		}
+		return num, ""
 	}
 
-	month, err := strconv.Atoi(parts[1])
-	if err != nil {
-
-		app.Log.Infof("неправильный формат месяца %v ошибка %v", month, err)
-		return "", "неправильный формат месяца"
-
+	day, errMsg := toInt(parts[0], "неправильный формат дня")
+	if errMsg != "" {
+		return "", errMsg
+	}
+	month, errMsg := toInt(parts[1], "неправильный формат месяца")
+	if errMsg != "" {
+		return "", errMsg
+	}
+	year, errMsg := toInt(parts[2], "неправильный формат года")
+	if errMsg != "" {
+		return "", errMsg
 	}
 
-	year, err := strconv.Atoi(parts[2])
-	if err != nil {
-
-		app.Log.Infof("неправильный формат года %v ошибка %v", year, err)
-		return "", "неправильный формат года"
-
-	}
-
-	// Форматируем день и месяц с ведущими нулями
 	formattedDate := fmt.Sprintf("%02d.%02d.%04d", day, month, year)
 
-	// Проверяем правильность формата даты
+	// Проверка существования даты
 	parsedDate, err := time.Parse("02.01.2006", formattedDate)
 	if err != nil {
-
-		app.Log.Infof("неправильный формат даты %v ошибка %v", formattedDate, err)
-		return "", "неправильный формат даты"
-
+		return LogValidationError(app, "неправильный формат даты", formattedDate)
 	}
 
-	// Получаем текущую дату
-	currentTime := time.Now()
-	currentYear := currentTime.Year()
-	currentMonth := int(currentTime.Month())
+	now := time.Now()
 
-	// Проверка, что год совпадает с текущим годом
-	if year != currentYear {
-
-		err = fmt.Errorf("год должен быть текущим")
-		app.Log.Infof("год %v ошибка %v", year, err)
-		return "", "год должен быть текущим"
-
+	// Год должен быть текущим
+	if year != now.Year() {
+		return LogValidationError(app, "год должен быть текущим", year)
 	}
 
-	// Проверка, что месяц текущий или следующий
-	if month != currentMonth && month != currentMonth+1 {
-
-		err = fmt.Errorf("месяц должен быть текущим или следующим")
-		app.Log.Infof("месяц %v ошибка %v", month, err)
-		return "", "месяц должен быть текущим или следующим"
-
+	// Месяц должен быть текущим или следующим
+	if month != int(now.Month()) && month != int(now.Month())+1 {
+		return LogValidationError(app, "месяц должен быть текущим или следующим", month)
 	}
 
-	// Проверка, что дата не прошедшая и не сегодняшняя
-	if parsedDate.Before(currentTime) || parsedDate.Equal(currentTime) {
-
-		err = fmt.Errorf("дата не должна быть прошедшей или сегодняшней")
-		app.Log.Infof("дата %v ошибка %v", currentTime, err)
-		return "", "дата не должна быть прошедшей или сегодняшней"
-
+	// Дата должна быть в будущем (не сегодня)
+	if !parsedDate.After(now) {
+		return LogValidationError(app, "дата должна быть в будущем", parsedDate)
 	}
 
 	return formattedDate, ""
 }
 
-// FormatPhoneNumber Функция для проверки и форматирования номера телефона
+// FormatPhoneNumber проверяет и форматирует российский номер телефона в формате +7XXXXXXXXXX
 func FormatPhoneNumber(app *slogavp.Application, phone string) (string, string) {
+	// Очищаем от пробелов и символов, кроме цифр и +
+	cleaned := regexp.MustCompile(`[^\d+]`).ReplaceAllString(phone, "")
 
-	// Удаляем все пробелы и знаки препинания
-	re := regexp.MustCompile(`[^\d+]`)
-	cleaned := re.ReplaceAllString(phone, "")
-
-	// Проверка и добавление + перед 7, если нужно
-	if strings.HasPrefix(cleaned, "7") && !strings.HasPrefix(cleaned, "+") {
-
-		cleaned = "+" + cleaned
-
-	}
-
-	// Замена 8 на +7
+	// Если начинается с 8 → заменяем на +7
 	if strings.HasPrefix(cleaned, "8") {
-
 		cleaned = "+7" + cleaned[1:]
-
+	}
+	// Если начинается с 7 (без плюса) → добавляем +
+	if strings.HasPrefix(cleaned, "7") && !strings.HasPrefix(cleaned, "+") {
+		cleaned = "+" + cleaned
 	}
 
-	// Проверка формата номера
-	if strings.HasPrefix(cleaned, "+7") {
-
-		if len(cleaned) != 12 {
-
-			err := fmt.Errorf("номер должен содержать 10 цифр после +7 ")
-			app.Log.Infof("номер телефона %v ошибка %v", cleaned, err)
-			return "", "номер должен содержать 10 цифр после +7"
-
-		}
-
-	} else {
-
-		err := fmt.Errorf("номер должен начинаться с +7 ")
-		app.Log.Infof("номер телефона %v ошибка %v", cleaned, err)
-		return "", "номер должен начинаться с +7"
-
+	// Проверка формата — должен быть +7XXXXXXXXXX (12 символов)
+	if !strings.HasPrefix(cleaned, "+7") {
+		return LogValidationError(app, "Номер должен начинаться с +7", cleaned)
 	}
-
+	if len(cleaned) != 12 {
+		return LogValidationError(app, "Номер должен содержать 10 цифр после +7", cleaned)
+	}
 	if cleaned == "+79345678901" {
-
-		err := fmt.Errorf("это номер телефона для примера введите свой номер телефона ")
-		app.Log.Infof("%v", err)
-		return "", "это номер телефона для примера введите свой номер телефона"
-
+		return LogValidationError(app, "Это номер телефона для примера, введите свой номер", cleaned)
 	}
 
 	return cleaned, ""

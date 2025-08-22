@@ -19,11 +19,10 @@ import (
 type Repository struct {
 	db  *sql.DB
 	app *slogavp.Application
-	bot *tgbotapi.BotAPI
 }
 
-func NewRepository(db *sql.DB, app *slogavp.Application, bot *tgbotapi.BotAPI) *Repository {
-	return &Repository{db, app, bot}
+func NewRepository(db *sql.DB, app *slogavp.Application) *Repository {
+	return &Repository{db, app}
 }
 
 var UserBlack = make(map[int64]int)

@@ -26,6 +26,13 @@ body {
     padding: 5px;
 }
 
+ #containerq {
+     border-radius: 20px;
+     height: 400px;
+     min-width: 310px;
+ }
+
+
 .back-button { background-color: #6c757d; }
 .back-button:hover {  background-color: #5a6268; }
 .error { color: red; }
@@ -124,7 +131,16 @@ img{width: 400px; height: 400px;}
     border-radius: 20px;
     box-shadow: 0px 0px 20px 0px rgba(0,0,0,0.1);
     padding: 40px;
-    max-width: 400px;
+    max-width: 450px;
+    width: 100%;
+}
+
+.card_black {
+    background-color: #ffffff;
+    border-radius: 20px;
+    box-shadow: 0px 0px 20px 0px rgba(0,0,0,0.1);
+    padding: 40px;
+    max-width: 620px;
     width: 100%;
 }
 

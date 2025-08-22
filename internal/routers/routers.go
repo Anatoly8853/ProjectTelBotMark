@@ -40,6 +40,12 @@ orders, err := GetOrdersWithFilters(db, params)
 
 const UploadsDir = "./internal/routers/html/uploads"
 
+type GroupKey struct {
+	UserID       int64
+	DeliveryDate string
+	DateTime     string
+}
+
 type Handler struct {
 	repo *dataSources.Repository
 	app  *slogavp.Application
@@ -379,28 +385,19 @@ func (h *Handler) handlerIndex(c *gin.Context) {
 			var webnum structs.Webnums
 
 			// Парсинг строки времени в тип time.Time
-			t, err := time.Parse(time.RFC3339, order.DeliveryDate)
-			if err != nil {
-				h.app.Log.Errorf("Ошибка парсинга строки времени: %v", err)
-				return
-			}
-
-			// Форматирование времени в нужный формат
-			formattedDeliveryDate := t.Format("02.01.2006")
+			formattedDeliveryDate := formatDate(order.DeliveryDate)
 
 			if formattedDeliveryDate == now {
 				payload.CurrentDate = true
 			}
 
 			if order.DateTime != currentDateTime2 {
-
 				currentDateTime2 = order.DateTime
 				num = 1
-
 			} else {
-
 				num++
 			}
+
 			// Группировка по дате доставки
 			if order.UserID.UserID != currentUserID || formattedDeliveryDate != currentDeliveryDate || order.DateTime != currentDateTime {
 				payload.OrderDb.DateTime = order.DateTime
@@ -461,4 +458,13 @@ func renderHTML(c *gin.Context, payloads []structs.OrderInfo, webnums []structs.
 		"Title":    "Заказы Салаты корейские",
 		"Classind": "current",
 		"payload":  rty})
+}
+
+// formatDate красиво форматирует дату
+func formatDate(dateStr string) string {
+	t, err := time.Parse(time.RFC3339, dateStr)
+	if err != nil {
+		return dateStr
+	}
+	return t.Format("02.01.2006")
 }

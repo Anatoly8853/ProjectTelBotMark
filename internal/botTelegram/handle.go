@@ -1,4 +1,4 @@
-package main
+package botTelegram
 
 import (
 	"ProjectTelBotMark/config"
@@ -13,6 +13,10 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
+var DeliveryAddress = "Адрес доставки:"
+var PhoneNumber = "Номер телефона:"
+var FullName = "ФИО:"
+
 // UpdateMessage Основной обработчик всех данных бота docs.
 func (m *MessageService) UpdateMessage(cfg config.Config) {
 	go func() {
@@ -22,9 +26,7 @@ func (m *MessageService) UpdateMessage(cfg config.Config) {
 		updates := m.bot.GetUpdatesChan(u)
 
 		for update := range updates {
-
 			if update.CallbackQuery != nil {
-
 				// Проверяем статус user_black
 				id := dataSources.UserBlack[update.CallbackQuery.Message.Chat.ID]
 				if id != 0 {
@@ -41,7 +43,6 @@ func (m *MessageService) UpdateMessage(cfg config.Config) {
 			}
 
 			if update.Message != nil {
-
 				// Проверяем статус user_black
 				id := dataSources.UserBlack[update.Message.Chat.ID]
 				if id != 0 {
@@ -68,7 +69,6 @@ func (m *MessageService) UpdateMessage(cfg config.Config) {
 				timerChange := update.Message.MessageAutoDeleteTimerChanged
 				chatID := update.Message.Chat.ID
 				newTimerDuration := timerChange.MessageAutoDeleteTime
-
 				// Логируем изменение таймера авто удаления
 				m.app.Log.Infof("Auto-delete timer changed in chat %d: new duration is %d seconds", chatID, newTimerDuration)
 			}
@@ -105,6 +105,32 @@ func (m *MessageService) handleCommands(update tgbotapi.Update) {
 	}
 }
 
+// handleStartCommand добро пожаловать! Нажмите 'Старт' для начала.
+func (m *MessageService) handleStartCommand(update tgbotapi.Update) {
+	// Удаляем сообщение с командой /start
+	deleteMsg := tgbotapi.DeleteMessageConfig{
+		ChatID:    update.Message.Chat.ID,
+		MessageID: update.Message.MessageID,
+	}
+	_, err := m.bot.Request(deleteMsg)
+	if err != nil {
+		m.app.Log.Errorf("Ошибка при удалении сообщения: %v", err)
+		return
+	}
+	// Отправляем приветственное сообщение
+	msg := tgbotapi.NewMessage(update.Message.Chat.ID, fmt.Sprintf("Добро пожаловать %s! Нажмите 'Старт' для начала.", update.Message.Chat.UserName))
+	msg.ReplyMarkup = tgbotapi.NewReplyKeyboard(
+		tgbotapi.NewKeyboardButtonRow(
+			tgbotapi.NewKeyboardButton("Старт"),
+		),
+	)
+	_, err = m.bot.Send(msg)
+	if err != nil {
+		m.app.Log.Errorf("Ошибка при отправке сообщения: %v", err)
+		return
+	}
+}
+
 // handleMessageText Разбор MessageText для определения действия текстовых сообщений.
 func (m *MessageService) handleMessageText(update tgbotapi.Update) {
 	if update.Message.Chat.ID == 0 {
@@ -116,9 +142,7 @@ func (m *MessageService) handleMessageText(update tgbotapi.Update) {
 	if update.Message.Text != "" {
 		// Обработчик нажатий на кнопки меню
 		categoryName := update.Message.Text
-		// Создаем сообщение с фото категории и встроенной клавиатурой
 		_, pureText := SeparateEmojiAndText(categoryName)
-
 		// Проверяем есть у нас такая категория если нет вызываем другое меню
 		err := m.createCategoryMessage(update, pureText)
 
@@ -130,13 +154,16 @@ func (m *MessageService) handleMessageText(update tgbotapi.Update) {
 			// Проверяем, соответствует ли сообщение ожидаемому формату
 			case "ok":
 				break
-			case "Номер телефона:":
+
+			case PhoneNumber:
 				m.handleDeliveryDetailsMessage(update.Message.Chat.ID)
+
 			case "Мои заказы":
 				m.photoMessagesDelete(update.Message.Chat.ID)
 				m.keyboardMessagesDelete(update.Message.Chat.ID)
 				//Выводим заказы пользователей
 				m.MainOrdersByUserID(update.Message.Chat.ID)
+
 			case "Назад":
 				// Возвращаемся в основное меню
 				err = m.createCategoryMessage(update, "Старт")
@@ -144,10 +171,20 @@ func (m *MessageService) handleMessageText(update tgbotapi.Update) {
 					m.app.Log.Errorf("Ошибка создания сообщения %v ", err)
 					return
 				}
+
+			case "Стр 1":
+				// Возвращаемся в основное меню
+				err = m.createCategoryMessage(update, "Старт")
+				if err != nil {
+					m.app.Log.Errorf("Ошибка создания сообщения %v ", err)
+					return
+				}
+
 			case "Корзина":
 				m.photoMessagesDelete(update.Message.Chat.ID)
 				m.keyboardMessagesDelete(update.Message.Chat.ID)
 				m.ShowBasket(update.Message.Chat.ID)
+
 			default:
 				msg.ReplyToMessageID = update.Message.MessageID // Устанавливаем ID сообщения, на которое отвечаем
 				if _, err = m.bot.Send(msg); err != nil {
@@ -171,16 +208,13 @@ func (m *MessageService) handleCallbackQueryData(cfg config.Config, update tgbot
 		callbackData := update.CallbackQuery.Data
 		// Примеры callbackData: "add_1", "remove", "change_1_3" (изменить количество первого товара на 3)
 		parts := strings.Split(callbackData, "_")
-
 		action := parts[0]
 
 		switch action {
 		case "add":
-			//deletePreviousMessages(bot, update.CallbackQuery.Message.Chat.ID)
 			num1, err := strconv.Atoi(parts[2])
 			if err != nil {
 				m.app.Log.Errorf("Ошибка преобразования числа 1: %v", err)
-				return
 			}
 
 			num2, er := strconv.Atoi(parts[3])
@@ -190,33 +224,30 @@ func (m *MessageService) handleCallbackQueryData(cfg config.Config, update tgbot
 			}
 
 			m.AddToBasket(update, parts[1], num1, num2) // Добавление товара с указанием названия, количества и стоимости
+
 		case "ignore":
 			break
+
 		case "confirm": // Оформляем заказ
 			if orderDetails[update.CallbackQuery.Message.Chat.ID] != "" {
-
 				err := m.repo.ProcessOrder(update)
 				if err != nil {
-
 					//отправляем сообщение
 					m.sendMessage(update.CallbackQuery.Message.Chat.ID, "Время заказа истекло, пожалуйста добавьте в корзину продукты и оформите заказ повторно.")
 					structs.Baskets[update.CallbackQuery.Message.Chat.ID] = nil
 					m.app.Log.Errorf("Ошибка обработки заказа: %v", err)
-
 				} else {
-
 					//Заказ успешно обработан и добавлен в базу данных.
 					m.GroupMessagesChatID(cfg, update.CallbackQuery.Message.Chat.ID)
 					structs.Baskets[update.CallbackQuery.Message.Chat.ID] = nil
 				}
 
 				m.clearOrder(update.CallbackQuery.Message.Chat.ID)
-
 			} else {
-
 				//отправляем сообщение
 				m.sendMessage(update.CallbackQuery.Message.Chat.ID, "Время заказа истекло, пожалуйста добавьте в корзину продукты и оформите заказ повторно.")
 			}
+
 		case "send": // Получение содержимого корзины
 			if structs.Baskets[update.CallbackQuery.Message.Chat.ID] != nil {
 				// Пример ввода данных заказа
@@ -227,6 +258,7 @@ func (m *MessageService) handleCallbackQueryData(cfg config.Config, update tgbot
 				//отправляем сообщение
 				m.sendMessage(update.CallbackQuery.Message.Chat.ID, "Время заказа истекло, пожалуйста добавьте в корзину продукты и оформите заказ повторно.")
 			}
+
 		case "sends":
 			if len(parts) < 2 {
 				m.app.Log.Errorf("len(parts) = %v", len(parts))
@@ -234,7 +266,6 @@ func (m *MessageService) handleCallbackQueryData(cfg config.Config, update tgbot
 			}
 
 			DeliveryDateChatID[update.CallbackQuery.Message.Chat.ID] = 0
-
 			orders := m.repo.GetByUserID(update.CallbackQuery.Message.Chat.ID)
 
 			if orders.PhoneNumber == "" || orders.FullName == "" || orders.DeliveryAddress == "" {
@@ -269,30 +300,26 @@ func (m *MessageService) handleCallbackQueryData(cfg config.Config, update tgbot
 			}
 
 			m.handleDeliveryDetailsMessage(update.CallbackQuery.Message.Chat.ID)
-		case "phonenumber":
 
+		case "phonenumber":
 			if len(parts) < 2 {
 				m.app.Log.Errorf("len(parts) = %v", len(parts))
 				return
 			}
 			//Удаляем предыдущие сообщения
 			m.deletePreviousMessages(update.CallbackQuery.Message.Chat.ID, update.CallbackQuery.Message.MessageID)
-
 			// Формирование текста с просьбой ввести номер телефона
-			PhoneNumber := "Номер телефона:"
-
 			instructions := "\nПожалуйста, введите " + PhoneNumber + "\n" +
 				"Пример:\n" +
 				"+79345678901\n"
-
 			err := m.addOrUpdateOrderField(update.CallbackQuery.Message.Chat.ID, "PhoneNumber", PhoneNumber)
 			if err != nil {
 				m.app.Log.Errorf("Ошибка при добавлении или обновлении поля DeliveryAddress: %v", err)
 				return
 			}
-
 			//отправляем сообщение
 			m.sendMessage(update.CallbackQuery.Message.Chat.ID, instructions)
+
 		case "deliverydate":
 			if len(parts) < 2 {
 				m.app.Log.Errorf("len(parts) = %v", len(parts))
@@ -313,7 +340,6 @@ func (m *MessageService) handleCallbackQueryData(cfg config.Config, update tgbot
 					formatted, str := bychat.FormatDateString(m.app, parts[1])
 					// если str вернул ошибку отправляем повторно
 					if str != "" {
-
 						msg := tgbotapi.NewMessage(update.CallbackQuery.Message.Chat.ID, str+"\nВыберите дату доставки:")
 						now := time.Now()
 						msg.ReplyMarkup = m.createCalendarKeyboard(now)
@@ -332,22 +358,18 @@ func (m *MessageService) handleCallbackQueryData(cfg config.Config, update tgbot
 						return
 					}
 
-					PhoneNumber := "Номер телефона:"
 					var msgText string
-
 					orders := m.repo.GetByUserID(update.CallbackQuery.Message.Chat.ID)
-
 					if orders.PhoneNumber == "" || orders.FullName == "" || orders.DeliveryAddress == "" {
-
 						// Формирование текста с просьбой ввести данные для доставки
 						instructions := "Пожалуйста, введите " + PhoneNumber + "\n" +
 							"Пример:\n" +
 							"+79345678901\n"
-
 						// Добавляем или обновляем поле PhoneNumber
 						err = m.addOrUpdateOrderField(update.CallbackQuery.Message.Chat.ID, "PhoneNumber", PhoneNumber)
 						if err != nil {
 							m.app.Log.Errorf("Ошибка при добавлении или обновлении поля: %v", err)
+							return
 						}
 
 						// Отправка сообщение
@@ -359,7 +381,7 @@ func (m *MessageService) handleCallbackQueryData(cfg config.Config, update tgbot
 					msgText += "Использовать следующие данные для заказа\n"
 					msgText += fmt.Sprintf("Номер телефона: %v\n", orders.PhoneNumber)
 					msgText += fmt.Sprintf("ФИО: %v\n", orders.FullName)
-					msgText += fmt.Sprintf("Адрес доставки: %v\n", orders.DeliveryAddress)
+					msgText += fmt.Sprintf("%s %v\n", DeliveryAddress, orders.DeliveryAddress)
 
 					msg := tgbotapi.NewMessage(update.CallbackQuery.Message.Chat.ID, msgText)
 					btnSend := tgbotapi.NewInlineKeyboardButtonData("Да", "sends_msgText")
@@ -376,6 +398,7 @@ func (m *MessageService) handleCallbackQueryData(cfg config.Config, update tgbot
 					}
 				}
 			}
+
 		case "nextmonth":
 			if len(parts) < 2 {
 				m.app.Log.Errorf("len(parts) = %v", len(parts))
@@ -385,129 +408,40 @@ func (m *MessageService) handleCallbackQueryData(cfg config.Config, update tgbot
 			month, err := time.Parse("01-2006", parts[1])
 			if err != nil {
 				m.app.Log.Error(err)
-
+				return
 			}
-
 			// Заменить старый календарь новым
 			edit := tgbotapi.NewEditMessageReplyMarkup(update.CallbackQuery.Message.Chat.ID, update.CallbackQuery.Message.MessageID, m.createCalendarKeyboard(month))
 			_, err = m.bot.Send(edit)
 			if err != nil {
 				m.app.Log.Error(err)
+				return
 			}
 
 			callback := tgbotapi.NewCallback(update.CallbackQuery.ID, "")
 			if _, err = m.bot.Request(callback); err != nil {
 				m.app.Log.Error(err)
+				return
 			}
+
 		case "delete": // Очищаем корзину
 			m.DeleteBasketContents(update.CallbackQuery.Message.Chat.ID)
 		}
 	}
-}
-
-// handleStartCommand добро пожаловать! Нажмите 'Старт' для начала.
-func (m *MessageService) handleStartCommand(update tgbotapi.Update) {
-	//deletePreviousMessages(bot, update.Message.Chat.ID, update.Message.MessageID)
-	msg := tgbotapi.NewMessage(update.Message.Chat.ID, "Добро пожаловать! Нажмите 'Старт' для начала.")
-	msg.ReplyMarkup = tgbotapi.NewReplyKeyboard(
-		tgbotapi.NewKeyboardButtonRow(
-			tgbotapi.NewKeyboardButton("Старт"),
-		),
-	)
-	_, err := m.bot.Send(msg)
-	if err != nil {
-		m.app.Log.Errorf("Error sending message: = %v", err)
-	}
-	m.app.Log.Info("handleStartCommand", structs.Categories)
+	return
 }
 
 func (m *MessageService) handleFieldByChatID(update tgbotapi.Update, pureText string) string {
-
-	// Получаем и выводим поле DeliveryDate по chatID ФИО
-	if field, err := bychat.GetFieldByChatID(m.app, update.Message.Chat.ID, "FullName"); err == nil {
-
-		if field == "ФИО:" {
-			m.deleteMessages(update.Message.Chat.ID)
-			if pureText == "" || len(pureText) < 3 {
-
-				//Удаляем предыдущие сообщения
-				m.deletePreviousMessages(update.Message.Chat.ID, update.Message.MessageID)
-
-				str := "ФИО: не может быть пустым и имя не может быть короче 3 символов\n"
-				FullName := "ФИО:"
-				instructions := "Пожалуйста, введите " + FullName + "\nПример:\nИванов Иван Иванович\n"
-				str += instructions
-
-				//отправляем сообщение.
-				m.sendMessage(update.Message.Chat.ID, str)
-				return "ok"
-			}
-
-			err = m.addOrUpdateOrderField(update.Message.Chat.ID, "FullName", pureText)
-			if err != nil {
-				m.app.Log.Errorf("ошибка при добавлении или обновлении поля FullName: %v", err)
-				return "ok"
-			}
-			pureText = "Номер телефона:"
-			DeliveryDateChatID[update.Message.Chat.ID] = 0
-
-			return pureText
-		}
-	}
-
-	// Получаем и выводим поле DeliveryAddress по chatID Адрес доставки
-	if field, err := bychat.GetFieldByChatID(m.app, update.Message.Chat.ID, "DeliveryAddress"); err == nil {
-
-		if field == "Адрес доставки:" {
-
-			m.deleteMessages(update.Message.Chat.ID)
-			if len(pureText) < 10 {
-				m.deletePreviousMessages(update.Message.Chat.ID, update.Message.MessageID)
-				str := "Адрес доставки не может быть пустым\n"
-				DeliveryAddress := "Адрес доставки:"
-				instructions := "Пожалуйста, введите " + DeliveryAddress + "\nПример:\nг. Будущего, ул. Пушкина, д. 12 кв 5\n"
-				str += instructions
-				//отправляем сообщение
-				m.sendMessage(update.Message.Chat.ID, str)
-				return "ok"
-			}
-
-			err = m.addOrUpdateOrderField(update.Message.Chat.ID, "DeliveryAddress", pureText)
-			if err != nil {
-				m.app.Log.Errorf("Ошибка при добавлении или обновлении поля DeliveryAddress: %v", err)
-				return "ok"
-			}
-
-			FullName := "ФИО:"
-			instructions := "Пожалуйста, введите " + FullName + "\nПример:\nИванов Иван Иванович\n"
-
-			err = m.addOrUpdateOrderField(update.Message.Chat.ID, "FullName", FullName)
-			if err != nil {
-				m.app.Log.Errorf("Ошибка при добавлении или обновлении поля FullName: %v", err)
-				return "ok"
-			}
-
-			//отправляем сообщение.
-			m.sendMessage(update.Message.Chat.ID, instructions)
-
-			pureText = "ok"
-			return "ok"
-		}
-	}
-
 	// Получаем и выводим поле DeliveryAddress по chatID Номер телефона
 	if field, err := bychat.GetFieldByChatID(m.app, update.Message.Chat.ID, "PhoneNumber"); err == nil {
 
-		if field == "Номер телефона:" {
-
+		if field == PhoneNumber {
 			formatted, str := bychat.FormatPhoneNumber(m.app, pureText)
 			m.deleteMessages(update.Message.Chat.ID)
 
 			if str != "" {
 				m.deletePreviousMessages(update.Message.Chat.ID, update.Message.MessageID)
 				// Формирование текста с просьбой ввести номер телефона
-				PhoneNumber := "Номер телефона:"
-
 				instructions := "\nПожалуйста, введите " + PhoneNumber + "\n" +
 					"Пример:\n" +
 					"+79345678901\n"
@@ -524,7 +458,6 @@ func (m *MessageService) handleFieldByChatID(update tgbotapi.Update, pureText st
 				return "ok"
 			}
 
-			DeliveryAddress := "Адрес доставки:"
 			instructions := "Пожалуйста, введите " + DeliveryAddress + "\n" +
 				"Пример:\n" +
 				"г. Будущего, ул. Пушкина, д. 12 кв 5\n"
@@ -539,6 +472,74 @@ func (m *MessageService) handleFieldByChatID(update tgbotapi.Update, pureText st
 			m.sendMessage(update.Message.Chat.ID, instructions)
 			pureText = "ok"
 			return "ok"
+		}
+	}
+
+	// Получаем и выводим поле DeliveryAddress по chatID Адрес доставки
+	if field, err := bychat.GetFieldByChatID(m.app, update.Message.Chat.ID, "DeliveryAddress"); err == nil {
+
+		if field == DeliveryAddress {
+			m.deleteMessages(update.Message.Chat.ID)
+			if len(pureText) < 10 {
+				m.deletePreviousMessages(update.Message.Chat.ID, update.Message.MessageID)
+				str := "Адрес доставки не может быть пустым\n"
+				instructions := "Пожалуйста, введите " + DeliveryAddress + "\nПример:\nг. Будущего, ул. Пушкина, д. 12 кв 5\n"
+				str += instructions
+				//отправляем сообщение
+				m.sendMessage(update.Message.Chat.ID, str)
+				return "ok"
+			}
+
+			err = m.addOrUpdateOrderField(update.Message.Chat.ID, "DeliveryAddress", pureText)
+			if err != nil {
+				m.app.Log.Errorf("Ошибка при добавлении или обновлении поля DeliveryAddress: %v", err)
+				return "ok"
+			}
+
+			instructions := "Пожалуйста, введите " + FullName + "\nПример:\nИванов Иван Иванович\n"
+
+			err = m.addOrUpdateOrderField(update.Message.Chat.ID, "FullName", FullName)
+			if err != nil {
+				m.app.Log.Errorf("Ошибка при добавлении или обновлении поля FullName: %v", err)
+				return "ok"
+			}
+
+			//отправляем сообщение.
+			m.sendMessage(update.Message.Chat.ID, instructions)
+
+			pureText = "ok"
+			return "ok"
+		}
+	}
+
+	// Получаем и выводим поле DeliveryDate по chatID ФИО
+	if field, err := bychat.GetFieldByChatID(m.app, update.Message.Chat.ID, "FullName"); err == nil {
+
+		if field == FullName {
+			m.deleteMessages(update.Message.Chat.ID)
+			if pureText == "" || len(pureText) < 4 {
+				//Удаляем предыдущие сообщения
+				m.deletePreviousMessages(update.Message.Chat.ID, update.Message.MessageID)
+
+				str := "ФИО: не может быть пустым и имя не может быть короче 3 символов\n"
+				instructions := "Пожалуйста, введите " + FullName + "\nПример:\nИванов Иван Иванович\n"
+				str += instructions
+
+				//отправляем сообщение.
+				m.sendMessage(update.Message.Chat.ID, str)
+				return "ok"
+			}
+
+			err = m.addOrUpdateOrderField(update.Message.Chat.ID, "FullName", pureText)
+			if err != nil {
+				m.app.Log.Errorf("ошибка при добавлении или обновлении поля FullName: %v", err)
+				return "ok"
+			}
+
+			pureText = PhoneNumber
+			DeliveryDateChatID[update.Message.Chat.ID] = 0
+
+			return pureText
 		}
 	}
 
@@ -564,7 +565,7 @@ func (m *MessageService) handleDeliveryDetailsMessage(chatID int64) {
 	//"Адрес доставки: [ваш адрес]\n" +
 	if field, err := bychat.GetFieldByChatID(m.app, chatID, "DeliveryAddress"); err == nil {
 		str, _ := field.(string)
-		MsgText += "Адрес доставки: " + str + "\n"
+		MsgText += DeliveryAddress + " " + str + "\n"
 	}
 
 	//"Дата доставки: [желаемая дата]\n" +

@@ -58,13 +58,13 @@
     <div class="card h-100">
         <img src="/${p.Image}" class="card-img-top product-img">
         <div class="card-body">
-            <h5 class="card-title">• ${p.Category} ${p.Title} •</h5>
+            <h5 class="card-title">• ${p.Category} •</h5>
             <p class="card-text">${p.Description}</p>
             <p class="card-text fw-bold">Фасовка ${p.Packaging} Цена ${p.Price} ₽</p>
             <div class="card-footer bg-transparent border-0 px-0 pb-0 pt-2">
                 <div class="d-flex justify-content-between">
-                    <a href="/product/edit/${p.ID}" class="text-decoration-none text-muted small">✏️ Редактировать</a>
-                    <a href="/product/delete/${p.ID}" onclick="return confirm('Удалить?')" class="text-decoration-none text-danger small">🗑 Удалить</a>
+                    <a href="/product/edit/${p.ID}" class="btn text-decoration-none text-muted small">✏️ Редактировать</a>
+                    <a href="/product/delete/${p.ID}" onclick="return confirm('Удалить?')" class="btn text-decoration-none text-danger small">🗑 Удалить</a>
                 </div>
             </div>
         </div>

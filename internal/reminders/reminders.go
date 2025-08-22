@@ -2,6 +2,7 @@ package reminders
 
 import (
 	"ProjectTelBotMark/config"
+	"ProjectTelBotMark/internal/botTelegram"
 	"ProjectTelBotMark/internal/dataSources"
 	"ProjectTelBotMark/internal/structs"
 	"fmt"
@@ -48,7 +49,6 @@ func (m *MessageService) CheckDatabase() {
 		var msgText string
 
 		for i, order := range orders {
-
 			// Парсинг строки времени в тип time.Time
 			t, err := time.Parse(time.RFC3339, order.DeliveryDate)
 			if err != nil {
@@ -60,14 +60,13 @@ func (m *MessageService) CheckDatabase() {
 			formattedDeliveryDate := t.Format("02.01.2006")
 
 			if formattedDeliveryDate == now {
-
 				// Группировка по дате доставки
 				if order.UserID.UserID != currentUserID || formattedDeliveryDate != currentDeliveryDate || order.DateTime != currentDateTime {
 					//msgText += fmt.Sprintf("Дата заказа: %v\n", formattedDate)
 					msgText += fmt.Sprintf("Дата доставки: %v\n", formattedDeliveryDate)
 					msgText += fmt.Sprintf("Заказчик: %v\n", order.FullName)
 					msgText += fmt.Sprintf("Телефон для связи: %v\n", order.PhoneNumber)
-					msgText += fmt.Sprintf("Адрес доставки: %v\n", order.DeliveryAddress)
+					msgText += fmt.Sprintf("%s %v\n", botTelegram.DeliveryAddress, order.DeliveryAddress)
 					msgText += "Список заказанных товаров :\n"
 					currentDeliveryDate = formattedDeliveryDate
 					currentDateTime = order.DateTime

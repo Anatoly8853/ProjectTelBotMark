@@ -3,133 +3,225 @@ package dataSources
 import (
 	"ProjectTelBotMark/internal/structs"
 	"context"
+	"database/sql"
+	"encoding/json"
+	"fmt"
 	"strings"
 )
+
+type JSONCategories map[string]structs.Category
 
 // GetCategoriesWithProducts основная функция выводит все продукты из всех таблиц.
 func (r *Repository) GetCategoriesWithProducts() (map[string]structs.Category, error) {
 	ctx := context.Background()
-	categories := make(map[string]structs.Category)
+	jsonResult := make(JSONCategories)
 
-	// 1. Получаем все основные категории
 	mainCategories, err := r.getAllMainCategories(ctx)
 	if err != nil {
+		r.app.Log.Error("getAllMainCategories", err.Error())
 		return nil, err
 	}
 
-	// 2. Обрабатываем каждую основную категорию
 	for mainCatName, mainCat := range mainCategories {
-		// Проверяем, есть ли у категории подкатегории
 		hasSubcategories, err := r.hasSubcategories(ctx, mainCat.ID)
 		if err != nil {
+			r.app.Log.Error("hasSubcategories", err.Error())
 			return nil, err
 		}
 
 		if hasSubcategories {
-			// Если есть подкатегории - получаем их
 			subCats, err := r.getSubCategories(ctx, mainCat.ID)
 			if err != nil {
+				r.app.Log.Error("getSubCategories", err.Error())
 				return nil, err
 			}
 
-			// Добавляем кнопки подкатегорий
+			// Кнопки подкатегорий
 			var buttons []structs.ButtonData
 			for _, subCat := range subCats {
 				buttons = append(buttons, structs.ButtonData{
-					Text: subCat.CategoryName,
+					Text:     subCat.CategoryName,
+					Callback: fmt.Sprintf("cat_%q", StripEmojis(subCat.CategoryName)),
 				})
 			}
 
-			mainCat.Buttons = buttons
-			mainCat.ButtonsM = getDefaultButtonsM()
-			categories[mainCatName] = mainCat
+			jsonResult[mainCatName] = structs.Category{
+				CategoryName: mainCat.CategoryName,
+				Buttons:      buttons,
+				ButtonsM:     getDefaultButtonsM(),
+			}
 
-			// Добавляем подкатегории в общий список
+			// Подкатегории с продуктами
 			for _, subCat := range subCats {
-				// Получаем продукты для подкатегории
 				products, err := r.getProductsForSubCategory(ctx, mainCat.ID, subCat.ID)
 				if err != nil {
-					r.app.Log.Error("GetCategoriesWithProducts getProductsForSubCategory", err)
+					r.app.Log.Error("getProductsForSubCategory", err)
 					return nil, err
 				}
-				for _, subCatBut := range products {
-					categories[subCat.CategoryName] = structs.Category{
+
+				for _, product := range products {
+					var productButtons []structs.ButtonData
+					for _, b := range product.Buttons {
+						productButtons = append(productButtons, b)
+					}
+
+					jsonResult[subCat.CategoryName] = structs.Category{
 						CategoryName: subCat.CategoryName,
 						CategoryMsg:  subCat.CategoryMsg,
-						Photo:        products[0].Photo,
-						Buttons:      subCatBut.Buttons,
-						ButtonsM:     getDefaultButtonsM(),
+						Photo:        product.Photo,
+						Buttons:      productButtons,
 					}
 				}
 			}
 		}
 	}
 
-	// 3. Добавляем обязательную категорию "Старт"
-	categories["Старт"] = createStartCategory(mainCategories)
+	// 🔄 Постраничная разбивка "Старт" + "Стр. 2", "Стр. 3", ...
+	paginated := paginateCategories(mainCategories)
+	for key, val := range paginated {
+		jsonResult[key] = val
+	}
 
-	return categories, nil
+	// 📦 JSON отладка — можно закомментировать
+	_, err = json.MarshalIndent(jsonResult, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+
+	// 🧩 Преобразуем в финальную структуру
+	final := make(map[string]structs.Category)
+	for key, val := range jsonResult {
+		final[key] = structs.Category{
+			CategoryName: val.CategoryName,
+			CategoryMsg:  val.CategoryMsg,
+			Photo:        val.Photo,
+			Buttons:      val.Buttons,
+			ButtonsM:     val.ButtonsM,
+		}
+	}
+
+	return final, nil
 }
 
-// Вспомогательные функции
-// getPhotoForCategory Получает фото для категории из первого продукта.
-func getPhotoForCategory(products []structs.Category) string {
-	if len(products) > 0 {
-		return products[0].Photo
+// paginateCategories создаем пагинацию для основных категорий продуктов.
+func paginateCategories(mainCategories map[string]structs.Category) map[string]structs.Category {
+	const maxButtonsPerPage = 6
+
+	var pages []structs.Category
+	var currentButtons []structs.ButtonData
+
+	// Сохраняем имена категорий-кнопок
+	for _, cat := range mainCategories {
+		currentButtons = append(currentButtons, structs.ButtonData{
+			Text: cat.CategoryName,
+		})
 	}
-	return ""
+
+	// Разбиваем на страницы по 6 штук
+	for i := 0; i < len(currentButtons); i += maxButtonsPerPage {
+		end := i + maxButtonsPerPage
+		if end > len(currentButtons) {
+			end = len(currentButtons)
+		}
+		page := structs.Category{
+			CategoryName: fmt.Sprintf("Стр %d", len(pages)+1),
+			Buttons:      currentButtons[i:end],
+		}
+		pages = append(pages, page)
+	}
+
+	// Устанавливаем ButtonsM
+	for i := range pages {
+		var buttonsM []structs.ButtonData
+
+		// Кнопка "назад"
+		if i > 0 {
+			buttonsM = append(buttonsM, structs.ButtonData{
+				Text:     fmt.Sprintf("🔙Стр %d🔙", i),
+				Callback: fmt.Sprintf("cat_Стр %d", i),
+			})
+		}
+
+		// Кнопка "🛒Корзина"
+		buttonsM = append(buttonsM, structs.ButtonData{
+			Text:     "🛒Корзина🛒",
+			Callback: "cat_Корзина",
+		})
+
+		// Кнопка "Мои заказы"
+		buttonsM = append(buttonsM, structs.ButtonData{
+			Text:     "🔙Мои заказы🔙",
+			Callback: "cat_Мои заказы",
+		})
+
+		// Кнопка "вперёд"
+		if i < len(pages)-1 {
+			buttonsM = append(buttonsM, structs.ButtonData{
+				Text:     fmt.Sprintf("Стр %d", i+2),
+				Callback: fmt.Sprintf("cat_Стр %d", i+2),
+			})
+		}
+
+		pages[i].ButtonsM = buttonsM
+	}
+
+	// Собираем в карту
+	result := make(map[string]structs.Category)
+
+	// Категория "Старт" — первая страница
+	result["Старт"] = pages[0]
+	start := result["Старт"]
+	start.CategoryName = "Старт"
+	result["Старт"] = start
+
+	// Остальные страницы
+	for i := 1; i < len(pages); i++ {
+		pageName := fmt.Sprintf("Стр %d", i+1)
+		pages[i].CategoryName = pageName
+		result[pageName] = pages[i]
+	}
+
+	return result
 }
 
 // getDefaultButtonsM Возвращает стандартные кнопки меню.
 func getDefaultButtonsM() []structs.ButtonData {
 	return []structs.ButtonData{
 		{Text: "🔙Назад🔙"},
+		{Callback: "cat_Назад"},
 		{Text: "🔙Мои заказы🔙"},
+		{Callback: "cat_Мои заказы"},
 		{Text: "🛒Корзина🛒"},
-	}
-}
-
-// createStartCategory Создает стартовую категорию.
-func createStartCategory(mainCategories map[string]structs.Category) structs.Category {
-	startButtons := []structs.ButtonData{}
-	for name := range mainCategories {
-		if name != "Старт" {
-			startButtons = append(startButtons, structs.ButtonData{
-				Text: name,
-			})
-		}
-	}
-
-	return structs.Category{
-		CategoryName: "Старт",
-		Buttons:      startButtons,
-		ButtonsM: []structs.ButtonData{
-			{Text: "🔙Мои заказы🔙"},
-			{Text: "🛒Корзина🛒"},
-		},
+		{Callback: "cat_Корзина"},
 	}
 }
 
 // getAllMainCategories Получает все основные категории.
 func (r *Repository) getAllMainCategories(ctx context.Context) (map[string]structs.Category, error) {
-	rows, err := r.db.QueryContext(ctx, "SELECT id, name FROM categories")
+	rows, err := r.db.QueryContext(ctx, "SELECT id, name, display_name FROM categories")
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func(rows *sql.Rows) {
+		err := rows.Close()
+		if err != nil {
+			r.app.Log.Error("getAllMainCategories", err)
+			return
+		}
+	}(rows)
 
 	result := make(map[string]structs.Category)
 	for rows.Next() {
 		var id int
-		var name string
-		if err := rows.Scan(&id, &name); err != nil {
+		var name, displayName string
+		if err := rows.Scan(&id, &name, &displayName); err != nil {
+			r.app.Log.Error("getAllMainCategories", err)
 			return nil, err
 		}
 
 		result[name] = structs.Category{
 			ID:           id,
-			CategoryName: name,
-			//Description:  displayName,
+			CategoryName: displayName,
 		}
 	}
 	return result, nil
@@ -145,6 +237,7 @@ func (r *Repository) hasSubcategories(ctx context.Context, mainCatID int) (bool,
         AND categories_2_id IS NOT NULL`,
 		mainCatID).Scan(&count)
 	if err != nil {
+		r.app.Log.Error("hasSubcategories", err.Error())
 		return false, err
 	}
 	return count > 0, nil
@@ -153,29 +246,36 @@ func (r *Repository) hasSubcategories(ctx context.Context, mainCatID int) (bool,
 // getSubCategories Получает подкатегории для основной категории.
 func (r *Repository) getSubCategories(ctx context.Context, mainCatID int) ([]structs.Category, error) {
 	rows, err := r.db.QueryContext(ctx, `
-        SELECT c2.id, c2.name
+        SELECT c2.id, c2.name, c2.display_name
         FROM categories_2 c2
         JOIN products_categories pc ON pc.categories_2_id = c2.id
         WHERE pc.category_id = ?
         GROUP BY c2.id, c2.name
         ORDER BY c2.name`, mainCatID)
 	if err != nil {
+		r.app.Log.Error("getSubcategories", err.Error())
 		return nil, err
 	}
-	defer rows.Close()
+	defer func(rows *sql.Rows) {
+		err := rows.Close()
+		if err != nil {
+			r.app.Log.Error("getSubCategories", err)
+			return
+		}
+	}(rows)
 
 	var subCats []structs.Category
 	for rows.Next() {
 		var id int
-		var name string
-		if err := rows.Scan(&id, &name); err != nil {
+		var name, displayName string
+		if err := rows.Scan(&id, &name, &displayName); err != nil {
+			r.app.Log.Error("getSubcategories", err.Error())
 			return nil, err
 		}
 
 		subCats = append(subCats, structs.Category{
 			ID:           id,
-			CategoryName: name,
-			//Description:  description,
+			CategoryName: displayName,
 		})
 	}
 
@@ -192,14 +292,24 @@ func (r *Repository) getProductsForMainCategory(ctx context.Context, mainCatID i
         AND p.categories_2_id IS NULL`,
 		mainCatID)
 	if err != nil {
+		r.app.Log.Error("getProductsForMainCategory", err.Error())
 		return nil, err
 	}
-	defer rows.Close()
+
+	defer func(rows *sql.Rows) {
+		err = rows.Close()
+		if err != nil {
+			r.app.Log.Error("getProductsForMainCategory", err)
+			return
+		}
+	}(rows)
+
 	var categories []structs.Category
 	var products []structs.ButtonData
 	for rows.Next() {
 		var text, callback, photoPath string
-		if err := rows.Scan(&text, &callback, &photoPath); err != nil {
+		if err = rows.Scan(&text, &callback, &photoPath); err != nil {
+			r.app.Log.Error("getProductsForMainCategory", err.Error())
 			return nil, err
 		}
 
@@ -207,7 +317,6 @@ func (r *Repository) getProductsForMainCategory(ctx context.Context, mainCatID i
 		products = append(products, structs.ButtonData{
 			Text:     text,
 			Callback: callback,
-			//Photo:    photoPath,
 		})
 
 		categories = append(categories, structs.Category{
@@ -227,17 +336,25 @@ func (r *Repository) getProductsForSubCategory(ctx context.Context, mainCatID, s
         WHERE p.category_id = ? 
         AND p.categories_2_id = ?`,
 		mainCatID, subCatID)
-	//mainCatID, mainCatID)
 	if err != nil {
+		r.app.Log.Error("getProductsForSubCategory", err.Error())
 		return nil, err
 	}
-	defer rows.Close()
+
+	defer func(rows *sql.Rows) {
+		err = rows.Close()
+		if err != nil {
+			r.app.Log.Error("getProductsForSubCategory", err)
+			return
+		}
+	}(rows)
 
 	var categories []structs.Category
 	var products []structs.ButtonData
 	for rows.Next() {
 		var text, callback, photoPath string
-		if err := rows.Scan(&text, &callback, &photoPath); err != nil {
+		if err = rows.Scan(&text, &callback, &photoPath); err != nil {
+			r.app.Log.Error("getProductsForSubCategory", err.Error())
 			return nil, err
 		}
 
@@ -257,24 +374,30 @@ func (r *Repository) getProductsForSubCategory(ctx context.Context, mainCatID, s
 
 // NormalizeWords NormalizeWord Первое слово как есть все остальные в нижнем регистре, удаляет повторы слов (регистр не учитывается).
 func NormalizeWords(input string) string {
+	// Разбиваем строку на слова, убираем лишние пробелы
 	words := strings.Fields(input)
+	if len(words) == 0 {
+		return ""
+	}
+
+	// Обрабатываем первое слово
+	first := strings.ToLower(words[0])
+	first = strings.Title(first) // первая буква заглавная, остальные маленькие
+	result := []string{first}
+
+	// Множество для отслеживания дубликатов (только для остальных слов)
 	seen := make(map[string]bool)
-	var result []string
+	seen[strings.ToLower(first)] = true // помечаем первое слово, чтобы его не повторять
 
-	for i, word := range words {
-		normalized := word
+	// Обработка остальных слов
+	for _, word := range words[1:] {
 		lower := strings.ToLower(word)
-
 		if seen[lower] {
-			continue // пропустить дубликат
+			continue
 		}
 		seen[lower] = true
-
-		if i == 0 {
-			result = append(result, normalized)
-		} else {
-			result = append(result, lower)
-		}
+		result = append(result, lower)
 	}
+
 	return strings.Join(result, " ")
 }

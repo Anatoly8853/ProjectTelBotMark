@@ -3,10 +3,10 @@
 {{ template "header.html" .}}
 <div class="container">
     <div class="card">
-        <h2 class="card-title">Извещение пользователей</h2>
+        <h3 class="card-title">Извещение пользователей</h3>
         <!--If there's an error, display the error-->
         {{ if .Message}}
-        <h4><p class="centersH">{{.Message}}</p></h4>
+        <h6><p class="centersH">{{.Message}}</p></h6>
         {{end}}
         <form class="registration-form" action="/info" method="POST" enctype="multipart/form-data">
             <div class="form-group">
@@ -21,7 +21,7 @@
                 <label for="Image">Изображение</label>
                 <input type="file" id="Image" name="Image">
             </div>
-            <button type="submit" class="btn">Отправить</button>
+            <button type="submit" class="btn btn-primary">Отправить</button>
         </form>
     </div>
 </div>

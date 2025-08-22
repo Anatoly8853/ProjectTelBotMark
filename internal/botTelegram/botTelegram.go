@@ -1,4 +1,4 @@
-package main
+package botTelegram
 
 import (
 	"ProjectTelBotMark/config"
@@ -9,6 +9,7 @@ import (
 	"fmt"
 	slogavp "github.com/Anatoly8853/slog-avp/v2"
 	"reflect"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -17,8 +18,7 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
-// Baskets карта для хранения данных о покупках для каждого пользователя.
-//var Baskets = make(map[int64][]structs.Purchase)
+const UploadsDir = "./internal/routers/html"
 
 type MessageService struct {
 	repo *dataSources.Repository
@@ -34,9 +34,6 @@ var DeliveryDateChatID = make(map[int64]int)
 
 // orderDetails содержание корзины.
 var orderDetails = make(map[int64]string)
-
-// orders Map для хранения данных по chatID.
-//var orders = make(map[int64]structs.OrderDb)
 
 // AddToBasket добавление товаров в корзину.
 func (m *MessageService) AddToBasket(update tgbotapi.Update, item string, quantity int, cost int) {
@@ -253,7 +250,7 @@ func (m *MessageService) MainOrdersByUserID(userID int64) {
 				msgText += fmt.Sprintf("Дата доставки: %v\n", formattedDeliveryDate)
 				msgText += fmt.Sprintf("Заказчик: %v\n", order.FullName)
 				msgText += fmt.Sprintf("Телефон для связи: %v\n", order.PhoneNumber)
-				msgText += fmt.Sprintf("Адрес доставки: %v\n", order.DeliveryAddress)
+				msgText += fmt.Sprintf("%s %v\n", DeliveryAddress, order.DeliveryAddress)
 				msgText += "Список заказанных товаров :\n"
 				currentDeliveryDate = formattedDeliveryDate
 				currentDateTime = order.DateTime
@@ -400,4 +397,117 @@ func (m *MessageService) ScheduleOnce(chatID int64) {
 			m.app.Log.Errorf("Error sending message: = %v", err)
 		}
 	}()
+}
+
+// createCategoryMessage Вывод изображения продуктов и кнопки фасовки продукта.
+func (m *MessageService) createCategoryMessage(update tgbotapi.Update, categoryName string) error {
+
+	if update.Message.Chat.ID == 0 {
+		m.app.Log.Errorf("нет данных для обработки update.Message.Chat.ID = %v ", update.Message.Chat.ID)
+		er := "нет данных для обработки update.Message.Chat.ID"
+		return errors.New(er)
+	}
+
+	chatID := update.Message.Chat.ID
+	// Поиск категории в данных
+	categoryData, found := structs.Categories[categoryName]
+	if !found {
+		er := "категория не найдена"
+		//m.app.Log.Errorf(" %v categoryData : %q", er, categoryName)
+		return errors.New(er)
+	}
+
+	m.photoMessagesDelete(chatID)
+	m.keyboardMessagesDelete(chatID)
+
+	if categoryData.Photo == "" {
+		keyboardReply, err := CreateCategoryKeyboardReply(categoryData.CategoryName)
+		if err != nil {
+			// Обработка ошибки
+			m.app.Log.Errorf("ошибка %v", err)
+			return err
+		}
+
+		// Создаем сообщение с инлайн-клавиатурой
+		msg := tgbotapi.NewMessage(chatID, "Выбранная категория: "+categoryData.CategoryName)
+		//msg := tgbotapi.NewMessage(chatID, ".")
+		msg.ReplyMarkup = tgbotapi.NewReplyKeyboard(keyboardReply...)
+
+		// Отправляем сообщение с клавиатурой
+		sentMsg, err := m.bot.Send(msg)
+		if err != nil {
+			m.app.Log.Errorf("Ошибка при отправке сообщения: %v", err)
+			return err
+		} else {
+			messagesToDelete[chatID] = append(messagesToDelete[chatID], sentMsg.MessageID)
+		}
+	} else {
+		// Создаем медиа-объект для изображения
+		photo := tgbotapi.NewInputMediaPhoto(tgbotapi.FilePath(UploadsDir + "/" + categoryData.Photo))
+
+		// Создаем медиагруппу с изображением и URL
+		mediaGroup := tgbotapi.NewMediaGroup(chatID, []interface{}{photo})
+
+		// Отправляем медиагруппу
+		sentMsgs, err := m.bot.SendMediaGroup(mediaGroup)
+		if err != nil {
+			m.app.Log.Errorf("Ошибка при отправке сообщения медиагруппу: %v", err)
+			return err
+		} else {
+			// Сохраняем идентификатор сообщения для последующего удаления
+			if len(sentMsgs) > 0 {
+				photoMessagesToDelete[chatID] = sentMsgs[0].MessageID
+			}
+		}
+
+		// Создаем кнопки клавиатуры
+		keyboard, err := CreateCategoryKeyboard(categoryData.CategoryName)
+		if err != nil {
+			// Обработка ошибки
+			m.app.Log.Errorf("Ошибка не удается создать кнопки клавиатуры %v", err)
+			return err
+		}
+
+		// Создаем сообщение с инлайн-клавиатурой
+		msg := tgbotapi.NewMessage(chatID, "Выберите нужное количество продукта: "+categoryData.CategoryMsg)
+		msg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(keyboard...)
+
+		// Отправляем сообщение с клавиатурой
+		sentMsg, err := m.bot.Send(msg)
+		if err != nil {
+			m.app.Log.Errorf("Ошибка при отправке сообщения: %v", err)
+			return err
+		} else {
+			// Сохраняем идентификатор сообщения для последующего удаления
+			messagesToDelete[chatID] = append(messagesToDelete[chatID], sentMsg.MessageID)
+			keyboardMessagesToDelete[chatID] = sentMsg.MessageID // Сохраняем идентификатор сообщения с клавиатурой
+		}
+	}
+	//deletePreviousMessages(bot, update.Message.Chat.ID, update.Message.MessageID)
+	return nil
+}
+
+// SeparateEmojiAndText Паттерн для поиска эмотзи update.Message.Text.
+func SeparateEmojiAndText(text string) (string, string) {
+	// Паттерн для поиска эмотзи
+	emojiPattern := regexp.MustCompile(`\p{So}`)
+	// Ищем все эмотзи в тексте
+	emojis := emojiPattern.FindAllString(text, -1)
+
+	// Удаляем эмотзи из исходного текста
+	cleanText := emojiPattern.ReplaceAllString(text, "")
+	// Удаляем лишние пробелы
+	cleanText = regexp.MustCompile(`\s+`).ReplaceAllString(cleanText, " ")
+
+	return joinStrings(emojis), cleanText
+}
+
+// joinStrings Объединяем все строки из среза в одну строку из update.Message.Text.
+func joinStrings(str []string) string {
+	// Объединяем все строки из среза в одну строку
+	result := ""
+	for _, s := range str {
+		result += s
+	}
+	return result
 }

@@ -31,7 +31,7 @@ func (r *Repository) HandlerProducts(category string, sort string) (structs.Page
 
 	// Фильтрация по категории
 	if category != "" {
-		query += " WHERE c.display_name = ?"
+		query += " WHERE c.name = ?"
 		args = append(args, category)
 	}
 
@@ -51,7 +51,12 @@ func (r *Repository) HandlerProducts(category string, sort string) (structs.Page
 		r.app.Log.Error("Ошибка при запросе продуктов: " + err.Error())
 		return structs.PageData{}, err
 	}
-	defer rows.Close()
+	defer func(rows *sql.Rows) {
+		err := rows.Close()
+		if err != nil {
+			r.app.Log.Error("rows.Close: " + err.Error())
+		}
+	}(rows)
 
 	// Читаем строки
 	var products []structs.Product
@@ -224,53 +229,21 @@ func (r *Repository) AddProduct(product structs.Product) error {
 	}()
 
 	// 1. Категория (верхний уровень)
-	var categoryID int64
-	err = tx.QueryRowContext(ctx, `SELECT id FROM categories WHERE display_name = ?`, product.Category).Scan(&categoryID)
-	if err == sql.ErrNoRows {
-
-		res, err := tx.ExecContext(ctx, `INSERT INTO categories(name, display_name) VALUES (?, ?)`, stripEmojis(product.Category), product.Category)
-		if err != nil {
-			return fmt.Errorf("failed to insert category: %w", err)
-		}
-		categoryID, err = res.LastInsertId()
-		if err != nil {
-			return fmt.Errorf("failed to get category ID: %w", err)
-		}
-	} else if err != nil {
-		return fmt.Errorf("failed to query category: %w", err)
+	categoryID, err := insertOrUpdateCategory(tx, product.Category)
+	if err != nil {
+		return fmt.Errorf("category error: %w", err)
 	}
 
 	// 2. Подкатегория (продукт)
-	var subcategoryID int64
-	err = tx.QueryRowContext(ctx, `SELECT id FROM categories_2 WHERE display_name = ?`, product.Title).Scan(&subcategoryID)
-	if err == sql.ErrNoRows {
-		res, err := tx.ExecContext(ctx, `INSERT INTO categories_2(name, display_name, description) VALUES (?, ?, ?)`,
-			stripEmojis(product.Title), product.Title, NormalizeWords(stripEmojis(product.Category)+stripEmojis(product.Title)))
-		if err != nil {
-			return fmt.Errorf("failed to insert subcategory: %w", err)
-		}
-		subcategoryID, err = res.LastInsertId()
-		if err != nil {
-			return fmt.Errorf("failed to get subcategory ID: %w", err)
-		}
-	} else if err != nil {
-		return fmt.Errorf("failed to query subcategory: %w", err)
+	subcategoryID, err := insertOrUpdateSubcategory(tx, product.Title, product.Category)
+	if err != nil {
+		return fmt.Errorf("subcategory error: %w", err)
 	}
 
 	// 3. Фото
-	var photoID int64
-	err = tx.QueryRowContext(ctx, `SELECT id FROM photo WHERE name = ?`, product.Image).Scan(&photoID)
-	if err == sql.ErrNoRows {
-		res, err := tx.ExecContext(ctx, `INSERT INTO photo(name) VALUES (?)`, product.Image)
-		if err != nil {
-			return fmt.Errorf("failed to insert photo: %w", err)
-		}
-		photoID, err = res.LastInsertId()
-		if err != nil {
-			return fmt.Errorf("failed to get photo ID: %w", err)
-		}
-	} else if err != nil {
-		return fmt.Errorf("failed to query photo: %w", err)
+	photoID, err := insertOrUpdatePhoto(tx, product.ID, product.Image)
+	if err != nil {
+		return fmt.Errorf("photo update failed: %w", err)
 	}
 
 	// 4. Продукт-фасовка
@@ -354,15 +327,18 @@ func (r *Repository) EditProduct(productID int) (structs.Product, error) {
 
 func (r *Repository) UpdateProduct(p structs.Product) (err error) {
 	if p.ID <= 0 {
+		r.app.Log.Error("invalid product ID")
 		return errors.New("invalid product ID")
 	}
 	if strings.TrimSpace(p.Title) == "" {
+		r.app.Log.Error("invalid product title")
 		return errors.New("product title cannot be empty")
 	}
 
 	ctx := context.Background()
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
+		r.app.Log.Errorf("failed to start transaction: %w", err)
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer func() {
@@ -376,84 +352,28 @@ func (r *Repository) UpdateProduct(p structs.Product) (err error) {
 	}()
 
 	// --- 1. Категория (верхняя)
-	var newCatID int64
-	err = tx.QueryRowContext(ctx, `SELECT id FROM categories WHERE display_name = ?`, p.Category).Scan(&newCatID)
-	if err == sql.ErrNoRows {
-		res, err := tx.ExecContext(ctx, `INSERT INTO categories(name, display_name) VALUES (?, ?)`, stripEmojis(p.Category), p.Category)
-		if err != nil {
-			return fmt.Errorf("failed to insert category: %w", err)
-		}
-		newCatID, err = res.LastInsertId()
-		if err != nil {
-			return fmt.Errorf("failed to get category ID: %w", err)
-		}
-	} else if err != nil {
-		return fmt.Errorf("failed to query category: %w", err)
+	newCatID, err := insertOrUpdateCategory(tx, p.Category)
+	if err != nil {
+		return fmt.Errorf("category error: %w", err)
 	}
 
 	// --- 2. Подкатегория (товар)
-	var subID int64
-	err = tx.QueryRowContext(ctx, `SELECT id FROM categories_2 WHERE display_name = ?`, p.Title).Scan(&subID)
-	if err == sql.ErrNoRows {
-		res, err := tx.ExecContext(ctx, `INSERT INTO categories_2(name, display_name, description) VALUES (?, ?, ?)`,
-			stripEmojis(p.Title), p.Title, NormalizeWords(stripEmojis(p.Category)+stripEmojis(p.Title)))
-		if err != nil {
-			return fmt.Errorf("failed to insert subcategory: %w", err)
-		}
-		subID, err = res.LastInsertId()
-		if err != nil {
-			return fmt.Errorf("failed to get subcategory ID: %w", err)
-		}
-	} else if err != nil {
-		return fmt.Errorf("failed to query subcategory: %w", err)
+	subID, err := insertOrUpdateSubcategory(tx, p.Title, p.Category)
+	if err != nil {
+		return fmt.Errorf("subcategory error: %w", err)
 	}
 
 	// --- 3. Фото
-	var oldPhotoID int64
-	err = tx.QueryRowContext(ctx, `SELECT photo_id FROM products_categories WHERE id = ?`, p.ID).Scan(&oldPhotoID)
+	newPhotoID, err := insertOrUpdatePhoto(tx, p.ID, p.Image)
 	if err != nil {
-		return fmt.Errorf("failed to get old photo ID: %w", err)
-	}
-
-	var newPhotoID int64
-	err = tx.QueryRowContext(ctx, `SELECT id FROM photo WHERE id = ?`, oldPhotoID).Scan(&newPhotoID)
-	if err == sql.ErrNoRows {
-		res, err := tx.ExecContext(ctx, `INSERT INTO photo(name) VALUES (?)`, p.Image)
-		if err != nil {
-			return fmt.Errorf("failed to insert photo: %w", err)
-		}
-		newPhotoID, err = res.LastInsertId()
-		if err != nil {
-			return fmt.Errorf("failed to get new photo ID: %w", err)
-		}
-	} else if err != nil {
-		return fmt.Errorf("failed to query photo: %w", err)
-	}
-
-	// --- удаляем старое фото, если оно больше не используется
-	if oldPhotoID != newPhotoID {
-		var count int
-		err = tx.QueryRowContext(ctx,
-			`SELECT COUNT(*) FROM products_categories WHERE photo_id = ?`,
-			oldPhotoID).Scan(&count)
-		if err != nil {
-			return fmt.Errorf("failed to check old photo usage: %w", err)
-		}
-		if count == 0 {
-			_, err = tx.ExecContext(ctx,
-				`DELETE FROM photo WHERE id = ?`,
-				oldPhotoID)
-			if err != nil {
-				return fmt.Errorf("failed to delete unused photo: %w", err)
-			}
-			r.app.Log.Infof("Deleted unused photo with ID: %d", oldPhotoID)
-		}
+		return fmt.Errorf("photo update failed: %w", err)
 	}
 
 	// --- 4. Получаем старую категорию для удаления (если поменялась)
 	var oldCatID int64
 	err = tx.QueryRowContext(ctx, `SELECT category_id FROM products_categories WHERE id = ?`, p.ID).Scan(&oldCatID)
 	if err != nil {
+		r.app.Log.Errorf("failed to count category: %w", err)
 		return fmt.Errorf("failed to get old category: %w", err)
 	}
 
@@ -465,14 +385,17 @@ func (r *Repository) UpdateProduct(p structs.Product) (err error) {
 		newCatID, subID, newPhotoID, p.Packaging, p.Price, p.Text, p.Callback, p.ID,
 	)
 	if err != nil {
+		r.app.Log.Errorf("failed to update category: %w", err)
 		return fmt.Errorf("failed to update product: %w", err)
 	}
 
 	rowsAffected, err := res.RowsAffected()
 	if err != nil {
+		r.app.Log.Errorf("failed to check affected rows: %w", err)
 		return fmt.Errorf("failed to check rows affected: %w", err)
 	}
 	if rowsAffected == 0 {
+		r.app.Log.Info("product deleted")
 		return fmt.Errorf("product with ID %d not found", p.ID)
 	}
 
@@ -481,11 +404,13 @@ func (r *Repository) UpdateProduct(p structs.Product) (err error) {
 		var count int
 		err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM products_categories WHERE category_id = ?`, oldCatID).Scan(&count)
 		if err != nil {
+			r.app.Log.Errorf("failed to count category: %w", err)
 			return fmt.Errorf("failed to check category usage: %w", err)
 		}
 		if count == 0 {
 			_, err = tx.ExecContext(ctx, `DELETE FROM categories WHERE id = ?`, oldCatID)
 			if err != nil {
+				r.app.Log.Errorf("failed to delete category: %w", err)
 				return fmt.Errorf("failed to delete unused category: %w", err)
 			}
 			r.app.Log.Infof("Deleted unused category with ID: %d", oldCatID)
@@ -494,6 +419,7 @@ func (r *Repository) UpdateProduct(p structs.Product) (err error) {
 
 	// --- 7. Commit
 	if err = tx.Commit(); err != nil {
+		r.app.Log.Errorf("failed to commit transaction: %w", err)
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
@@ -684,8 +610,135 @@ func (r *Repository) Categories() ([]string, error) {
 	return categories, nil
 }
 
-func stripEmojis(text string) string {
-	// Удаляет всё, кроме букв, цифр и пробелов (включая кириллицу)
-	re := regexp.MustCompile(`[^\p{L}\p{N} ]+`)
-	return strings.TrimSpace(re.ReplaceAllString(text, ""))
+func StripEmojis(text string) string {
+	// Паттерн для поиска эмотзи
+	emojiPattern := regexp.MustCompile(`\p{So}`)
+	// Удаляем эмотзи из исходного текста
+	cleanText := emojiPattern.ReplaceAllString(text, "")
+	// Удаляем лишние пробелы
+	cleanText = regexp.MustCompile(`\s+`).ReplaceAllString(cleanText, " ")
+
+	return cleanText
+}
+
+func insertOrUpdateSubcategory(tx *sql.Tx, title, category string) (int64, error) {
+	subName := StripEmojis(title)
+	subDisplay := title
+	subDesc := NormalizeWords(StripEmojis(category) + " " + StripEmojis(title))
+
+	var subID int64
+	var existingDisplay string
+
+	err := tx.QueryRowContext(context.Background(),
+		`SELECT id, display_name FROM categories_2 WHERE name = ?`, subName).
+		Scan(&subID, &existingDisplay)
+
+	if err == sql.ErrNoRows {
+		// Вставляем новую подкатегорию
+		res, err := tx.ExecContext(context.Background(),
+			`INSERT INTO categories_2(name, display_name, description) VALUES (?, ?, ?)`,
+			subName, subDisplay, subDesc)
+		if err != nil {
+			return 0, fmt.Errorf("failed to insert subcategory: %w", err)
+		}
+		return res.LastInsertId()
+	} else if err != nil {
+		return 0, fmt.Errorf("failed to query subcategory: %w", err)
+	}
+
+	// Обновим display_name и description, если нужно
+	if existingDisplay != subDisplay {
+		_, err := tx.ExecContext(context.Background(),
+			`UPDATE categories_2 SET display_name = ?, description = ? WHERE name = ?`,
+			subDisplay, subDesc, subName)
+		if err != nil {
+			return 0, fmt.Errorf("failed to update subcategory: %w", err)
+		}
+	}
+
+	return subID, nil
+}
+
+func insertOrUpdateCategory(tx *sql.Tx, displayName string) (int64, error) {
+	name := StripEmojis(displayName)
+
+	var catID int64
+	var existingDisplay string
+
+	err := tx.QueryRowContext(context.Background(),
+		`SELECT id, display_name FROM categories WHERE name = ?`, name).
+		Scan(&catID, &existingDisplay)
+
+	if err == sql.ErrNoRows {
+		// Вставляем новую категорию
+		res, err := tx.ExecContext(context.Background(),
+			`INSERT INTO categories(name, display_name) VALUES (?, ?)`,
+			name, displayName)
+		if err != nil {
+			return 0, fmt.Errorf("failed to insert category: %w", err)
+		}
+		return res.LastInsertId()
+	} else if err != nil {
+		return 0, fmt.Errorf("failed to query category: %w", err)
+	}
+
+	// Обновим display_name, если отличается
+	if existingDisplay != displayName {
+		_, err := tx.ExecContext(context.Background(),
+			`UPDATE categories SET display_name = ? WHERE name = ?`,
+			displayName, name)
+		if err != nil {
+			return 0, fmt.Errorf("failed to update category: %w", err)
+		}
+	}
+
+	return catID, nil
+}
+
+func insertOrUpdatePhoto(tx *sql.Tx, productID int, newImage string) (int64, error) {
+	ctx := context.Background()
+
+	// Получаем старый photo_id по продукту
+	var oldPhotoID int64
+	err := tx.QueryRowContext(ctx, `SELECT photo_id FROM products_categories WHERE id = ?`, productID).Scan(&oldPhotoID)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get old photo ID: %w", err)
+	}
+
+	// Проверяем — есть ли уже такое фото в таблице photo
+	var newPhotoID int64
+	err = tx.QueryRowContext(ctx, `SELECT id FROM photo WHERE name = ?`, newImage).Scan(&newPhotoID)
+	if err == sql.ErrNoRows {
+		// Добавляем новое фото
+		res, err := tx.ExecContext(ctx, `INSERT INTO photo(name) VALUES (?)`, newImage)
+		if err != nil {
+			return 0, fmt.Errorf("failed to insert photo: %w", err)
+		}
+		newPhotoID, err = res.LastInsertId()
+		if err != nil {
+			return 0, fmt.Errorf("failed to get new photo ID: %w", err)
+		}
+	} else if err != nil {
+		return 0, fmt.Errorf("failed to query photo: %w", err)
+	}
+
+	// Если фото поменялось — возможно, старое не используется
+	if oldPhotoID != newPhotoID {
+		var count int
+		err = tx.QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM products_categories WHERE photo_id = ?`,
+			oldPhotoID).Scan(&count)
+		if err != nil {
+			return 0, fmt.Errorf("failed to check old photo usage: %w", err)
+		}
+
+		if count == 0 {
+			_, err = tx.ExecContext(ctx, `DELETE FROM photo WHERE id = ?`, oldPhotoID)
+			if err != nil {
+				return 0, fmt.Errorf("failed to delete unused photo: %w", err)
+			}
+		}
+	}
+
+	return newPhotoID, nil
 }

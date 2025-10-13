@@ -4,8 +4,6 @@ import (
 	"ProjectTelBotMark/internal/dataSources"
 	"ProjectTelBotMark/internal/structs"
 	"fmt"
-	slogavp "github.com/Anatoly8853/slog-avp/v2"
-	_ "github.com/disintegration/imaging"
 	"html/template"
 	"net/http"
 	"os"
@@ -13,6 +11,9 @@ import (
 	"sort"
 	"strconv"
 	"time"
+
+	slogavp "github.com/Anatoly8853/slog-avp/v2"
+	_ "github.com/disintegration/imaging"
 
 	"github.com/gin-gonic/gin"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"

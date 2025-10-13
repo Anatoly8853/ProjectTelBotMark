@@ -7,13 +7,14 @@ import (
 	"ProjectTelBotMark/internal/structs"
 	"errors"
 	"fmt"
-	slogavp "github.com/Anatoly8853/slog-avp/v2"
 	"reflect"
 	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
 	"time"
+
+	slogavp "github.com/Anatoly8853/slog-avp/v2"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )

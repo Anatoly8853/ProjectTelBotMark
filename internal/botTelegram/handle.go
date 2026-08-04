@@ -585,38 +585,7 @@ func (m *MessageService) handleDeliveryDetailsMessage(chatID int64) {
 
 	// Получение содержимого корзины
 	purchases := structs.Baskets[chatID]
-
-	//if len(purchases) > 0 {
-	groupedPurchases := make(map[string]structs.Purchase)
-	for _, p := range purchases {
-
-		key := p.Item
-		if existing, found := groupedPurchases[key]; found {
-
-			existing.Quantity += p.Quantity
-			existing.Cost += p.Cost
-			groupedPurchases[key] = existing
-
-		} else {
-
-			groupedPurchases[key] = p
-
-		}
-	}
-
-	var MsgTexts string
-	totalCost := 0
-	for _, p := range groupedPurchases {
-
-		itemTotalCost := p.Cost // Общая стоимость для этой группы товаров
-		MsgTexts += fmt.Sprintf("Товар: %s кол-во: %d цена: %d руб.\n", p.Item, p.Quantity, itemTotalCost)
-		totalCost += itemTotalCost
-
-	}
-
-	MsgTexts += fmt.Sprintf("Общая стоимость: %d руб.", totalCost)
-
-	orderDetails[chatID] += MsgTexts
+	orderDetails[chatID] += BuildPurchaseReport(purchases)
 
 	// Отправляем пользователю подтверждение с деталями заказа и кнопкой "Заказать"
 	btnOrder := tgbotapi.NewInlineKeyboardButtonData("Заказать", "confirm_order")

@@ -15,10 +15,16 @@ import (
 
 func main() {
 	// Настраиваем логгер
-	app := slogavp.SetupApplication()
+	app, err := slogavp.New(
+		slogavp.WithConsole(false),
+		slogavp.WithLogDir("var/log/myapp"),
+	)
+	if err != nil {
+		// обработать ошибку
+	}
+	defer app.Close()
 	cfg := config.LoadConfig(app)
 
-	//bot, err = tgbotapi.NewBotAPI(os.Getenv("TELEGRAM_TOKEN"))
 	bot, err := tgbotapi.NewBotAPI(cfg.TGtoken)
 	if err != nil {
 		app.Log.Fatalf("Нет токена TELEGRAM_TOKEN: %v", err)
@@ -31,6 +37,7 @@ func main() {
 	}
 
 	repo := dataSources.NewRepository(db, app)
+	app.Log.Info("Все норм")
 	/*
 		// 1. Чтение файла JSON
 		jsonData, er := os.ReadFile("data.json")

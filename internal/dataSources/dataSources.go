@@ -318,8 +318,8 @@ func (r *Repository) getOrInsertValues(tx *sql.Tx, tables []string, columns []st
 		var idd int64
 
 		// Создаем динамический запрос для выбора строки
-		selectQuery := "SELECT id FROM " + table + " WHERE "
-		insertQuery := "INSERT INTO " + table + " ("
+		selectQuery := "SELECT id FROM" + table + " WHERE "
+		insertQuery := "INSERT INTO" + table + " ("
 		valuesPlaceholders := "VALUES ("
 
 		for i, column := range columns {

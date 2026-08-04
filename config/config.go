@@ -35,13 +35,4 @@ func LoadConfig(app *slogavp.Application) (cfg Config) {
 		app.Log.Fatalf("unable to decode into struct, %v", err)
 	}
 	return cfg
-	/*
-		return Config{
-			TGtoken:       viper.GetString("TELEGRAM_TOKEN"),
-			TGgrouptoken:  viper.GetString("TELEGRAM_GROUPCHATID"),
-			TGmesagetoken: viper.GetString("TELEGRAM_CHATID"),
-			DBName:        viper.GetString("DB_NAME"),
-		}
-
-	*/
 }

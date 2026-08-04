@@ -7,6 +7,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"unicode"
+
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 )
 
 type JSONCategories map[string]structs.Category
@@ -336,6 +340,7 @@ func (r *Repository) getProductsForSubCategory(ctx context.Context, mainCatID, s
         WHERE p.category_id = ? 
         AND p.categories_2_id = ?`,
 		mainCatID, subCatID)
+
 	if err != nil {
 		r.app.Log.Error("getProductsForSubCategory", err.Error())
 		return nil, err
@@ -374,20 +379,22 @@ func (r *Repository) getProductsForSubCategory(ctx context.Context, mainCatID, s
 
 // NormalizeWords NormalizeWord Первое слово как есть все остальные в нижнем регистре, удаляет повторы слов (регистр не учитывается).
 func NormalizeWords(input string) string {
-	// Разбиваем строку на слова, убираем лишние пробелы
 	words := strings.Fields(input)
 	if len(words) == 0 {
 		return ""
 	}
 
+	// Определяем язык
+	lang := detectLanguage(words[0])
+	titleCaser := cases.Title(lang)
+
 	// Обрабатываем первое слово
 	first := strings.ToLower(words[0])
-	first = strings.Title(first) // первая буква заглавная, остальные маленькие
+	first = titleCaser.String(first)
 	result := []string{first}
 
-	// Множество для отслеживания дубликатов (только для остальных слов)
 	seen := make(map[string]bool)
-	seen[strings.ToLower(first)] = true // помечаем первое слово, чтобы его не повторять
+	seen[strings.ToLower(first)] = true
 
 	// Обработка остальных слов
 	for _, word := range words[1:] {
@@ -400,4 +407,14 @@ func NormalizeWords(input string) string {
 	}
 
 	return strings.Join(result, " ")
+}
+
+// detectLanguage определяет язык по первому слову
+func detectLanguage(word string) language.Tag {
+	for _, r := range word {
+		if unicode.Is(unicode.Cyrillic, r) {
+			return language.Russian
+		}
+	}
+	return language.English
 }

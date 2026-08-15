@@ -7,6 +7,8 @@ import (
 	"ProjectTelBotMark/internal/reminders"
 	"ProjectTelBotMark/internal/routers"
 	"ProjectTelBotMark/internal/structs"
+	"fmt"
+	"os"
 
 	slogavp "github.com/Anatoly8853/slog-avp/v2"
 
@@ -20,20 +22,21 @@ func main() {
 		slogavp.WithLogDir("var/log/myapp"),
 	)
 	if err != nil {
-		// обработать ошибку
+		fmt.Fprintf(os.Stderr, "не удалось настроить логгер: %v\n", err)
+		os.Exit(1)
 	}
 	defer app.Close()
+
 	cfg := config.LoadConfig(app)
 
 	bot, err := tgbotapi.NewBotAPI(cfg.TGtoken)
 	if err != nil {
-		app.Log.Fatalf("Нет токена TELEGRAM_TOKEN: %v", err)
+		app.Fatalf("Нет токена TELEGRAM_TOKEN: %v", err)
 	}
 
-	// Открываем соединение с базой данных SQLite.
 	db, err := dataSources.InitDB(app)
 	if err != nil {
-		app.Log.Fatalf("Error initializing databases: %v", err)
+		app.Fatalf("Error initializing databases: %v", err)
 	}
 
 	repo := dataSources.NewRepository(db, app)

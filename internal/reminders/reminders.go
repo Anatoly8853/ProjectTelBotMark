@@ -6,9 +6,10 @@ import (
 	"ProjectTelBotMark/internal/dataSources"
 	"ProjectTelBotMark/internal/structs"
 	"fmt"
-	slogavp "github.com/Anatoly8853/slog-avp/v2"
 	"strconv"
 	"time"
+
+	slogavp "github.com/Anatoly8853/slog-avp/v2"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )

@@ -622,7 +622,7 @@ func (m *MessageService) addOrUpdateOrderField(chatID int64, fieldName string, v
 	return nil
 }
 
-// sendMessage Функция для отправки сообщения и добавления его в BasketMessages
+// sendMessage отправляет сообщение и регистрирует его для общей очистки.
 func (m *MessageService) sendMessage(chatID int64, text string) {
 	if chatID == 0 || text == `` {
 		m.app.Log.Errorf(`нет данных для обработки chatID = %v text = %v`, chatID, text)

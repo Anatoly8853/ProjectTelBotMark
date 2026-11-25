@@ -845,6 +845,13 @@ func (m *MessageService) handleCallbackQueryData(cfg config.Config, update tgbot
 			deliveryDateMu.Lock()
 			delete(pendingDeliveryDates, chatID)
 			deliveryDateMu.Unlock()
+			fallback := tgbotapi.NewMessage(chatID, "Не удалось отправить подтверждение. Выберите дату доставки ещё раз:")
+			fallback.ReplyMarkup = m.createCalendarKeyboard(time.Now())
+			if calendarMsg, calendarErr := m.bot.Send(fallback); calendarErr != nil {
+				m.app.Log.Errorf("handleCallbackQueryData: не удалось повторно отправить календарь после ошибки подтверждения: chatID=%d, ошибка=%v", chatID, calendarErr)
+			} else {
+				m.trackMessage(chatID, calendarMsg.MessageID)
+			}
 		} else {
 			m.trackMessage(chatID, sent.MessageID)
 			m.app.Log.Infof("handleCallbackQueryData: дата доставки ожидает подтверждения: chatID=%d, дата=%s", chatID, formatted)
@@ -964,7 +971,13 @@ func (m *MessageService) continueAfterDeliveryDate(chatID int64, formatted strin
 
 	if err := m.addOrUpdateOrderField(chatID, "DeliveryDate", formatted); err != nil {
 		m.app.Log.Errorf("continueAfterDeliveryDate: ошибка сохранения подтверждённой даты: chatID=%d, дата=%q, ошибка=%v", chatID, formatted, err)
-		m.sendMessage(chatID, "Не удалось сохранить дату доставки. Выберите её ещё раз.")
+		msg := tgbotapi.NewMessage(chatID, "Не удалось сохранить дату доставки. Выберите её ещё раз:")
+		msg.ReplyMarkup = m.createCalendarKeyboard(time.Now())
+		if sent, sendErr := m.bot.Send(msg); sendErr != nil {
+			m.app.Log.Errorf("continueAfterDeliveryDate: не удалось повторно отправить календарь: chatID=%d, ошибка=%v", chatID, sendErr)
+		} else {
+			m.trackMessage(chatID, sent.MessageID)
+		}
 		return
 	}
 	m.app.Log.Infof("continueAfterDeliveryDate: дата доставки подтверждена и сохранена: chatID=%d, дата=%s", chatID, formatted)

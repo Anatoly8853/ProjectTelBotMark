@@ -4,6 +4,7 @@ import (
 	"ProjectTelBotMark/internal/bychat"
 	"ProjectTelBotMark/internal/structs"
 	"fmt"
+	"strings"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
@@ -20,6 +21,84 @@ var messagesToDelete = make(map[int64][]int)
 // BasketMessages Карта для хранения данных о покупках для каждого пользователя.
 var BasketMessages = make(map[int64]int)
 
+// greetingMessagesToKeep хранит ID приветственного сообщения, которое остаётся в чате.
+var greetingMessagesToKeep = make(map[int64]int)
+
+ // trackMessage сохраняет ID нового сообщения бота для последующей общей очистки.
+func (m *MessageService) trackMessage(chatID int64, messageID int) {
+	if chatID == 0 || messageID == 0 {
+		m.app.Log.Errorf("trackMessage: некорректные идентификаторы: chatID=%d, messageID=%d", chatID, messageID)
+		return
+	}
+	basketMu.Lock()
+	messagesToDelete[chatID] = append(messagesToDelete[chatID], messageID)
+	basketMu.Unlock()
+}
+
+ // forgetTrackedMessage убирает уже удалённое сообщение из всех списков учёта.
+func forgetTrackedMessage(chatID int64, messageID int) {
+	if chatID == 0 || messageID == 0 {
+		return
+	}
+	basketMu.Lock()
+	ids := messagesToDelete[chatID]
+	filtered := ids[:0]
+	for _, id := range ids {
+		if id != messageID {
+			filtered = append(filtered, id)
+		}
+	}
+	if len(filtered) == 0 {
+		delete(messagesToDelete, chatID)
+	} else {
+		messagesToDelete[chatID] = filtered
+	}
+	if photoMessagesToDelete[chatID] == messageID {
+		delete(photoMessagesToDelete, chatID)
+	}
+	if keyboardMessagesToDelete[chatID] == messageID {
+		delete(keyboardMessagesToDelete, chatID)
+	}
+	if BasketMessages[chatID] == messageID {
+		delete(BasketMessages, chatID)
+	}
+	basketMu.Unlock()
+}
+
+ // callbackOpensNewScreen определяет, должно ли нажатие убрать текущий экран.
+func (m *MessageService) callbackOpensNewScreen(callback *tgbotapi.CallbackQuery) bool {
+	if callback == nil || callback.Message == nil || callback.Message.Chat == nil {
+		return false
+	}
+
+	data := callback.Data
+	switch {
+	case strings.HasPrefix(data, "cat_"):
+		category := strings.TrimPrefix(data, "cat_")
+		if category == "Корзина" {
+			basketMu.Lock()
+			empty := len(structs.Baskets[callback.Message.Chat.ID]) == 0
+			basketMu.Unlock()
+			return !empty
+		}
+		return true
+	case strings.HasPrefix(data, "fav_toggle_"):
+		return strings.HasPrefix(callback.Message.Text, "⭐ Избранные товары")
+	case data == "send_basket_1_1" || data == "confirm_order":
+		return true
+	case strings.HasPrefix(data, "send_") ||
+		strings.HasPrefix(data, "sends_") ||
+		strings.HasPrefix(data, "phonenumber_") ||
+		strings.HasPrefix(data, "deliverydate_") ||
+		strings.HasPrefix(data, "confirm_") ||
+		strings.HasPrefix(data, "repeat_") ||
+		strings.HasPrefix(data, "delete_"):
+		return true
+	default:
+		return false
+	}
+}
+
 // photoMessagesDelete удаляем предыдущее сообщение с фото, если оно есть.
 func (m *MessageService) photoMessagesDelete(chatID int64) {
 	basketMu.Lock()
@@ -32,11 +111,7 @@ func (m *MessageService) photoMessagesDelete(chatID int64) {
 		m.app.Log.Errorf("photoMessagesDelete: ошибка удаления фото: chatID=%d, messageID=%d, ошибка=%v", chatID, msgID, err)
 		return
 	}
-	basketMu.Lock()
-	if photoMessagesToDelete[chatID] == msgID {
-		delete(photoMessagesToDelete, chatID)
-	}
-	basketMu.Unlock()
+	forgetTrackedMessage(chatID, msgID)
 }
 
 // keyboardMessagesDelete удаляем предыдущее сообщение с клавиатурой, если оно есть.
@@ -51,11 +126,7 @@ func (m *MessageService) keyboardMessagesDelete(chatID int64) {
 		m.app.Log.Errorf("keyboardMessagesDelete: ошибка удаления клавиатуры: chatID=%d, messageID=%d, ошибка=%v", chatID, msgID, err)
 		return
 	}
-	basketMu.Lock()
-	if keyboardMessagesToDelete[chatID] == msgID {
-		delete(keyboardMessagesToDelete, chatID)
-	}
-	basketMu.Unlock()
+	forgetTrackedMessage(chatID, msgID)
 }
 
 // clearOrder Функция для очистки данных заказа по chatID.
@@ -75,42 +146,65 @@ func (m *MessageService) clearOrder(chatID int64) {
 	commentPendingMu.Unlock()
 }
 
-// deletePreviousMessages Удаляем сообщения.
+// deletePreviousMessages удаляет все предыдущие сообщения бота и указанное сообщение пользователя.
+ // Приветственное сообщение сохраняется; при нажатии его кнопки удаляется только клавиатура.
 func (m *MessageService) deletePreviousMessages(chatID int64, messageID int) {
-	if chatID == 0 || messageID == 0 {
-		m.app.Log.Errorf("нет данных для обработки chatID = %v messageID = %v", chatID, messageID)
+	if chatID == 0 {
+		m.app.Log.Errorf("deletePreviousMessages: некорректный chatID=%d", chatID)
 		return
 	}
 
-	// Проверяем, есть ли сообщения для удаления в этом чате
 	basketMu.Lock()
-	_, found := messagesToDelete[chatID]
-	basketMu.Unlock()
-	if found {
-		// Проходимся по каждому идентификатору сообщения и удаляем его
-		deleteMsg := tgbotapi.NewDeleteMessage(chatID, messageID)
-		if _, err := m.bot.Request(deleteMsg); err != nil {
-			//log.Printf("Ошибка при удалении сообщения: %v", err)
-			// Не используйте log.Panic, чтобы избежать прерывания работы бота из-за одной ошибки
+	messageIDs := make(map[int]struct{})
+	for _, id := range messagesToDelete[chatID] {
+		if id != 0 {
+			messageIDs[id] = struct{}{}
 		}
-		/*
-			for chatIDs, messageIDs := range messagesToDelete {
-				fmt.Printf("ChatID: %d-----------------------------------\n", chatIDs)
+	}
+	if id := photoMessagesToDelete[chatID]; id != 0 {
+		messageIDs[id] = struct{}{}
+	}
+	if id := keyboardMessagesToDelete[chatID]; id != 0 {
+		messageIDs[id] = struct{}{}
+	}
+	if id := BasketMessages[chatID]; id != 0 {
+		messageIDs[id] = struct{}{}
+	}
 
-				for _, messageIDa := range messageIDs {
-					fmt.Println("len(messageIDa)---------------------------------------------------------------------------", len(messageIDs))
-					fmt.Printf(" MessageID: %d---------------------------------------------------------------------------------------\n", messageIDa)
-					deleteMsg = tgbotapi.NewDeleteMessage(chatIDs, messageIDa)
-					if _, err := bot.Request(deleteMsg); err != nil {
-						//log.Printf("Ошибка при удалении сообщения: %v", err)
-						// Не используйте log.Panic, чтобы избежать прерывания работы бота из-за одной ошибки
-					}
+	greetingID := greetingMessagesToKeep[chatID]
+	keepGreeting := greetingID != 0 && greetingID == messageID
+	if messageID != 0 && messageID != greetingID {
+		messageIDs[messageID] = struct{}{}
+	}
 
-				}
-			}
+	delete(messagesToDelete, chatID)
+	delete(photoMessagesToDelete, chatID)
+	delete(keyboardMessagesToDelete, chatID)
+	delete(BasketMessages, chatID)
+	basketMu.Unlock()
 
-		*/
+	if keepGreeting {
+		edit := tgbotapi.NewEditMessageReplyMarkup(chatID, greetingID, tgbotapi.InlineKeyboardMarkup{})
+		if _, err := m.bot.Request(edit); err != nil {
+			m.app.Log.Errorf(
+				"deletePreviousMessages: не удалось убрать клавиатуру приветствия: chatID=%d, messageID=%d, ошибка=%v",
+				chatID, greetingID, err,
+			)
+		} else {
+			m.app.Log.Debugf("deletePreviousMessages: клавиатура приветствия убрана: chatID=%d, messageID=%d", chatID, greetingID)
+		}
+	}
 
+	delete(messageIDs, greetingID)
+	for id := range messageIDs {
+		if _, err := m.bot.Request(tgbotapi.NewDeleteMessage(chatID, id)); err != nil {
+			m.app.Log.Errorf(
+				"deletePreviousMessages: ошибка удаления сообщения: chatID=%d, messageID=%d, ошибка=%v",
+				chatID, id, err,
+			)
+			continue
+		}
+		m.app.Log.Debugf("deletePreviousMessages: сообщение удалено: chatID=%d, messageID=%d", chatID, id)
 	}
 }
 
@@ -132,11 +226,7 @@ func (m *MessageService) deleteMessages(chatID int64) {
 		m.app.Log.Errorf("deleteMessages: ошибка удаления сообщения: chatID=%d, messageID=%d, ошибка=%v", chatID, messageID, err)
 		return
 	}
-	basketMu.Lock()
-	if BasketMessages[chatID] == messageID {
-		BasketMessages[chatID] = 0
-	}
-	basketMu.Unlock()
+	forgetTrackedMessage(chatID, messageID)
 }
 
 // DeleteBasketContents очищает корзину пользователя.
@@ -163,6 +253,8 @@ func (m *MessageService) DeleteBasketContents(chatID int64) {
 	if messageID != 0 {
 		if _, err := m.bot.Request(tgbotapi.NewDeleteMessage(chatID, messageID)); err != nil {
 			m.app.Log.Errorf("DeleteBasketContents: ошибка удаления сообщения корзины: chatID=%d, messageID=%d, ошибка=%v", chatID, messageID, err)
+		} else {
+			forgetTrackedMessage(chatID, messageID)
 		}
 	}
 

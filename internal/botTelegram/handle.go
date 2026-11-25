@@ -51,6 +51,12 @@ func (m *MessageService) UpdateMessage(cfg config.Config) {
 					continue // Прерываем выполнение, если user_black != 0
 				}
 
+				// Очищаем старый экран только при реальном переходе на другой экран.
+				// Кнопки добавления товара, +/- корзины и перелистывания календаря остаются на месте.
+				if m.callbackOpensNewScreen(update.CallbackQuery) {
+					m.deletePreviousMessages(userChatID, update.CallbackQuery.Message.MessageID)
+				}
+
 				// Обработка CallbackQuery
 				m.handleCallbackQueryData(cfg, update)
 				continue // Переход к следующему обновлению после обработки CallbackQuery
@@ -66,6 +72,10 @@ func (m *MessageService) UpdateMessage(cfg config.Config) {
 					m.app.Log.Infof("Юзер из черного списка %v имя %v", update.Message.Chat.ID, update.Message.From.UserName)
 					continue // Прерываем выполнение, если user_black != 0
 				}
+
+				// Удаляем предыдущий экран и входящее сообщение до формирования нового ответа.
+				// Команда /start отдельно создаёт приветствие, которое сохраняется между переходами.
+				m.deletePreviousMessages(update.Message.Chat.ID, update.Message.MessageID)
 
 				// В этом месте обрабатываем все сообщения, включая команды
 				if update.Message.IsCommand() {
@@ -110,10 +120,12 @@ func (m *MessageService) handleCommands(update tgbotapi.Update) {
 		//msg.Text = "I'm ok."
 		default:
 			msg.ReplyToMessageID = update.Message.MessageID // Устанавливаем ID сообщения, на которое отвечаем
-			if _, err := m.bot.Send(msg); err != nil {
+			sent, err := m.bot.Send(msg)
+			if err != nil {
 				m.app.Log.Errorf("Ошибка отправки сообщения: %v", err)
 				return
 			}
+			m.trackMessage(update.Message.Chat.ID, sent.MessageID)
 		}
 
 	}
@@ -121,24 +133,28 @@ func (m *MessageService) handleCommands(update tgbotapi.Update) {
 
 // handleStartCommand добро пожаловать! Нажмите 'Старт' для начала.
 func (m *MessageService) handleStartCommand(update tgbotapi.Update) {
-	// Удаляем сообщение с командой /start
-	deleteMsg := tgbotapi.DeleteMessageConfig{
-		ChatID:    update.Message.Chat.ID,
-		MessageID: update.Message.MessageID,
-	}
-	_, err := m.bot.Request(deleteMsg)
-	if err != nil {
-		m.app.Log.Errorf("Ошибка при удалении сообщения: %v", err)
+	// Входящее сообщение /start уже удалено централизованной очисткой в UpdateMessage.
+	// Если приветствие уже есть, не создаём его повторно.
+	basketMu.Lock()
+	greetingID := greetingMessagesToKeep[update.Message.Chat.ID]
+	basketMu.Unlock()
+	if greetingID != 0 {
+		m.app.Log.Debugf("handleStartCommand: приветствие уже существует: chatID=%d, messageID=%d", update.Message.Chat.ID, greetingID)
 		return
 	}
-	// Отправляем приветственное сообщение
+
+	// Отправляем приветственное сообщение и сохраняем его ID отдельно от остальных сообщений.
 	msg := tgbotapi.NewMessage(update.Message.Chat.ID, fmt.Sprintf("Добро пожаловать %s! Нажмите 'Старт' для начала.", update.Message.Chat.UserName))
 	msg.ReplyMarkup = createStartKeyboard()
-	_, err = m.bot.Send(msg)
+	sent, err := m.bot.Send(msg)
 	if err != nil {
 		m.app.Log.Errorf("Ошибка при отправке сообщения: %v", err)
 		return
 	}
+	basketMu.Lock()
+	greetingMessagesToKeep[update.Message.Chat.ID] = sent.MessageID
+	basketMu.Unlock()
+	m.app.Log.Infof("handleStartCommand: приветствие отправлено: chatID=%d, messageID=%d", update.Message.Chat.ID, sent.MessageID)
 }
 
 // handleMessageText Разбор MessageText для определения действия текстовых сообщений.
@@ -226,12 +242,14 @@ func (m *MessageService) handleMessageText(update tgbotapi.Update) {
 
 			default:
 				msg.ReplyToMessageID = update.Message.MessageID // Устанавливаем ID сообщения, на которое отвечаем
-				if _, err = m.bot.Send(msg); err != nil {
-					m.app.Log.Errorf("Ошибка отправки сообщения: %v", err)
+				sent, sendErr := m.bot.Send(msg)
+				if sendErr != nil {
+					m.app.Log.Errorf("Ошибка отправки сообщения: %v", sendErr)
+				} else {
+					m.trackMessage(update.Message.Chat.ID, sent.MessageID)
 				}
 			}
 		}
-		m.deletePreviousMessages(update.Message.Chat.ID, update.Message.MessageID)
 	}
 }
 
@@ -799,12 +817,15 @@ func (m *MessageService) handleCallbackQueryData(cfg config.Config, update tgbot
 
 			msg.ReplyMarkup = m.createCalendarKeyboard(time.Now())
 
-			if _, err := m.bot.Send(msg); err != nil {
+			sent, err := m.bot.Send(msg)
+			if err != nil {
 				m.app.Log.Errorf(
 					"handleCallbackQueryData: ошибка отправки календаря: chatID=%d, ошибка=%v",
 					chatID,
 					err,
 				)
+			} else {
+				m.trackMessage(chatID, sent.MessageID)
 			}
 
 			return
@@ -859,12 +880,15 @@ func (m *MessageService) handleCallbackQueryData(cfg config.Config, update tgbot
 			tgbotapi.NewInlineKeyboardRow(btnSend, btnDelete),
 		)
 
-		if _, err := m.bot.Send(msg); err != nil {
+		sent, err := m.bot.Send(msg)
+		if err != nil {
 			m.app.Log.Errorf(
 				"handleCallbackQueryData: ошибка отправки данных заказа: chatID=%d, ошибка=%v",
 				chatID,
 				err,
 			)
+		} else {
+			m.trackMessage(chatID, sent.MessageID)
 		}
 
 	// ---------------------------------------------------------
@@ -1197,6 +1221,7 @@ func (m *MessageService) handleDeliveryDetailsMessage(chatID int64) {
 		// Сохраняем идентификатор отправленного сообщения для последующего удаления
 		basketMu.Lock()
 		BasketMessages[chatID] = sentMsg.MessageID
+		messagesToDelete[chatID] = append(messagesToDelete[chatID], sentMsg.MessageID)
 		basketMu.Unlock()
 	}
 }

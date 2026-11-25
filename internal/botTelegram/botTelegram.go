@@ -248,6 +248,7 @@ func (m *MessageService) ShowBasket(chatID int64) {
 
 	basketMu.Lock()
 	BasketMessages[chatID] = sentMsg.MessageID
+	messagesToDelete[chatID] = append(messagesToDelete[chatID], sentMsg.MessageID)
 	basketMu.Unlock()
 }
 
@@ -359,11 +360,12 @@ func (m *MessageService) RequestDeliveryDetails(chatID int64) {
 	now := time.Now()
 	msg.ReplyMarkup = m.createCalendarKeyboard(now)
 
-	_, err = m.bot.Send(msg)
+	sent, err := m.bot.Send(msg)
 	if err != nil {
-		m.app.Log.Errorf(`не удается вывести содержимое корзины %v`, err)
+		m.app.Log.Errorf("RequestDeliveryDetails: не удалось отправить календарь: chatID=%d, ошибка=%v", chatID, err)
 		return
 	}
+	m.trackMessage(chatID, sent.MessageID)
 
 	deliveryDateMu.Lock()
 	DeliveryDateChatID[chatID] = 1
@@ -440,6 +442,7 @@ func (m *MessageService) sendMessageWithKeyboard(chatID int64, text string, keyb
 	}
 	basketMu.Lock()
 	BasketMessages[chatID] = sent.MessageID
+	messagesToDelete[chatID] = append(messagesToDelete[chatID], sent.MessageID)
 	basketMu.Unlock()
 	return nil
 }
@@ -652,6 +655,7 @@ func (m *MessageService) sendMessage(chatID int64, text string) {
 	// Добавляем новое сообщение в мапу.
 	basketMu.Lock()
 	BasketMessages[chatID] = sentMsg.MessageID
+	messagesToDelete[chatID] = append(messagesToDelete[chatID], sentMsg.MessageID)
 	basketMu.Unlock()
 
 	// Удаляем предыдущие сообщения, если их больше 3
@@ -721,12 +725,23 @@ func (m *MessageService) ScheduleOnce(chatID int64) {
 		delete(DeliveryDateChatID, chatID)
 		deliveryDateMu.Unlock()
 
-		// Возвращаемся в основное меню
-		msg := tgbotapi.NewMessage(chatID, `Добро пожаловать! Нажмите 'Старт' для начала.`)
-		msg.ReplyMarkup = createStartKeyboard()
-		_, err := m.bot.Send(msg)
-		if err != nil {
-			m.app.Log.Errorf(`Error sending message: = %v`, err)
+		// Приветствие не дублируем: оно остаётся в чате, а после нажатия на «Старт»
+		// его клавиатура снимается централизованной очисткой.
+		basketMu.Lock()
+		greetingID := greetingMessagesToKeep[chatID]
+		basketMu.Unlock()
+		if greetingID == 0 {
+			msg := tgbotapi.NewMessage(chatID, `Добро пожаловать! Нажмите 'Старт' для начала.`)
+			msg.ReplyMarkup = createStartKeyboard()
+			sent, sendErr := m.bot.Send(msg)
+			if sendErr != nil {
+				m.app.Log.Errorf("ScheduleOnce: ошибка отправки приветствия: chatID=%d, ошибка=%v", chatID, sendErr)
+			} else {
+				basketMu.Lock()
+				greetingMessagesToKeep[chatID] = sent.MessageID
+				basketMu.Unlock()
+				m.app.Log.Infof("ScheduleOnce: приветствие отправлено: chatID=%d, messageID=%d", chatID, sent.MessageID)
+			}
 		}
 	}()
 }
@@ -792,6 +807,9 @@ func (m *MessageService) createCategoryMessage(update tgbotapi.Update, categoryN
 		if len(sentMsgs) > 0 {
 			basketMu.Lock()
 			photoMessagesToDelete[chatID] = sentMsgs[0].MessageID
+			for _, sent := range sentMsgs {
+				messagesToDelete[chatID] = append(messagesToDelete[chatID], sent.MessageID)
+			}
 			basketMu.Unlock()
 		}
 

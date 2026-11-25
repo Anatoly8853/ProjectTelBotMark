@@ -757,9 +757,6 @@ func (m *MessageService) createCategoryMessage(update tgbotapi.Update, categoryN
 		return errors.New(er)
 	}
 
-	m.photoMessagesDelete(chatID)
-	m.keyboardMessagesDelete(chatID)
-
 	if categoryData.Photo == `` {
 		keyboardReply, err := CreateCategoryKeyboardReply(categoryData.CategoryName)
 		if err != nil {
@@ -779,9 +776,7 @@ func (m *MessageService) createCategoryMessage(update tgbotapi.Update, categoryN
 			m.app.Log.Errorf(`Ошибка при отправке сообщения: %v`, err)
 			return err
 		}
-		basketMu.Lock()
-		messagesToDelete[chatID] = append(messagesToDelete[chatID], sentMsg.MessageID)
-		basketMu.Unlock()
+		m.trackMessage(chatID, sentMsg.MessageID)
 
 	} else {
 		// Создаем медиа-объект для изображения
@@ -800,10 +795,10 @@ func (m *MessageService) createCategoryMessage(update tgbotapi.Update, categoryN
 		if len(sentMsgs) > 0 {
 			basketMu.Lock()
 			photoMessagesToDelete[chatID] = sentMsgs[0].MessageID
-			for _, sent := range sentMsgs {
-				messagesToDelete[chatID] = append(messagesToDelete[chatID], sent.MessageID)
-			}
 			basketMu.Unlock()
+			for _, sent := range sentMsgs {
+				m.trackMessage(chatID, sent.MessageID)
+			}
 		}
 
 		// Создаем кнопки клавиатуры
@@ -825,9 +820,7 @@ func (m *MessageService) createCategoryMessage(update tgbotapi.Update, categoryN
 			return err
 		}
 		// Сохраняем идентификатор сообщения для последующего удаления
-		basketMu.Lock()
-		messagesToDelete[chatID] = append(messagesToDelete[chatID], sentMsg.MessageID)
-		basketMu.Unlock()
+		m.trackMessage(chatID, sentMsg.MessageID)
 		basketMu.Lock()
 		keyboardMessagesToDelete[chatID] = sentMsg.MessageID // Сохраняем идентификатор сообщения с клавиатурой
 		basketMu.Unlock()

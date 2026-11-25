@@ -196,7 +196,7 @@ func (m *MessageService) deletePreviousMessages(chatID int64, messageID int) {
 	basketMu.Unlock()
 
 	if keepGreeting {
-		edit := tgbotapi.NewEditMessageReplyMarkup(chatID, greetingID, tgbotapi.InlineKeyboardMarkup{})
+		edit := tgbotapi.NewEditMessageReplyMarkup(chatID, greetingID, tgbotapi.InlineKeyboardMarkup{InlineKeyboard: [][]tgbotapi.InlineKeyboardButton{}})
 		if _, err := m.bot.Request(edit); err != nil {
 			m.app.Log.Errorf(
 				"deletePreviousMessages: не удалось убрать клавиатуру приветствия: chatID=%d, messageID=%d, ошибка=%v",

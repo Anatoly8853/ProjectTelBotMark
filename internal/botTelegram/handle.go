@@ -1207,10 +1207,7 @@ func (m *MessageService) handleDeliveryDetailsMessage(chatID int64) {
 		m.app.Log.Errorf("%v", err)
 		return
 	} else {
-		// Сохраняем идентификатор отправленного сообщения для последующего удаления
-		basketMu.Lock()
-		BasketMessages[chatID] = sentMsg.MessageID
-		messagesToDelete[chatID] = append(messagesToDelete[chatID], sentMsg.MessageID)
-		basketMu.Unlock()
+		// Сохраняем подтверждение заказа в общем списке сообщений для очистки.
+		m.trackMessage(chatID, sentMsg.MessageID)
 	}
 }

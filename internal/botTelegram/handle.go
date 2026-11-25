@@ -187,6 +187,12 @@ func (m *MessageService) handleMessageText(update tgbotapi.Update) {
 				m.sendMessage(chatID, "Не удалось сохранить комментарий. Попробуйте ещё раз.")
 				return
 			}
+			m.app.Log.Infof(
+				"handleMessageText: комментарий принят: chatID=%d, заполнен=%t, длина=%d",
+				chatID,
+				comment != "",
+				len([]rune(comment)),
+			)
 			m.handleDeliveryDetailsMessage(chatID)
 			return
 		}
@@ -789,9 +795,6 @@ func (m *MessageService) handleCallbackQueryData(cfg config.Config, update tgbot
 			return
 		}
 
-
-		answerCallback("")
-
 		field, err := bychat.GetFieldByChatID(m.app, chatID, "DeliveryDate")
 		if err != nil {
 			m.app.Log.Errorf(
@@ -799,105 +802,100 @@ func (m *MessageService) handleCallbackQueryData(cfg config.Config, update tgbot
 				chatID,
 				err,
 			)
+			answerCallback("Не удалось проверить этап оформления")
 			return
 		}
-
 		if field != "Дату доставки:" {
 			m.app.Log.Warnf(
 				"handleCallbackQueryData: неожиданный этап выбора даты: chatID=%d, значение=%q",
 				chatID,
 				field,
 			)
+			answerCallback("Выбор даты сейчас недоступен")
 			return
 		}
 
 		formatted, dateError := bychat.FormatDateString(m.app, parts[1])
-
 		if dateError != "" {
-			msg := tgbotapi.NewMessage(
-				chatID,
-				dateError+"\nВыберите дату доставки:",
-			)
-
+			answerCallback("Некорректная дата")
+			msg := tgbotapi.NewMessage(chatID, dateError+"\nВыберите дату доставки:")
 			msg.ReplyMarkup = m.createCalendarKeyboard(time.Now())
-
-			sent, err := m.bot.Send(msg)
-			if err != nil {
-				m.app.Log.Errorf(
-					"handleCallbackQueryData: ошибка отправки календаря: chatID=%d, ошибка=%v",
-					chatID,
-					err,
-				)
+			if sent, sendErr := m.bot.Send(msg); sendErr != nil {
+				m.app.Log.Errorf("handleCallbackQueryData: ошибка повторной отправки календаря: chatID=%d, ошибка=%v", chatID, sendErr)
 			} else {
 				m.trackMessage(chatID, sent.MessageID)
 			}
-
 			return
 		}
 
-		err = m.addOrUpdateOrderField(chatID, "DeliveryDate", formatted)
-		if err != nil {
-			m.app.Log.Errorf(
-				"handleCallbackQueryData: ошибка сохранения даты доставки: chatID=%d, дата=%q, ошибка=%v",
-				chatID,
-				formatted,
-				err,
-			)
-			return
-		}
+		deliveryDateMu.Lock()
+		pendingDeliveryDates[chatID] = formatted
+		deliveryDateMu.Unlock()
 
-		orders := m.repo.GetByUserID(chatID)
-
-		if orders.PhoneNumber == "" ||
-			orders.FullName == "" ||
-			orders.DeliveryAddress == "" {
-
-			instructions := "Пожалуйста, введите " + PhoneNumber + "\n" +
-				"Пример:\n" +
-				"+79345678901\n"
-
-			err = m.addOrUpdateOrderField(chatID, "PhoneNumber", PhoneNumber)
-			if err != nil {
-				m.app.Log.Errorf(
-					"handleCallbackQueryData: ошибка сохранения PhoneNumber: chatID=%d, ошибка=%v",
-					chatID,
-					err,
-				)
-				return
-			}
-
-			m.sendMessage(chatID, instructions)
-			return
-		}
-
-		msgText := "Использовать следующие данные для заказа\n"
-		msgText += fmt.Sprintf("Номер телефона: %v\n", orders.PhoneNumber)
-		msgText += fmt.Sprintf("ФИО: %v\n", orders.FullName)
-		msgText += fmt.Sprintf("%s %v\n", DeliveryAddress, orders.DeliveryAddress)
-
-		msg := tgbotapi.NewMessage(chatID, msgText)
-
-		btnSend := tgbotapi.NewInlineKeyboardButtonData("Да", "sends_msgText")
-		btnDelete := tgbotapi.NewInlineKeyboardButtonData("Нет", "phonenumber_PhoneNumber")
-
+		answerCallback("")
+		msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("Дата доставки выбрана: %s\nПодтвердите, пожалуйста.", formatted))
 		msg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(
-			tgbotapi.NewInlineKeyboardRow(btnSend, btnDelete),
+			tgbotapi.NewInlineKeyboardRow(
+				tgbotapi.NewInlineKeyboardButtonData("Да", "deliveryconfirm_yes"),
+				tgbotapi.NewInlineKeyboardButtonData("Редактировать", "deliveryconfirm_edit"),
+			),
 		)
-
-		sent, err := m.bot.Send(msg)
-		if err != nil {
-			m.app.Log.Errorf(
-				"handleCallbackQueryData: ошибка отправки данных заказа: chatID=%d, ошибка=%v",
-				chatID,
-				err,
-			)
+		if sent, sendErr := m.bot.Send(msg); sendErr != nil {
+			m.app.Log.Errorf("handleCallbackQueryData: ошибка отправки подтверждения даты: chatID=%d, дата=%s, ошибка=%v", chatID, formatted, sendErr)
+			deliveryDateMu.Lock()
+			delete(pendingDeliveryDates, chatID)
+			deliveryDateMu.Unlock()
+			fallback := tgbotapi.NewMessage(chatID, "Не удалось отправить подтверждение. Выберите дату доставки ещё раз:")
+			fallback.ReplyMarkup = m.createCalendarKeyboard(time.Now())
+			if calendarMsg, calendarErr := m.bot.Send(fallback); calendarErr != nil {
+				m.app.Log.Errorf("handleCallbackQueryData: не удалось повторно отправить календарь после ошибки подтверждения: chatID=%d, ошибка=%v", chatID, calendarErr)
+			} else {
+				m.trackMessage(chatID, calendarMsg.MessageID)
+			}
 		} else {
 			m.trackMessage(chatID, sent.MessageID)
+			m.app.Log.Infof("handleCallbackQueryData: дата доставки ожидает подтверждения: chatID=%d, дата=%s", chatID, formatted)
 		}
 
-	// ---------------------------------------------------------
-	// ПЕРЕКЛЮЧЕНИЕ МЕСЯЦА КАЛЕНДАРЯ
-	// ---------------------------------------------------------
+	case "deliveryconfirm":
+		if len(parts) != 2 {
+			m.app.Log.Errorf("handleCallbackQueryData: неверный callback подтверждения даты: chatID=%d, callback=%q", chatID, callbackData)
+			answerCallback("Некорректная команда")
+			return
+		}
+
+		switch parts[1] {
+		case "yes":
+			deliveryDateMu.Lock()
+			formatted := pendingDeliveryDates[chatID]
+			delete(pendingDeliveryDates, chatID)
+			deliveryDateMu.Unlock()
+			if formatted == "" {
+				m.app.Log.Warnf("handleCallbackQueryData: нет даты для подтверждения: chatID=%d", chatID)
+				answerCallback("Сначала выберите дату")
+				return
+			}
+			answerCallback("Дата доставки подтверждена")
+			m.continueAfterDeliveryDate(chatID, formatted)
+
+		case "edit":
+			deliveryDateMu.Lock()
+			delete(pendingDeliveryDates, chatID)
+			deliveryDateMu.Unlock()
+			answerCallback("")
+			msg := tgbotapi.NewMessage(chatID, "Выберите дату доставки:")
+			msg.ReplyMarkup = m.createCalendarKeyboard(time.Now())
+			if sent, sendErr := m.bot.Send(msg); sendErr != nil {
+				m.app.Log.Errorf("handleCallbackQueryData: ошибка повторного открытия календаря: chatID=%d, ошибка=%v", chatID, sendErr)
+			} else {
+				m.trackMessage(chatID, sent.MessageID)
+				m.app.Log.Infof("handleCallbackQueryData: покупатель редактирует дату доставки: chatID=%d", chatID)
+			}
+
+		default:
+			m.app.Log.Errorf("handleCallbackQueryData: неизвестный вариант подтверждения даты: chatID=%d, значение=%q", chatID, parts[1])
+			answerCallback("Неизвестное действие")
+		}
 
 	case "fav":
 		if len(parts) != 3 || parts[1] != "toggle" {
@@ -964,7 +962,6 @@ func (m *MessageService) handleCallbackQueryData(cfg config.Config, update tgbot
 		answerCallback("Последний заказ добавлен в корзину")
 		m.deleteMessages(chatID)
 		m.ShowBasket(chatID)
-
 	case "nextmonth":
 		if len(parts) != 2 || strings.TrimSpace(parts[1]) == "" {
 			m.app.Log.Errorf(
@@ -1028,6 +1025,55 @@ func (m *MessageService) handleCallbackQueryData(cfg config.Config, update tgbot
 	}
 
 	return
+}
+
+// continueAfterDeliveryDate сохраняет подтверждённую дату и продолжает оформление заказа.
+func (m *MessageService) continueAfterDeliveryDate(chatID int64, formatted string) {
+	if chatID == 0 || formatted == "" {
+		m.app.Log.Errorf("continueAfterDeliveryDate: некорректные данные: chatID=%d, дата=%q", chatID, formatted)
+		return
+	}
+
+	if err := m.addOrUpdateOrderField(chatID, "DeliveryDate", formatted); err != nil {
+		m.app.Log.Errorf("continueAfterDeliveryDate: ошибка сохранения подтверждённой даты: chatID=%d, дата=%q, ошибка=%v", chatID, formatted, err)
+		msg := tgbotapi.NewMessage(chatID, "Не удалось сохранить дату доставки. Выберите её ещё раз:")
+		msg.ReplyMarkup = m.createCalendarKeyboard(time.Now())
+		if sent, sendErr := m.bot.Send(msg); sendErr != nil {
+			m.app.Log.Errorf("continueAfterDeliveryDate: не удалось повторно отправить календарь: chatID=%d, ошибка=%v", chatID, sendErr)
+		} else {
+			m.trackMessage(chatID, sent.MessageID)
+		}
+		return
+	}
+	m.app.Log.Infof("continueAfterDeliveryDate: дата доставки подтверждена и сохранена: chatID=%d, дата=%s", chatID, formatted)
+
+	orders := m.repo.GetByUserID(chatID)
+	if orders.PhoneNumber == "" || orders.FullName == "" || orders.DeliveryAddress == "" {
+		instructions := "Пожалуйста, введите " + PhoneNumber + "\nПример:\n+79345678901\n"
+		if err := m.addOrUpdateOrderField(chatID, "PhoneNumber", PhoneNumber); err != nil {
+			m.app.Log.Errorf("continueAfterDeliveryDate: ошибка сохранения PhoneNumber: chatID=%d, ошибка=%v", chatID, err)
+			return
+		}
+		m.sendMessage(chatID, instructions)
+		return
+	}
+
+	msgText := "Использовать следующие данные для заказа\n"
+	msgText += fmt.Sprintf("Номер телефона: %v\n", orders.PhoneNumber)
+	msgText += fmt.Sprintf("ФИО: %v\n", orders.FullName)
+	msgText += fmt.Sprintf("%s %v\n", DeliveryAddress, orders.DeliveryAddress)
+	msg := tgbotapi.NewMessage(chatID, msgText)
+	msg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Да", "sends_msgText"),
+			tgbotapi.NewInlineKeyboardButtonData("Нет", "phonenumber_PhoneNumber"),
+		),
+	)
+	if sent, err := m.bot.Send(msg); err != nil {
+		m.app.Log.Errorf("continueAfterDeliveryDate: ошибка отправки данных заказа: chatID=%d, ошибка=%v", chatID, err)
+	} else {
+		m.trackMessage(chatID, sent.MessageID)
+	}
 }
 
 func (m *MessageService) handleFieldByChatID(update tgbotapi.Update, pureText string) string {

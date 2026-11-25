@@ -82,7 +82,8 @@ func (m *MessageService) callbackOpensNewScreen(callback *tgbotapi.CallbackQuery
 	// Эти действия открывают другой экран или полностью заменяют текущий.
 	switch data {
 	case "send_basket_1_1", "confirm_order", "sends_msgText",
-		"phonenumber_PhoneNumber", "repeat_last", "delete_basket_1_1":
+		"phonenumber_PhoneNumber", "repeat_last", "delete_basket_1_1",
+		"deliveryconfirm_yes", "deliveryconfirm_edit":
 		return true
 	}
 
@@ -156,6 +157,9 @@ func (m *MessageService) clearOrder(chatID int64) {
 	commentPendingMu.Lock()
 	delete(commentPending, chatID)
 	commentPendingMu.Unlock()
+	deliveryDateMu.Lock()
+	delete(pendingDeliveryDates, chatID)
+	deliveryDateMu.Unlock()
 }
 
 // deletePreviousMessages удаляет все предыдущие сообщения бота и указанное сообщение пользователя.

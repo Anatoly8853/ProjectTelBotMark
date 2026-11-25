@@ -58,7 +58,7 @@ const baseQuery = `
 		tg_user_orders_date.delivery_date,
 		tg_user_phone_number.phone_number,
 		tg_user_delivery_address.delivery_address,
-		tg_user_orders_date.comment,
+		COALESCE(tg_user_orders_date.comment, '') AS comment,
 		tg_user_order_id.item_name,
 		tg_user_orders.quantity,
 		tg_user_orders.cost
@@ -94,7 +94,7 @@ const limitedOrdersQuery = `
         tg_user_orders_date.delivery_date,
         tg_user_phone_number.phone_number,
         tg_user_delivery_address.delivery_address,
-        tg_user_orders_date.comment,
+        COALESCE(tg_user_orders_date.comment, '') AS comment,
         tg_user_order_id.item_name,
         tg_user_orders.quantity,
         tg_user_orders.cost
@@ -596,11 +596,20 @@ func (r *Repository) ProcessOrder(
 	}
 
 	// Комментарий необязателен, но сохраняется вместе с заказом.
-	if commentValue, commentErr := bychat.GetFieldByChatID(r.app, userID, "Comment"); commentErr == nil {
-		if commentText, ok := commentValue.(string); ok {
-			values["Comment"] = strings.TrimSpace(commentText)
-		}
+	commentValue, commentErr := bychat.GetFieldByChatID(r.app, userID, "Comment")
+	if commentErr != nil {
+		r.app.Log.Warnf("ProcessOrder: комментарий не найден в данных пользователя, сохраняем пустое значение: userID=%d, ошибка=%v", userID, commentErr)
+	} else if commentText, ok := commentValue.(string); ok {
+		values["Comment"] = strings.TrimSpace(commentText)
+	} else {
+		r.app.Log.Errorf("ProcessOrder: комментарий имеет неверный тип: userID=%d, тип=%T", userID, commentValue)
 	}
+	r.app.Log.Infof(
+		"ProcessOrder: комментарий получен для сохранения: userID=%d, заполнен=%t, длина=%d",
+		userID,
+		values["Comment"] != "",
+		len([]rune(values["Comment"])),
+	)
 
 	// Проверяем дату доставки.
 	t, err := time.Parse("02.01.2006", values["DeliveryDate"])

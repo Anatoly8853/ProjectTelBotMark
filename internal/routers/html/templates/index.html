@@ -5,6 +5,11 @@
     .highlight {
         background-color: lightgoldenrodyellow;
     }
+    .comment-cell {
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        min-width: 180px;
+    }
 </style>
 <div class="container-poisc">
     <div class="card-poisc">
@@ -31,7 +36,7 @@
                 <td rowspan="{{.Num}}">{{ .OrderDb.FullName }}</td>
                 <td rowspan="{{.Num}}">{{ .OrderDb.PhoneNumber }}</td>
                 <td rowspan="{{.Num}}">{{ .OrderDb.DeliveryAddress }}</td>
-                <td rowspan="{{.Num}}">{{ if .OrderDb.Comment }}{{ .OrderDb.Comment }}{{ else }}—{{ end }}</td>
+                <td class="comment-cell" rowspan="{{.Num}}">{{ if .OrderDb.Comment }}{{ .OrderDb.Comment }}{{ else }}—{{ end }}</td>
                 {{end}}
 
                 <td>{{ .OrderDb.Purchase.Item }}</td>

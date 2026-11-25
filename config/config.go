@@ -9,8 +9,13 @@ import (
 type Config struct {
 	TGtoken       string `mapstructure:"TELEGRAM_TOKEN"`
 	TGgrouptoken  string `mapstructure:"TELEGRAM_GROUPCHATID"`
-	TGmesagetoken string `mapstructure:"TTELEGRAM_CHATID"`
+	TGmesagetoken string `mapstructure:"TELEGRAM_CHATID"`
 	DBName        string `mapstructure:"DB_NAME"`
+	AdminUsername string `mapstructure:"ADMIN_USERNAME"`
+	AdminPassword string `mapstructure:"ADMIN_PASSWORD"`
+	WebAddr       string `mapstructure:"WEB_ADDR"`
+	TLSCertFile   string `mapstructure:"TLS_CERT_FILE"`
+	TLSKeyFile    string `mapstructure:"TLS_KEY_FILE"`
 }
 
 func LoadConfig(app *slogavp.Application) (cfg Config) {
@@ -19,8 +24,14 @@ func LoadConfig(app *slogavp.Application) (cfg Config) {
 	viper.SetConfigName("app")
 	viper.SetConfigType("env")
 
-	// Чтение переменных окружения
-	viper.AutomaticEnv() // Автоматически читать переменные окружения
+	// Чтение переменных окружения. Явно связываем параметры администратора,
+	// чтобы они загружались и из app.env, и из системного окружения.
+	viper.AutomaticEnv()
+	_ = viper.BindEnv("ADMIN_USERNAME")
+	_ = viper.BindEnv("ADMIN_PASSWORD")
+	_ = viper.BindEnv("WEB_ADDR")
+	_ = viper.BindEnv("TLS_CERT_FILE")
+	_ = viper.BindEnv("TLS_KEY_FILE")
 
 	if err := viper.MergeInConfig(); err != nil {
 		app.Log.Printf("Error reading app.env file, %s", err)

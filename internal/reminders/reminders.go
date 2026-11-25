@@ -4,6 +4,7 @@ import (
 	"ProjectTelBotMark/config"
 	"ProjectTelBotMark/internal/botTelegram"
 	"ProjectTelBotMark/internal/dataSources"
+	"ProjectTelBotMark/internal/dateutil"
 	"ProjectTelBotMark/internal/structs"
 	"fmt"
 	"strconv"
@@ -44,14 +45,12 @@ func (m *MessageService) CheckDatabase() {
 	}
 
 	if len(orders) > 0 {
-		var currentDeliveryDate string // Объявляем переменную для отслеживания текущей даты доставки
-		var currentUserID int64
-		var currentDateTime string
+		var currentOrderID int64
 		var msgText string
 
 		for i, order := range orders {
 			// Парсинг строки времени в тип time.Time
-			t, err := time.Parse(time.RFC3339, order.DeliveryDate)
+			t, err := dateutil.Parse(order.DeliveryDate)
 			if err != nil {
 				m.app.Log.Errorf("Ошибка парсинга строки времени: %v", err)
 				return
@@ -62,21 +61,19 @@ func (m *MessageService) CheckDatabase() {
 
 			if formattedDeliveryDate == now {
 				// Группировка по дате доставки
-				if order.UserID.UserID != currentUserID || formattedDeliveryDate != currentDeliveryDate || order.DateTime != currentDateTime {
+				if order.OrderID != currentOrderID {
 					//msgText += fmt.Sprintf("Дата заказа: %v\n", formattedDate)
 					msgText += fmt.Sprintf("Дата доставки: %v\n", formattedDeliveryDate)
 					msgText += fmt.Sprintf("Заказчик: %v\n", order.FullName)
 					msgText += fmt.Sprintf("Телефон для связи: %v\n", order.PhoneNumber)
 					msgText += fmt.Sprintf("%s %v\n", botTelegram.DeliveryAddress, order.DeliveryAddress)
 					msgText += "Список заказанных товаров :\n"
-					currentDeliveryDate = formattedDeliveryDate
-					currentDateTime = order.DateTime
-					currentUserID = order.UserID.UserID
+					currentOrderID = order.OrderID
 				}
 
 				msgText += fmt.Sprintf("%v кол-во: %v цена: %v руб.\n", order.Purchase.Item, order.Purchase.Quantity, order.Purchase.Cost)
 
-				if i == len(orders)-1 || (i+1 < len(orders) && orders[i+1].DateTime != currentDateTime) {
+				if i == len(orders)-1 || (i+1 < len(orders) && orders[i+1].OrderID != currentOrderID) {
 					msgText += fmt.Sprintf("Общая стоимость:  %v руб.\n", order.TotalCost)
 					msgText += "------------------------------------------------------------\n"
 

@@ -10,11 +10,15 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
 // Orders Map для хранения данных по chatID.
-var Orders = make(map[int64]structs.OrderDb)
+var (
+	Orders   = make(map[int64]structs.OrderDb)
+	OrdersMu sync.RWMutex
+)
 
 // LogValidationError логирует ошибку и возвращает стандартный формат для валидаторов.
 func LogValidationError(app *slogavp.Application, msg string, val interface{}) (string, string) {
@@ -30,7 +34,9 @@ func GetFieldByChatID(app *slogavp.Application, chatID int64, fieldName string) 
 		return nil, errors.New("нет chatID")
 	}
 
+	OrdersMu.RLock()
 	order, exists := Orders[chatID]
+	OrdersMu.RUnlock()
 
 	if !exists {
 		app.Log.Errorf("заказ с таким chatID = %v не найден", chatID)
@@ -82,27 +88,16 @@ func FormatDateString(app *slogavp.Application, dateStr string) (string, string)
 
 	formattedDate := fmt.Sprintf("%02d.%02d.%04d", day, month, year)
 
-	// Проверка существования даты
-	parsedDate, err := time.Parse("02.01.2006", formattedDate)
+	// Проверяем реальную календарную дату в локальной временной зоне.
+	parsedDate, err := time.ParseInLocation("02.01.2006", formattedDate, time.Local)
 	if err != nil {
 		return LogValidationError(app, "неправильный формат даты", formattedDate)
 	}
 
-	now := time.Now()
-
-	// Год должен быть текущим
-	if year != now.Year() {
-		return LogValidationError(app, "год должен быть текущим", year)
-	}
-
-	// Месяц должен быть текущим или следующим
-	if month != int(now.Month()) && month != int(now.Month())+1 {
-		return LogValidationError(app, "месяц должен быть текущим или следующим", month)
-	}
-
-	// Дата должна быть в будущем (не сегодня)
-	if !parsedDate.After(now) {
-		return LogValidationError(app, "дата должна быть в будущем", parsedDate)
+	today := time.Now().In(time.Local)
+	today = time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, time.Local)
+	if !parsedDate.After(today) {
+		return LogValidationError(app, "дата должна быть позже сегодняшнего дня", formattedDate)
 	}
 
 	return formattedDate, ""

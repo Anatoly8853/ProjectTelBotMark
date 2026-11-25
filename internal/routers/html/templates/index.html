@@ -16,6 +16,7 @@
             <th>Заказчик</th>
             <th>Телефон</th>
             <th>Адрес доставки</th>
+            <th>Комментарий</th>
             <th>Товар</th>
             <th>Кол-во</th>
             <th>Стоимость</th>
@@ -30,6 +31,7 @@
                 <td rowspan="{{.Num}}">{{ .OrderDb.FullName }}</td>
                 <td rowspan="{{.Num}}">{{ .OrderDb.PhoneNumber }}</td>
                 <td rowspan="{{.Num}}">{{ .OrderDb.DeliveryAddress }}</td>
+                <td rowspan="{{.Num}}">{{ if .OrderDb.Comment }}{{ .OrderDb.Comment }}{{ else }}—{{ end }}</td>
                 {{end}}
 
                 <td>{{ .OrderDb.Purchase.Item }}</td>

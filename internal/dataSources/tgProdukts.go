@@ -10,7 +10,7 @@ import (
 	"unicode"
 
 	"golang.org/x/text/cases"
-	"golang.org/x/text/language"
+	. "golang.org/x/text/language"
 )
 
 type JSONCategories map[string]structs.Category
@@ -74,6 +74,7 @@ func (r *Repository) GetCategoriesWithProducts() (map[string]structs.Category, e
 						CategoryMsg:  subCat.CategoryMsg,
 						Photo:        product.Photo,
 						Buttons:      productButtons,
+						ButtonsM:     getDefaultButtonsM(),
 					}
 				}
 			}
@@ -117,7 +118,8 @@ func paginateCategories(mainCategories map[string]structs.Category) map[string]s
 	// Сохраняем имена категорий-кнопок
 	for _, cat := range mainCategories {
 		currentButtons = append(currentButtons, structs.ButtonData{
-			Text: cat.CategoryName,
+			Text:     cat.CategoryName,
+			Callback: fmt.Sprintf("cat_%s", StripEmojis(cat.CategoryName)),
 		})
 	}
 
@@ -189,14 +191,16 @@ func paginateCategories(mainCategories map[string]structs.Category) map[string]s
 }
 
 // getDefaultButtonsM Возвращает стандартные кнопки меню.
+// GetDefaultButtonsM возвращает стандартные кнопки меню для внешних пакетов.
+func (r *Repository) GetDefaultButtonsM() []structs.ButtonData {
+	return getDefaultButtonsM()
+}
+
 func getDefaultButtonsM() []structs.ButtonData {
 	return []structs.ButtonData{
-		{Text: "🔙Назад🔙"},
-		{Callback: "cat_Назад"},
-		{Text: "🔙Мои заказы🔙"},
-		{Callback: "cat_Мои заказы"},
-		{Text: "🛒Корзина🛒"},
-		{Callback: "cat_Корзина"},
+		{Text: "🔙Назад🔙", Callback: "cat_Назад"},
+		{Text: "🔙Мои заказы🔙", Callback: "cat_Мои заказы"},
+		{Text: "🛒Корзина🛒", Callback: "cat_Корзина"},
 	}
 }
 
@@ -311,16 +315,18 @@ func (r *Repository) getProductsForMainCategory(ctx context.Context, mainCatID i
 	var categories []structs.Category
 	var products []structs.ButtonData
 	for rows.Next() {
+		var productID int
 		var text, callback, photoPath string
-		if err = rows.Scan(&text, &callback, &photoPath); err != nil {
+		if err = rows.Scan(&productID, &text, &callback, &photoPath); err != nil {
 			r.app.Log.Error("getProductsForMainCategory", err.Error())
 			return nil, err
 		}
 
 		//displayText := fmt.Sprintf("⚖%s \uD83D\uDCB5 %d рублей", weight, price)
 		products = append(products, structs.ButtonData{
-			Text:     text,
-			Callback: callback,
+			Text:             text,
+			Callback:         callback, // существующий callback товара сохраняется без изменений
+			FavoriteCallback: fmt.Sprintf("fav_toggle_%d", productID),
 		})
 
 		categories = append(categories, structs.Category{
@@ -334,11 +340,12 @@ func (r *Repository) getProductsForMainCategory(ctx context.Context, mainCatID i
 // getProductsForSubCategory Получает продукты для подкатегории.
 func (r *Repository) getProductsForSubCategory(ctx context.Context, mainCatID, subCatID int) ([]structs.Category, error) {
 	rows, err := r.db.QueryContext(ctx, `
-        SELECT p.text, p.callback, ph.name AS photo_path
+        SELECT p.id, p.text, p.callback, ph.name AS photo_path
         FROM products_categories p
         JOIN photo ph ON p.photo_id = ph.id
         WHERE p.category_id = ? 
-        AND p.categories_2_id = ?`,
+        AND p.categories_2_id = ?
+        ORDER BY p.id ASC`,
 		mainCatID, subCatID)
 
 	if err != nil {
@@ -357,21 +364,27 @@ func (r *Repository) getProductsForSubCategory(ctx context.Context, mainCatID, s
 	var categories []structs.Category
 	var products []structs.ButtonData
 	for rows.Next() {
+		var productID int
 		var text, callback, photoPath string
-		if err = rows.Scan(&text, &callback, &photoPath); err != nil {
+		if err = rows.Scan(&productID, &text, &callback, &photoPath); err != nil {
 			r.app.Log.Error("getProductsForSubCategory", err.Error())
 			return nil, err
 		}
 
 		products = append(products, structs.ButtonData{
-			Text:     text,
-			Callback: callback,
+			Text:             text,
+			Callback:         callback,
+			FavoriteCallback: fmt.Sprintf("fav_toggle_%d", productID),
 		})
 
 		categories = append(categories, structs.Category{
 			Photo:   photoPath,
 			Buttons: products,
 		})
+	}
+	if err := rows.Err(); err != nil {
+		r.app.Log.Errorf("getProductsForSubCategory: ошибка обхода строк: %v", err)
+		return nil, err
 	}
 
 	return categories, nil
@@ -410,11 +423,11 @@ func NormalizeWords(input string) string {
 }
 
 // detectLanguage определяет язык по первому слову
-func detectLanguage(word string) language.Tag {
+func detectLanguage(word string) Tag {
 	for _, r := range word {
 		if unicode.Is(unicode.Cyrillic, r) {
-			return language.Russian
+			return Russian
 		}
 	}
-	return language.English
+	return English
 }

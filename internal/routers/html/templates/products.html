@@ -56,15 +56,18 @@
                     const card = `
 <div class="col-md-4 mb-5">
     <div class="card h-100">
-        <img src="/${p.Image}" class="card-img-top product-img">
+        <img src="/${escapeHTML(p.Image)}" class="card-img-top product-img">
         <div class="card-body">
-            <h5 class="card-title">• ${p.Category} •</h5>
-            <p class="card-text">${p.Description}</p>
-            <p class="card-text fw-bold">Фасовка ${p.Packaging} Цена ${p.Price} ₽</p>
+            <h5 class="card-title">• ${escapeHTML(p.Category)} •</h5>
+            <p class="card-text">${escapeHTML(p.Description)}</p>
+            <p class="card-text fw-bold">Фасовка ${escapeHTML(p.Packaging)} Цена ${escapeHTML(p.Price)} ₽</p>
             <div class="card-footer bg-transparent border-0 px-0 pb-0 pt-2">
                 <div class="d-flex justify-content-between">
                     <a href="/product/edit/${p.ID}" class="btn text-decoration-none text-muted small">✏️ Редактировать</a>
-                    <a href="/product/delete/${p.ID}" onclick="return confirm('Удалить?')" class="btn text-decoration-none text-danger small">🗑 Удалить</a>
+                    <form method="POST" action="/product/delete/${p.ID}" onsubmit="return confirm('Удалить?')">
+                        <input type="hidden" name="_csrf" value="${getCSRFToken()}">
+                        <button type="submit" class="btn text-decoration-none text-danger small">🗑 Удалить</button>
+                    </form>
                 </div>
             </div>
         </div>

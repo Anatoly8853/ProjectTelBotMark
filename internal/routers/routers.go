@@ -1,20 +1,22 @@
 package routers
 
 import (
+	"ProjectTelBotMark/config"
 	"ProjectTelBotMark/internal/dataSources"
+	"ProjectTelBotMark/internal/dateutil"
 	"ProjectTelBotMark/internal/structs"
 	"fmt"
 	"html/template"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	slogavp "github.com/Anatoly8853/slog-avp/v2"
-	_ "github.com/disintegration/imaging"
-
 	"github.com/gin-gonic/gin"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/goccy/go-json"
@@ -51,18 +53,27 @@ type Handler struct {
 	repo *dataSources.Repository
 	app  *slogavp.Application
 	bot  *tgbotapi.BotAPI
+	cfg  config.Config
 	//tmpl *template.Template
 }
 
-func NewGinRouter(repo *dataSources.Repository, app *slogavp.Application, bot *tgbotapi.BotAPI) *Handler {
-	return &Handler{repo: repo, app: app, bot: bot}
+func NewGinRouter(repo *dataSources.Repository, app *slogavp.Application, bot *tgbotapi.BotAPI, cfg config.Config) *Handler {
+	return &Handler{repo: repo, app: app, bot: bot, cfg: cfg}
 }
 
 // GinRouter Gin Router функция запускает сервер.
 func (h *Handler) GinRouter() {
 
 	gin.SetMode(gin.ReleaseMode)
+	if strings.TrimSpace(h.cfg.AdminUsername) == "" || len(h.cfg.AdminPassword) < 12 {
+		h.app.Log.Error("GinRouter: веб-интерфейс не запущен: задайте ADMIN_USERNAME и ADMIN_PASSWORD (не менее 12 символов) в app.env")
+		return
+	}
 	router := gin.Default()
+	router.MaxMultipartMemory = 8 << 20
+	router.Use(gin.BasicAuth(gin.Accounts{h.cfg.AdminUsername: h.cfg.AdminPassword}))
+	router.Use(uploadBodyLimit(12 << 20))
+	router.Use(csrfProtection())
 	funcMap := template.FuncMap{
 		"toJSON": func(v interface{}) string {
 			a, _ := json.Marshal(v)
@@ -97,13 +108,31 @@ func (h *Handler) GinRouter() {
 	router.POST("/product/add", h.addProduct)           // обработка добавления
 	router.GET("/product/edit/:id", h.editProduct)      // форма редактирования
 	router.POST("/product/update/:id", h.updateProduct) // обработка редактирования
-	router.GET("/product/delete/:id", h.deleteProduct)  // удаление
+	router.POST("/product/delete/:id", h.deleteProduct) // удаление
 	router.GET("/product/export", h.exportExcel)
 
-	err := router.Run(":8090")
-	if err != nil {
-		h.app.Log.Errorf("GinRouter %v", err)
+	addr := strings.TrimSpace(h.cfg.WebAddr)
+	if addr == "" {
+		addr = "127.0.0.1:8090"
+	}
+	if (h.cfg.TLSCertFile == "") != (h.cfg.TLSKeyFile == "") {
+		h.app.Log.Error("GinRouter: TLS_CERT_FILE и TLS_KEY_FILE должны быть заданы вместе")
 		return
+	}
+	if h.cfg.TLSCertFile != "" {
+		h.app.Log.Infof("GinRouter: веб-интерфейс запущен с HTTPS на %s", addr)
+		if err := router.RunTLS(addr, h.cfg.TLSCertFile, h.cfg.TLSKeyFile); err != nil {
+			h.app.Log.Errorf("GinRouter: ошибка запуска HTTPS-сервера: %v", err)
+		}
+		return
+	}
+	host, _, splitErr := net.SplitHostPort(addr)
+	if splitErr != nil || (host != "localhost" && net.ParseIP(host) == nil) || (net.ParseIP(host) != nil && !net.ParseIP(host).IsLoopback()) {
+		h.app.Log.Infof("GinRouter: сервер работает без TLS; не публикуйте порт вне доверенной локальной сети или VPN")
+	}
+	h.app.Log.Infof("GinRouter: веб-интерфейс запущен на %s", addr)
+	if err := router.Run(addr); err != nil {
+		h.app.Log.Errorf("GinRouter: ошибка запуска сервера: %v", err)
 	}
 }
 
@@ -120,23 +149,24 @@ func (h *Handler) handlerHighchartsData(c *gin.Context) {
 
 	orders, err := h.repo.GetOrdersWithFilters(params)
 	if err != nil {
-		h.app.Log.Errorf("ошибка запрос к базе %v", err)
+		h.app.Log.Errorf("handlerHighchartsData: ошибка запроса заказов: %v", err)
+		c.String(http.StatusInternalServerError, "Не удалось загрузить данные графика")
 		return
 	}
 	var data [][]int64
 	dateSums := make(map[int64]int)
-	var DateTime string
+	var currentOrderID int64
 
 	for _, order := range orders {
-		t, err := time.Parse(time.RFC3339, order.DeliveryDate)
+		t, err := dateutil.Parse(order.DeliveryDate)
 		if err != nil {
-			h.app.Log.Errorf("Error parsing date: %v", err)
+			h.app.Log.Errorf("handlerHighchartsData: ошибка разбора даты доставки %q: %v", order.DeliveryDate, err)
 			continue
 		}
 		timestamp := t.Unix() * 1000
-		if order.DateTime != DateTime {
+		if order.OrderID != currentOrderID {
 			dateSums[timestamp] += order.TotalCost
-			DateTime = order.DateTime
+			currentOrderID = order.OrderID
 		}
 	}
 
@@ -165,9 +195,9 @@ func handlerHighcharts(c *gin.Context) {
 func (h *Handler) updateBlackList(c *gin.Context) {
 
 	userID, err := strconv.Atoi(c.PostForm("user_id"))
-	if err != nil {
-		c.String(http.StatusBadRequest, fmt.Sprintf("Invalid user ID: %v", err))
-		h.app.Log.Errorf("Invalid user ID: %v", c.PostForm("user_id"))
+	if err != nil || userID <= 0 {
+		c.String(http.StatusBadRequest, "Некорректный ID пользователя")
+		h.app.Log.Errorf("updateBlackList: некорректный ID пользователя: %q", c.PostForm("user_id"))
 		return
 	}
 
@@ -179,14 +209,15 @@ func (h *Handler) updateBlackList(c *gin.Context) {
 
 	err = h.repo.UpdateUserBlack(userID, userBlack)
 	if err != nil {
-		c.String(http.StatusInternalServerError, fmt.Sprintf("Error updating user: %v", err))
-		h.app.Log.Errorf("Error updating user: %v", err)
+		c.String(http.StatusInternalServerError, "Не удалось обновить чёрный список")
+		h.app.Log.Errorf("updateBlackList: ошибка обновления пользователя %d: %v", userID, err)
 		return
 	}
 
 	users, err := h.repo.GetUsers()
 	if err != nil {
-		h.app.Log.Errorf("Error getting users: %v", err)
+		h.app.Log.Errorf("updateBlackList: ошибка получения списка пользователей: %v", err)
+		c.String(http.StatusInternalServerError, "Не удалось обновить список пользователей")
 		return
 	}
 
@@ -203,12 +234,8 @@ func (h *Handler) blackList(c *gin.Context) {
 
 	users, err := h.repo.GetUsers()
 	if err != nil {
-		h.app.Log.Errorf("Error getting users: %v", err)
-		c.HTML(http.StatusOK, "user_black.html", gin.H{
-			"Title":      "Заказы Салаты корейские",
-			"Message":    "Ошибка обработки формы",
-			"Classblack": "current",
-		})
+		h.app.Log.Errorf("blackList: ошибка получения списка пользователей: %v", err)
+		c.String(http.StatusInternalServerError, "Не удалось загрузить чёрный список")
 		return
 	}
 
@@ -230,131 +257,64 @@ func handlerInfo(c *gin.Context) {
 
 // postHandlerInfo отправка сообщения, в телеграм инфо.
 func (h *Handler) postHandlerInfo(c *gin.Context) {
-
 	var messageInfo structs.MessageInfo
-
-	// Bind form data to struct
-	err := c.Bind(&messageInfo)
-	if err != nil {
-		h.app.Log.Errorf("PostHandlerInfo Bind: %v", err)
-		c.HTML(http.StatusOK, "upload.html", gin.H{
-			"Title":    "Заказы Салаты корейские",
-			"Message":  "Ошибка обработки формы",
-			"Classupl": "current"})
+	if err := c.ShouldBind(&messageInfo); err != nil {
+		h.app.Log.Errorf("postHandlerInfo: ошибка чтения формы: %v", err)
+		c.String(http.StatusBadRequest, "Не удалось прочитать форму")
 		return
-
 	}
-
-	// Check if Info and InfoText are not empty
+	messageInfo.Info = strings.TrimSpace(messageInfo.Info)
+	messageInfo.InfoText = strings.TrimSpace(messageInfo.InfoText)
 	if messageInfo.Info == "" || messageInfo.InfoText == "" {
-
-		c.HTML(http.StatusOK, "upload.html", gin.H{
-			"Title":    "Заказы Салаты корейские",
-			"Message":  "Поля Тип информации и Сообщение для отправки не должны быть пустыми ",
-			"Classupl": "current"})
+		c.String(http.StatusBadRequest, "Заполните тип информации и текст сообщения")
 		return
 	}
 
-	// Get uploaded file
-	file, err := c.FormFile("Image")
-	if err != nil && err != http.ErrMissingFile {
-
-		h.app.Log.Errorf("PostHandlerInfo FormFile: %v", err)
-		c.HTML(http.StatusOK, "upload.html", gin.H{
-			"Title":    "Заказы Салаты корейские",
-			"Message":  "Ошибка загрузки файла",
-			"Classupl": "current"})
+	imagePath, err := h.saveUploadedImage(c, "Image")
+	if err != nil {
+		h.app.Log.Errorf("postHandlerInfo: ошибка загрузки изображения: %v", err)
+		c.String(http.StatusBadRequest, "Не удалось загрузить изображение: %v", err)
 		return
-
 	}
-
-	// Prepare message text
-	msgText := messageInfo.Info + "\n" + messageInfo.InfoText + "\n"
-
-	// Get user IDs
-	users := h.repo.UserID()
-
-	if users != nil {
-
-		for _, user := range users {
-
-			// Send text message
-			message := tgbotapi.NewMessage(user.UserID, msgText)
-
-			_, err = h.bot.Send(message)
-			if err != nil {
-
-				h.app.Log.Errorf("PostHandlerInfo SendText: %v", err)
-				c.HTML(http.StatusOK, "upload.html", gin.H{
-					"Title":    "Заказы Салаты корейские",
-					"Message":  "Произошла ошибка при отправке текстового сообщения, попробуйте еще раз",
-					"Classupl": "current"})
-				return
-
+	if imagePath != "" {
+		defer func() {
+			if err := os.Remove(filepath.Join(UploadsDir, filepath.Base(imagePath))); err != nil && !os.IsNotExist(err) {
+				h.app.Log.Errorf("postHandlerInfo: не удалось удалить временное изображение %q: %v", imagePath, err)
 			}
+		}()
+	}
 
-			// Send image if uploaded
-			if file != nil {
+	users := h.repo.UserID()
+	if len(users) == 0 {
+		c.String(http.StatusOK, "Пользователей для рассылки нет")
+		return
+	}
 
-				savePath := "./uploads/"
-				if _, err = os.Stat(savePath); os.IsNotExist(err) {
-
-					err = os.MkdirAll(savePath, os.ModePerm)
-					if err != nil {
-
-						h.app.Log.Errorf("PostHandlerInfo Mkdir: %v", err)
-						c.HTML(http.StatusOK, "upload.html", gin.H{
-							"Title":    "Заказы Салаты корейские",
-							"Message":  "Произошла ошибка при создании директории для сохранения изображения",
-							"Classupl": "current"})
-						return
-
-					}
-				}
-
-				filePath := filepath.Join(savePath, file.Filename)
-				err = c.SaveUploadedFile(file, filePath)
-				if err != nil {
-
-					h.app.Log.Errorf("PostHandlerInfo SaveFile: %v", err)
-					c.HTML(http.StatusOK, "upload.html", gin.H{
-						"Title":    "Заказы Салаты корейские",
-						"Message":  "Произошла ошибка при сохранении изображения, попробуйте еще раз",
-						"Classupl": "current"})
-					return
-
-				}
-
-				// Создаем медиа-объект для изображения
-				photo := tgbotapi.NewInputMediaPhoto(tgbotapi.FilePath(filePath))
-
-				// Создаем медиагруппу с изображением и URL
-				mediaGroup := tgbotapi.NewMediaGroup(user.UserID, []interface{}{photo})
-				_, err = h.bot.SendMediaGroup(mediaGroup)
-				if err != nil {
-
-					h.app.Log.Errorf("PostHandlerInfo SendPhoto: %v", err)
-					c.HTML(http.StatusOK, "upload.html", gin.H{
-						"Title":    "Заказы Салаты корейские",
-						"Message":  "Произошла ошибка при отправке изображения, попробуйте еще раз",
-						"Classupl": "current"})
-					return
-
-				}
+	msgText := messageInfo.Info + "\n" + messageInfo.InfoText
+	sentCount := 0
+	failedCount := 0
+	for _, user := range users {
+		if _, err := h.bot.Send(tgbotapi.NewMessage(user.UserID, msgText)); err != nil {
+			failedCount++
+			h.app.Log.Errorf("postHandlerInfo: не удалось отправить текст пользователю %d: %v", user.UserID, err)
+			continue
+		}
+		if imagePath != "" {
+			photo := tgbotapi.NewInputMediaPhoto(tgbotapi.FilePath(filepath.Join(UploadsDir, filepath.Base(imagePath))))
+			if _, err := h.bot.SendMediaGroup(tgbotapi.NewMediaGroup(user.UserID, []interface{}{photo})); err != nil {
+				failedCount++
+				h.app.Log.Errorf("postHandlerInfo: не удалось отправить изображение пользователю %d: %v", user.UserID, err)
+				continue
 			}
 		}
-
-		c.HTML(http.StatusOK, "upload.html", gin.H{
-			"Title":    "Заказы Салаты корейские",
-			"Message":  "Извещение успешно отправлено",
-			"Classupl": "current"})
-	} else {
-
-		c.HTML(http.StatusOK, "upload.html", gin.H{
-			"Title":    "Заказы Салаты корейские",
-			"Message":  "Пока некому отправлять",
-			"Classupl": "current"})
+		sentCount++
 	}
+	h.app.Log.Infof("postHandlerInfo: рассылка завершена: успешно=%d, ошибок=%d", sentCount, failedCount)
+	if failedCount > 0 {
+		c.String(http.StatusOK, "Рассылка завершена частично. Успешно: %d, с ошибками: %d. Подробности записаны в журнал.", sentCount, failedCount)
+		return
+	}
+	c.String(http.StatusOK, "Извещение успешно отправлено всем пользователям")
 }
 
 // handlerIndex Главная страница с выводом всех значений из базы.
@@ -366,7 +326,8 @@ func (h *Handler) handlerIndex(c *gin.Context) {
 
 	orders, err := h.repo.GetOrdersWithFilters(params)
 	if err != nil {
-		h.app.Log.Errorf("ошибка запрос к базе %v", err)
+		h.app.Log.Errorf("handlerIndex: ошибка запроса заказов: %v", err)
+		c.String(http.StatusInternalServerError, "Не удалось загрузить заказы")
 		return
 	}
 
@@ -374,10 +335,8 @@ func (h *Handler) handlerIndex(c *gin.Context) {
 	var webnums []structs.Webnums
 
 	if len(orders) > 0 {
-		var currentDeliveryDate string // Объявляем переменную для отслеживания текущей даты доставки
-		var currentUserID int64
-		var currentDateTime string
-		var currentDateTime2 string
+		var currentOrderID int64
+		var countOrderID int64
 		var num int
 		var Index int
 
@@ -392,23 +351,22 @@ func (h *Handler) handlerIndex(c *gin.Context) {
 				payload.CurrentDate = true
 			}
 
-			if order.DateTime != currentDateTime2 {
-				currentDateTime2 = order.DateTime
+			if order.OrderID != countOrderID {
+				countOrderID = order.OrderID
 				num = 1
 			} else {
 				num++
 			}
 
 			// Группировка по дате доставки
-			if order.UserID.UserID != currentUserID || formattedDeliveryDate != currentDeliveryDate || order.DateTime != currentDateTime {
+			if order.OrderID != currentOrderID {
 				payload.OrderDb.DateTime = order.DateTime
 				payload.OrderDb.DeliveryDate = formattedDeliveryDate
 				payload.OrderDb.FullName = order.FullName
 				payload.OrderDb.PhoneNumber = order.PhoneNumber
 				payload.OrderDb.DeliveryAddress = order.DeliveryAddress
-				currentDeliveryDate = formattedDeliveryDate
-				currentUserID = order.UserID.UserID
-				currentDateTime = order.DateTime
+				payload.OrderDb.Comment = order.Comment
+				currentOrderID = order.OrderID
 				payload.OrderDb.TotalCost = order.TotalCost
 				Index++
 				payload.Index = Index
@@ -418,7 +376,7 @@ func (h *Handler) handlerIndex(c *gin.Context) {
 			payload.OrderDb.Purchase.Quantity = order.Purchase.Quantity
 			payload.OrderDb.Purchase.Cost = order.Purchase.Cost
 
-			if i == len(orders)-1 || (i+1 < len(orders) && orders[i+1].DateTime != currentDateTime2) {
+			if i == len(orders)-1 || (i+1 < len(orders) && orders[i+1].OrderID != order.OrderID) {
 				webnum.Num = num
 				webnums = append(webnums, webnum)
 			}
@@ -436,7 +394,7 @@ func mergeSlidesWithDeliveryDate(orders []structs.OrderInfo, nums []structs.Webn
 	numIndex := 0
 
 	for _, order := range orders {
-		if order.OrderDb.DeliveryDate != "" {
+		if order.OrderDb.DeliveryDate != "" && numIndex < len(nums) {
 			order.Num = nums[numIndex].Num
 			numIndex++
 		}
@@ -463,9 +421,9 @@ func renderHTML(c *gin.Context, payloads []structs.OrderInfo, webnums []structs.
 
 // formatDate красиво форматирует дату
 func formatDate(dateStr string) string {
-	t, err := time.Parse(time.RFC3339, dateStr)
+	formatted, err := dateutil.Format(dateStr)
 	if err != nil {
 		return dateStr
 	}
-	return t.Format("02.01.2006")
+	return formatted
 }

@@ -462,6 +462,14 @@ func (m *MessageService) handleCallbackQueryData(cfg config.Config, update tgbot
 			return
 		}
 
+		// Полное название получаем из БД по исходному callback; сам callback не изменяем.
+		category, subcategory, categoryErr := m.repo.GetProductCategoriesByCallback(callbackData)
+		if categoryErr != nil {
+			m.app.Log.Errorf("handleCallbackQueryData: не удалось получить категории товара: chatID=%d, callback=%q, ошибка=%v", chatID, callbackData, categoryErr)
+		} else {
+			item = formatProductTitle(category, subcategory, item)
+		}
+
 		m.AddToBasket(update, item, quantity, cost)
 
 	// ---------------------------------------------------------

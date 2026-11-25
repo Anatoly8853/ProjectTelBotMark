@@ -187,7 +187,6 @@ func (m *MessageService) handleMessageText(update tgbotapi.Update) {
 				m.sendMessage(chatID, "Не удалось сохранить комментарий. Попробуйте ещё раз.")
 				return
 			}
-			m.deletePreviousMessages(chatID, update.Message.MessageID)
 			m.handleDeliveryDetailsMessage(chatID)
 			return
 		}
@@ -726,7 +725,6 @@ func (m *MessageService) handleCallbackQueryData(cfg config.Config, update tgbot
 			return
 		}
 
-		m.deletePreviousMessages(chatID, callbackQuery.Message.MessageID)
 
 		answerCallback("")
 
@@ -748,7 +746,6 @@ func (m *MessageService) handleCallbackQueryData(cfg config.Config, update tgbot
 			return
 		}
 
-		m.deletePreviousMessages(chatID, callbackQuery.Message.MessageID)
 
 		instructions := "\nПожалуйста, введите " + PhoneNumber + "\n" +
 			"Пример:\n" +
@@ -784,7 +781,6 @@ func (m *MessageService) handleCallbackQueryData(cfg config.Config, update tgbot
 			return
 		}
 
-		m.deletePreviousMessages(chatID, callbackQuery.Message.MessageID)
 
 		answerCallback("")
 
@@ -1046,10 +1042,8 @@ func (m *MessageService) handleFieldByChatID(update tgbotapi.Update, pureText st
 
 		if field == PhoneNumber {
 			formatted, str := bychat.FormatPhoneNumber(m.app, pureText)
-			m.deleteMessages(chatID)
 
 			if str != "" {
-				m.deletePreviousMessages(chatID, update.Message.MessageID)
 				// Формирование текста с просьбой ввести номер телефона
 				instructions := "\nПожалуйста, введите " + PhoneNumber + "\n" +
 					"Пример:\n" +
@@ -1088,9 +1082,7 @@ func (m *MessageService) handleFieldByChatID(update tgbotapi.Update, pureText st
 	if field, err := bychat.GetFieldByChatID(m.app, chatID, "DeliveryAddress"); err == nil {
 
 		if field == DeliveryAddress {
-			m.deleteMessages(chatID)
 			if len(pureText) < 10 {
-				m.deletePreviousMessages(chatID, update.Message.MessageID)
 				str := "Адрес доставки не может быть пустым\n"
 				instructions := "Пожалуйста, введите " + DeliveryAddress + "\nПример:\nг. Будущего, ул. Пушкина, д. 12 кв 5\n"
 				str += instructions
@@ -1125,10 +1117,7 @@ func (m *MessageService) handleFieldByChatID(update tgbotapi.Update, pureText st
 	if field, err := bychat.GetFieldByChatID(m.app, chatID, "FullName"); err == nil {
 
 		if field == FullName {
-			m.deleteMessages(chatID)
 			if pureText == "" || len(pureText) < 4 {
-				//Удаляем предыдущие сообщения
-				m.deletePreviousMessages(chatID, update.Message.MessageID)
 
 				str := "ФИО: не может быть пустым и имя не может быть короче 3 символов\n"
 				instructions := "Пожалуйста, введите " + FullName + "\nПример:\nИванов Иван Иванович\n"

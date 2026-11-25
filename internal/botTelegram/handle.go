@@ -117,10 +117,12 @@ func (m *MessageService) handleCommands(update tgbotapi.Update) {
 		//msg.Text = "I'm ok."
 		default:
 			msg.ReplyToMessageID = update.Message.MessageID // Устанавливаем ID сообщения, на которое отвечаем
-			if _, err := m.bot.Send(msg); err != nil {
+			sent, err := m.bot.Send(msg)
+			if err != nil {
 				m.app.Log.Errorf("Ошибка отправки сообщения: %v", err)
 				return
 			}
+			m.trackMessage(update.Message.Chat.ID, sent.MessageID)
 		}
 
 	}
@@ -237,8 +239,11 @@ func (m *MessageService) handleMessageText(update tgbotapi.Update) {
 
 			default:
 				msg.ReplyToMessageID = update.Message.MessageID // Устанавливаем ID сообщения, на которое отвечаем
-				if _, err = m.bot.Send(msg); err != nil {
-					m.app.Log.Errorf("Ошибка отправки сообщения: %v", err)
+				sent, sendErr := m.bot.Send(msg)
+				if sendErr != nil {
+					m.app.Log.Errorf("Ошибка отправки сообщения: %v", sendErr)
+				} else {
+					m.trackMessage(update.Message.Chat.ID, sent.MessageID)
 				}
 			}
 		}
@@ -809,12 +814,15 @@ func (m *MessageService) handleCallbackQueryData(cfg config.Config, update tgbot
 
 			msg.ReplyMarkup = m.createCalendarKeyboard(time.Now())
 
-			if _, err := m.bot.Send(msg); err != nil {
+			sent, err := m.bot.Send(msg)
+			if err != nil {
 				m.app.Log.Errorf(
 					"handleCallbackQueryData: ошибка отправки календаря: chatID=%d, ошибка=%v",
 					chatID,
 					err,
 				)
+			} else {
+				m.trackMessage(chatID, sent.MessageID)
 			}
 
 			return
@@ -869,12 +877,15 @@ func (m *MessageService) handleCallbackQueryData(cfg config.Config, update tgbot
 			tgbotapi.NewInlineKeyboardRow(btnSend, btnDelete),
 		)
 
-		if _, err := m.bot.Send(msg); err != nil {
+		sent, err := m.bot.Send(msg)
+		if err != nil {
 			m.app.Log.Errorf(
 				"handleCallbackQueryData: ошибка отправки данных заказа: chatID=%d, ошибка=%v",
 				chatID,
 				err,
 			)
+		} else {
+			m.trackMessage(chatID, sent.MessageID)
 		}
 
 	// ---------------------------------------------------------
@@ -1207,6 +1218,7 @@ func (m *MessageService) handleDeliveryDetailsMessage(chatID int64) {
 		// Сохраняем идентификатор отправленного сообщения для последующего удаления
 		basketMu.Lock()
 		BasketMessages[chatID] = sentMsg.MessageID
+		messagesToDelete[chatID] = append(messagesToDelete[chatID], sentMsg.MessageID)
 		basketMu.Unlock()
 	}
 }

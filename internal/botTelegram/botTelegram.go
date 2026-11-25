@@ -718,12 +718,26 @@ func (m *MessageService) ScheduleOnce(chatID int64) {
 		delete(DeliveryDateChatID, chatID)
 		deliveryDateMu.Unlock()
 
-		// Приветствие не дублируем: оно остаётся в чате, а после нажатия на «Старт»
-		// его клавиатура снимается централизованной очисткой.
+		// Возвращаем кнопку «Старт» на сохранённое приветствие.
+		// Если приветствия ещё нет, отправляем новое.
 		basketMu.Lock()
 		greetingID := greetingMessagesToKeep[chatID]
 		basketMu.Unlock()
-		if greetingID == 0 {
+
+		if greetingID != 0 {
+			edit := tgbotapi.NewEditMessageReplyMarkup(chatID, greetingID, createStartKeyboard())
+			if _, editErr := m.bot.Request(edit); editErr != nil {
+				m.app.Log.Errorf(
+					"ScheduleOnce: не удалось вернуть кнопку «Старт»: chatID=%d, messageID=%d, ошибка=%v",
+					chatID, greetingID, editErr,
+				)
+			} else {
+				m.app.Log.Infof(
+					"ScheduleOnce: кнопка «Старт» возвращена на приветствие: chatID=%d, messageID=%d",
+					chatID, greetingID,
+				)
+			}
+		} else {
 			msg := tgbotapi.NewMessage(chatID, `Добро пожаловать! Нажмите 'Старт' для начала.`)
 			msg.ReplyMarkup = createStartKeyboard()
 			sent, sendErr := m.bot.Send(msg)

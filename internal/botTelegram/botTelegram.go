@@ -360,11 +360,12 @@ func (m *MessageService) RequestDeliveryDetails(chatID int64) {
 	now := time.Now()
 	msg.ReplyMarkup = m.createCalendarKeyboard(now)
 
-	_, err = m.bot.Send(msg)
+	sent, err := m.bot.Send(msg)
 	if err != nil {
-		m.app.Log.Errorf(`не удается вывести содержимое корзины %v`, err)
+		m.app.Log.Errorf("RequestDeliveryDetails: не удалось отправить календарь: chatID=%d, ошибка=%v", chatID, err)
 		return
 	}
+	m.trackMessage(chatID, sent.MessageID)
 
 	deliveryDateMu.Lock()
 	DeliveryDateChatID[chatID] = 1

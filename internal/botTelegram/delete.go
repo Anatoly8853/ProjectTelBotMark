@@ -4,6 +4,7 @@ import (
 	"ProjectTelBotMark/internal/bychat"
 	"ProjectTelBotMark/internal/structs"
 	"fmt"
+	"strings"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
@@ -32,6 +33,40 @@ func (m *MessageService) trackMessage(chatID int64, messageID int) {
 	basketMu.Lock()
 	messagesToDelete[chatID] = append(messagesToDelete[chatID], messageID)
 	basketMu.Unlock()
+}
+
+ // callbackOpensNewScreen определяет, должно ли нажатие убрать текущий экран.
+func (m *MessageService) callbackOpensNewScreen(callback *tgbotapi.CallbackQuery) bool {
+	if callback == nil || callback.Message == nil || callback.Message.Chat == nil {
+		return false
+	}
+
+	data := callback.Data
+	switch {
+	case strings.HasPrefix(data, "cat_"):
+		category := strings.TrimPrefix(data, "cat_")
+		if category == "Корзина" {
+			basketMu.Lock()
+			empty := len(structs.Baskets[callback.Message.Chat.ID]) == 0
+			basketMu.Unlock()
+			return !empty
+		}
+		return true
+	case strings.HasPrefix(data, "fav_toggle_"):
+		return strings.HasPrefix(callback.Message.Text, "⭐ Избранные товары")
+	case data == "send_basket_1_1" || data == "confirm_order":
+		return true
+	case strings.HasPrefix(data, "send_") ||
+		strings.HasPrefix(data, "sends_") ||
+		strings.HasPrefix(data, "phonenumber_") ||
+		strings.HasPrefix(data, "deliverydate_") ||
+		strings.HasPrefix(data, "confirm_") ||
+		strings.HasPrefix(data, "repeat_") ||
+		strings.HasPrefix(data, "delete_"):
+		return true
+	default:
+		return false
+	}
 }
 
 // photoMessagesDelete удаляем предыдущее сообщение с фото, если оно есть.

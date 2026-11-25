@@ -74,7 +74,7 @@ func (r *Repository) GetFavoriteProducts(userID int64) ([]structs.Product, error
 	}
 
 	rows, err := r.db.QueryContext(context.Background(), `
-		SELECT pc.id, COALESCE(c.display_name, ''), COALESCE(c2.display_name, ''), COALESCE(c2.description, ''),
+		SELECT pc.id, COALESCE(c.name, ''), COALESCE(c2.display_name, ''), COALESCE(c2.description, ''),
 		       pc.weight_kg, pc.price_rub, pc.text, pc.callback, COALESCE(ph.name, '')
 		FROM tg_user_favorites f
 		JOIN products_categories pc ON pc.id = f.product_id
@@ -121,7 +121,7 @@ func (r *Repository) GetProductCategoriesByCallback(callback string) (string, st
 
 	var category, subcategory string
 	err := r.db.QueryRowContext(context.Background(), `
-		SELECT COALESCE(c.display_name, ''), COALESCE(c2.display_name, '')
+		SELECT COALESCE(c.name, ''), COALESCE(c2.display_name, '')
 		FROM products_categories pc
 		LEFT JOIN categories c ON c.id = pc.category_id
 		LEFT JOIN categories_2 c2 ON c2.id = pc.categories_2_id

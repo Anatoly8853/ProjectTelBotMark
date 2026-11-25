@@ -128,16 +128,7 @@ func (m *MessageService) handleCommands(update tgbotapi.Update) {
 
 // handleStartCommand добро пожаловать! Нажмите 'Старт' для начала.
 func (m *MessageService) handleStartCommand(update tgbotapi.Update) {
-	// Удаляем сообщение с командой /start
-	deleteMsg := tgbotapi.DeleteMessageConfig{
-		ChatID:    update.Message.Chat.ID,
-		MessageID: update.Message.MessageID,
-	}
-	_, err := m.bot.Request(deleteMsg)
-	if err != nil {
-		m.app.Log.Errorf("Ошибка при удалении сообщения: %v", err)
-		return
-	}
+	// Входящее сообщение /start уже удалено централизованной очисткой в UpdateMessage.
 	// Если приветствие уже есть, не создаём его повторно.
 	basketMu.Lock()
 	greetingID := greetingMessagesToKeep[update.Message.Chat.ID]

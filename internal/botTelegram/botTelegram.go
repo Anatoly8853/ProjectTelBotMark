@@ -248,8 +248,8 @@ func (m *MessageService) ShowBasket(chatID int64) {
 
 	basketMu.Lock()
 	BasketMessages[chatID] = sentMsg.MessageID
-	messagesToDelete[chatID] = append(messagesToDelete[chatID], sentMsg.MessageID)
 	basketMu.Unlock()
+	m.trackMessage(chatID, sentMsg.MessageID)
 }
 
 // createBasketKeyboard формирует клавиатуру корзины.
@@ -440,10 +440,7 @@ func (m *MessageService) sendMessageWithKeyboard(chatID int64, text string, keyb
 		m.app.Log.Errorf("sendMessageWithKeyboard: ошибка отправки сообщения: chatID=%d, ошибка=%v", chatID, err)
 		return err
 	}
-	basketMu.Lock()
-	BasketMessages[chatID] = sent.MessageID
-	messagesToDelete[chatID] = append(messagesToDelete[chatID], sent.MessageID)
-	basketMu.Unlock()
+	m.trackMessage(chatID, sent.MessageID)
 	return nil
 }
 
@@ -651,12 +648,8 @@ func (m *MessageService) sendMessage(chatID int64, text string) {
 		return
 
 	}
-	// Сохраняем идентификатор отправленного сообщения для последующего удаления.
-	// Добавляем новое сообщение в мапу.
-	basketMu.Lock()
-	BasketMessages[chatID] = sentMsg.MessageID
-	messagesToDelete[chatID] = append(messagesToDelete[chatID], sentMsg.MessageID)
-	basketMu.Unlock()
+	// Сохраняем сообщение в общем списке для последующей очистки.
+	m.trackMessage(chatID, sentMsg.MessageID)
 
 	// Удаляем предыдущие сообщения, если их больше 3
 	//deleteMessages(bot, chatID)

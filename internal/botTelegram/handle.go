@@ -187,6 +187,12 @@ func (m *MessageService) handleMessageText(update tgbotapi.Update) {
 				m.sendMessage(chatID, "Не удалось сохранить комментарий. Попробуйте ещё раз.")
 				return
 			}
+			m.app.Log.Infof(
+				"handleMessageText: комментарий принят: chatID=%d, заполнен=%t, длина=%d",
+				chatID,
+				comment != "",
+				len([]rune(comment)),
+			)
 			m.handleDeliveryDetailsMessage(chatID)
 			return
 		}

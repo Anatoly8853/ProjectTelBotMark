@@ -365,7 +365,10 @@ func (h *Handler) handlerIndex(c *gin.Context) {
 				payload.OrderDb.FullName = order.FullName
 				payload.OrderDb.PhoneNumber = order.PhoneNumber
 				payload.OrderDb.DeliveryAddress = order.DeliveryAddress
-				payload.OrderDb.Comment = order.Comment
+				payload.OrderDb.Comment = strings.TrimSpace(order.Comment)
+				if payload.OrderDb.Comment != "" {
+					h.app.Log.Debugf("handlerIndex: комментарий загружен для веб-интерфейса: orderID=%d, длина=%d", order.OrderID, len([]rune(payload.OrderDb.Comment)))
+				}
 				currentOrderID = order.OrderID
 				payload.OrderDb.TotalCost = order.TotalCost
 				Index++

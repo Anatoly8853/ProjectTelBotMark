@@ -35,6 +35,36 @@ func (m *MessageService) trackMessage(chatID int64, messageID int) {
 	basketMu.Unlock()
 }
 
+ // forgetTrackedMessage убирает уже удалённое сообщение из всех списков учёта.
+func forgetTrackedMessage(chatID int64, messageID int) {
+	if chatID == 0 || messageID == 0 {
+		return
+	}
+	basketMu.Lock()
+	ids := messagesToDelete[chatID]
+	filtered := ids[:0]
+	for _, id := range ids {
+		if id != messageID {
+			filtered = append(filtered, id)
+		}
+	}
+	if len(filtered) == 0 {
+		delete(messagesToDelete, chatID)
+	} else {
+		messagesToDelete[chatID] = filtered
+	}
+	if photoMessagesToDelete[chatID] == messageID {
+		delete(photoMessagesToDelete, chatID)
+	}
+	if keyboardMessagesToDelete[chatID] == messageID {
+		delete(keyboardMessagesToDelete, chatID)
+	}
+	if BasketMessages[chatID] == messageID {
+		delete(BasketMessages, chatID)
+	}
+	basketMu.Unlock()
+}
+
  // callbackOpensNewScreen определяет, должно ли нажатие убрать текущий экран.
 func (m *MessageService) callbackOpensNewScreen(callback *tgbotapi.CallbackQuery) bool {
 	if callback == nil || callback.Message == nil || callback.Message.Chat == nil {
@@ -81,11 +111,7 @@ func (m *MessageService) photoMessagesDelete(chatID int64) {
 		m.app.Log.Errorf("photoMessagesDelete: ошибка удаления фото: chatID=%d, messageID=%d, ошибка=%v", chatID, msgID, err)
 		return
 	}
-	basketMu.Lock()
-	if photoMessagesToDelete[chatID] == msgID {
-		delete(photoMessagesToDelete, chatID)
-	}
-	basketMu.Unlock()
+	forgetTrackedMessage(chatID, msgID)
 }
 
 // keyboardMessagesDelete удаляем предыдущее сообщение с клавиатурой, если оно есть.
@@ -100,11 +126,7 @@ func (m *MessageService) keyboardMessagesDelete(chatID int64) {
 		m.app.Log.Errorf("keyboardMessagesDelete: ошибка удаления клавиатуры: chatID=%d, messageID=%d, ошибка=%v", chatID, msgID, err)
 		return
 	}
-	basketMu.Lock()
-	if keyboardMessagesToDelete[chatID] == msgID {
-		delete(keyboardMessagesToDelete, chatID)
-	}
-	basketMu.Unlock()
+	forgetTrackedMessage(chatID, msgID)
 }
 
 // clearOrder Функция для очистки данных заказа по chatID.
@@ -204,11 +226,7 @@ func (m *MessageService) deleteMessages(chatID int64) {
 		m.app.Log.Errorf("deleteMessages: ошибка удаления сообщения: chatID=%d, messageID=%d, ошибка=%v", chatID, messageID, err)
 		return
 	}
-	basketMu.Lock()
-	if BasketMessages[chatID] == messageID {
-		BasketMessages[chatID] = 0
-	}
-	basketMu.Unlock()
+	forgetTrackedMessage(chatID, messageID)
 }
 
 // DeleteBasketContents очищает корзину пользователя.
@@ -235,6 +253,8 @@ func (m *MessageService) DeleteBasketContents(chatID int64) {
 	if messageID != 0 {
 		if _, err := m.bot.Request(tgbotapi.NewDeleteMessage(chatID, messageID)); err != nil {
 			m.app.Log.Errorf("DeleteBasketContents: ошибка удаления сообщения корзины: chatID=%d, messageID=%d, ошибка=%v", chatID, messageID, err)
+		} else {
+			forgetTrackedMessage(chatID, messageID)
 		}
 	}
 

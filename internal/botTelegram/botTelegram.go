@@ -248,6 +248,7 @@ func (m *MessageService) ShowBasket(chatID int64) {
 
 	basketMu.Lock()
 	BasketMessages[chatID] = sentMsg.MessageID
+	messagesToDelete[chatID] = append(messagesToDelete[chatID], sentMsg.MessageID)
 	basketMu.Unlock()
 }
 
@@ -440,6 +441,7 @@ func (m *MessageService) sendMessageWithKeyboard(chatID int64, text string, keyb
 	}
 	basketMu.Lock()
 	BasketMessages[chatID] = sent.MessageID
+	messagesToDelete[chatID] = append(messagesToDelete[chatID], sent.MessageID)
 	basketMu.Unlock()
 	return nil
 }
@@ -652,6 +654,7 @@ func (m *MessageService) sendMessage(chatID int64, text string) {
 	// Добавляем новое сообщение в мапу.
 	basketMu.Lock()
 	BasketMessages[chatID] = sentMsg.MessageID
+	messagesToDelete[chatID] = append(messagesToDelete[chatID], sentMsg.MessageID)
 	basketMu.Unlock()
 
 	// Удаляем предыдущие сообщения, если их больше 3
@@ -792,6 +795,9 @@ func (m *MessageService) createCategoryMessage(update tgbotapi.Update, categoryN
 		if len(sentMsgs) > 0 {
 			basketMu.Lock()
 			photoMessagesToDelete[chatID] = sentMsgs[0].MessageID
+			for _, sent := range sentMsgs {
+				messagesToDelete[chatID] = append(messagesToDelete[chatID], sent.MessageID)
+			}
 			basketMu.Unlock()
 		}
 

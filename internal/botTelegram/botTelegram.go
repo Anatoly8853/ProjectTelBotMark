@@ -108,6 +108,23 @@ func BuildPurchaseReport(purchases []structs.Purchase) string {
 	return builder.String()
 }
 
+// formatProductTitle формирует единое отображаемое название товара.
+func formatProductTitle(category, subcategory, item string) string {
+	category = strings.TrimSpace(category)
+	subcategory = strings.TrimSpace(subcategory)
+	item = strings.TrimSpace(item)
+
+	if category == "" {
+		return item
+	}
+	if subcategory == "" {
+		return item
+	}
+
+	suffix := strings.TrimSpace(strings.TrimPrefix(item, subcategory))
+	return strings.TrimSpace(category + " " + strings.ToLower(subcategory) + " " + suffix)
+}
+
 // addPurchaseToBasket добавляет позицию к снимку корзины и проверяет общую сумму.
 func addPurchaseToBasket(current []structs.Purchase, item string, quantity, cost int) ([]structs.Purchase, int, error) {
 	if strings.TrimSpace(item) == "" || quantity <= 0 || cost <= 0 {
@@ -485,8 +502,9 @@ func (m *MessageService) MainFavoritesByUserID(userID int64) {
 	builder.WriteString("⭐ Избранные товары\n\n")
 	rows := make([][]tgbotapi.InlineKeyboardButton, 0, len(products)+1)
 	for _, product := range products {
-		fmt.Fprintf(&builder, "• %s, %s — %d руб.\n", product.Title, product.Packaging, product.Price)
-		buttonText := truncateButtonText("🛒 "+product.Title+" "+product.Packaging, 60)
+		productTitle := formatProductTitle(product.Category, product.Title, "")
+		fmt.Fprintf(&builder, "• %s, %s — %d руб.\n", productTitle, product.Packaging, product.Price)
+		buttonText := truncateButtonText("⭐ "+productTitle+" "+product.Packaging, 60)
 		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData(buttonText, product.Callback),
 			tgbotapi.NewInlineKeyboardButtonData("❌", fmt.Sprintf("fav_toggle_%d", product.ID)),

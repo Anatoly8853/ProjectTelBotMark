@@ -23,6 +23,17 @@ var BasketMessages = make(map[int64]int)
 // greetingMessagesToKeep хранит ID приветственного сообщения, которое остаётся в чате.
 var greetingMessagesToKeep = make(map[int64]int)
 
+ // trackMessage сохраняет ID нового сообщения бота для последующей общей очистки.
+func (m *MessageService) trackMessage(chatID int64, messageID int) {
+	if chatID == 0 || messageID == 0 {
+		m.app.Log.Errorf("trackMessage: некорректные идентификаторы: chatID=%d, messageID=%d", chatID, messageID)
+		return
+	}
+	basketMu.Lock()
+	messagesToDelete[chatID] = append(messagesToDelete[chatID], messageID)
+	basketMu.Unlock()
+}
+
 // photoMessagesDelete удаляем предыдущее сообщение с фото, если оно есть.
 func (m *MessageService) photoMessagesDelete(chatID int64) {
 	basketMu.Lock()

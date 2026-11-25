@@ -54,3 +54,19 @@ func TestChangePurchaseQuantityIncrements(t *testing.T) {
 		t.Fatalf("неверный результат изменения количества: %#v, сумма=%d", updated, total)
 	}
 }
+
+func TestFormatProductTitleIncludesParentCategory(t *testing.T) {
+	got := formatProductTitle("Баклажаны", "Рулетики", "Рулетики ведёрко 0,9")
+	want := "Баклажаны рулетики ведёрко 0,9"
+	if got != want {
+		t.Fatalf("название товара = %q, ожидалось %q", got, want)
+	}
+}
+
+func TestFormatProductTitleWithoutSubcategory(t *testing.T) {
+	got := formatProductTitle("Овощи", "", "Черемша 1 кг")
+	want := "Овощи Черемша 1 кг"
+	if got != want {
+		t.Fatalf("название товара = %q, ожидалось %q", got, want)
+	}
+}

@@ -118,7 +118,7 @@ func formatProductTitle(category, subcategory, item string) string {
 		return item
 	}
 	if subcategory == "" {
-		return strings.TrimSpace(category + " " + item)
+		return item
 	}
 
 	suffix := strings.TrimSpace(strings.TrimPrefix(item, subcategory))

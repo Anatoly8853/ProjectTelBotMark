@@ -601,6 +601,12 @@ func (r *Repository) ProcessOrder(
 			values["Comment"] = strings.TrimSpace(commentText)
 		}
 	}
+	r.app.Log.Infof(
+		"ProcessOrder: комментарий получен для сохранения: userID=%d, заполнен=%t, длина=%d",
+		userID,
+		values["Comment"] != "",
+		len([]rune(values["Comment"])),
+	)
 
 	// Проверяем дату доставки.
 	t, err := time.Parse("02.01.2006", values["DeliveryDate"])

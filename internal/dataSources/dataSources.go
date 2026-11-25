@@ -596,10 +596,13 @@ func (r *Repository) ProcessOrder(
 	}
 
 	// Комментарий необязателен, но сохраняется вместе с заказом.
-	if commentValue, commentErr := bychat.GetFieldByChatID(r.app, userID, "Comment"); commentErr == nil {
-		if commentText, ok := commentValue.(string); ok {
-			values["Comment"] = strings.TrimSpace(commentText)
-		}
+	commentValue, commentErr := bychat.GetFieldByChatID(r.app, userID, "Comment")
+	if commentErr != nil {
+		r.app.Log.Warnf("ProcessOrder: комментарий не найден в данных пользователя, сохраняем пустое значение: userID=%d, ошибка=%v", userID, commentErr)
+	} else if commentText, ok := commentValue.(string); ok {
+		values["Comment"] = strings.TrimSpace(commentText)
+	} else {
+		r.app.Log.Errorf("ProcessOrder: комментарий имеет неверный тип: userID=%d, тип=%T", userID, commentValue)
 	}
 	r.app.Log.Infof(
 		"ProcessOrder: комментарий получен для сохранения: userID=%d, заполнен=%t, длина=%d",

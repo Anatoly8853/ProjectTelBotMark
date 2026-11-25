@@ -7,7 +7,7 @@ import (
 func TestToggleFavoriteAddsAndRemovesProduct(t *testing.T) {
 	repo, db := newProcessOrderTestRepository(t)
 	statements := []string{
-		`CREATE TABLE categories (id INTEGER PRIMARY KEY, name TEXT, display_name TEXT),
+		`CREATE TABLE categories (id INTEGER PRIMARY KEY, name TEXT, display_name TEXT)`,
 		`CREATE TABLE categories_2 (id INTEGER PRIMARY KEY, name TEXT, display_name TEXT, description TEXT)`,
 		`CREATE TABLE photo (id INTEGER PRIMARY KEY, name TEXT)`,
 		`CREATE TABLE products_categories (id INTEGER PRIMARY KEY, category_id INTEGER, categories_2_id INTEGER, photo_id INTEGER, weight_kg TEXT, price_rub INTEGER, text TEXT, callback TEXT)`,
@@ -15,6 +15,7 @@ func TestToggleFavoriteAddsAndRemovesProduct(t *testing.T) {
 		`INSERT INTO categories(id, name, display_name) VALUES (1, 'Баклажаны', 'Баклажаны')`,
 		`INSERT INTO categories_2(id, name, display_name, description) VALUES (1, 'Рулетики', 'Рулетики', 'Тестовый товар')`,
 		`INSERT INTO photo(id, name) VALUES (1, 'uploads/test.jpg')`,
+		`INSERT INTO products_categories(id, category_id, categories_2_id, photo_id, weight_kg, price_rub, text, callback) VALUES (11, 1, 1, 1, 'ведёрко 0,9', 450, 'Рулетики ведёрко 0,9', 'add_Рулетики ведёрко 0,9_1_450')`,
 	}
 	for _, statement := range statements {
 		if _, err := db.Exec(statement); err != nil {
@@ -22,7 +23,7 @@ func TestToggleFavoriteAddsAndRemovesProduct(t *testing.T) {
 		}
 	}
 
-	INSERT INTO products_categories(id, category_id, categories_2_id, photo_id, weight_kg, price_rub, text, callback) VALUES (11, 1, 1, 1, 'ведёрко 0,9', 450, 'Рулетики ведёрко 0,9', 'add_Рулетики ведёрко 0,9_1_450')
+	added, err := repo.ToggleFavorite(10003, 11)
 	if err != nil {
 		t.Fatalf("не удалось добавить товар в избранное: %v", err)
 	}
@@ -34,9 +35,12 @@ func TestToggleFavoriteAddsAndRemovesProduct(t *testing.T) {
 	if err != nil {
 		t.Fatalf("не удалось получить избранное: %v", err)
 	}
-	if len(products) != 1 || products[0].ID != 11 || products[0].Callback != "add_Рулетики ведёрко 0,9_1_450" || products[0].Category != "Баклажаны" || products[0].Title != "Рулетики" {
+	if len(products) != 1 || products[0].ID != 11 ||
+		products[0].Callback != "add_Рулетики ведёрко 0,9_1_450" ||
+		products[0].Category != "Баклажаны" || products[0].Title != "Рулетики" {
 		t.Fatalf("неверные данные избранного: %#v", products)
 	}
+
 	category, subcategory, err := repo.GetProductCategoriesByCallback("add_Рулетики ведёрко 0,9_1_450")
 	if err != nil {
 		t.Fatalf("не удалось получить категории товара: %v", err)

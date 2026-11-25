@@ -58,7 +58,7 @@ const baseQuery = `
 		tg_user_orders_date.delivery_date,
 		tg_user_phone_number.phone_number,
 		tg_user_delivery_address.delivery_address,
-		tg_user_orders_date.comment,
+		COALESCE(tg_user_orders_date.comment, '') AS comment,
 		tg_user_order_id.item_name,
 		tg_user_orders.quantity,
 		tg_user_orders.cost
@@ -94,7 +94,7 @@ const limitedOrdersQuery = `
         tg_user_orders_date.delivery_date,
         tg_user_phone_number.phone_number,
         tg_user_delivery_address.delivery_address,
-        tg_user_orders_date.comment,
+        COALESCE(tg_user_orders_date.comment, '') AS comment,
         tg_user_order_id.item_name,
         tg_user_orders.quantity,
         tg_user_orders.cost

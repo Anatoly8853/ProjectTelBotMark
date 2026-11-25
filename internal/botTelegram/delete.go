@@ -31,6 +31,12 @@ func (m *MessageService) trackMessage(chatID int64, messageID int) {
 		return
 	}
 	basketMu.Lock()
+	for _, trackedID := range messagesToDelete[chatID] {
+		if trackedID == messageID {
+			basketMu.Unlock()
+			return
+		}
+	}
 	messagesToDelete[chatID] = append(messagesToDelete[chatID], messageID)
 	basketMu.Unlock()
 }
@@ -72,6 +78,14 @@ func (m *MessageService) callbackOpensNewScreen(callback *tgbotapi.CallbackQuery
 	}
 
 	data := callback.Data
+
+	// Эти действия открывают другой экран или полностью заменяют текущий.
+	switch data {
+	case "send_basket_1_1", "confirm_order", "sends_msgText",
+		"phonenumber_PhoneNumber", "repeat_last", "delete_basket_1_1":
+		return true
+	}
+
 	switch {
 	case strings.HasPrefix(data, "cat_"):
 		category := strings.TrimPrefix(data, "cat_")
@@ -81,24 +95,22 @@ func (m *MessageService) callbackOpensNewScreen(callback *tgbotapi.CallbackQuery
 			basketMu.Unlock()
 			return !empty
 		}
+		// Категория, избранное, заказы, старт и навигация — новые экраны.
 		return true
+
 	case strings.HasPrefix(data, "fav_toggle_"):
+		// В избранном после переключения кнопки список перерисовывается.
 		return strings.HasPrefix(callback.Message.Text, "⭐ Избранные товары")
-	case data == "send_basket_1_1" || data == "confirm_order":
+
+	case strings.HasPrefix(data, "deliverydate_"):
+		// Выбор даты завершает экран календаря.
 		return true
-	case strings.HasPrefix(data, "send_") ||
-		strings.HasPrefix(data, "sends_") ||
-		strings.HasPrefix(data, "phonenumber_") ||
-		strings.HasPrefix(data, "deliverydate_") ||
-		strings.HasPrefix(data, "confirm_") ||
-		strings.HasPrefix(data, "repeat_") ||
-		strings.HasPrefix(data, "delete_"):
-		return true
+
 	default:
+		// add_*, basket_*, nextmonth_* и ignore не удаляют текущий экран.
 		return false
 	}
 }
-
 // photoMessagesDelete удаляем предыдущее сообщение с фото, если оно есть.
 func (m *MessageService) photoMessagesDelete(chatID int64) {
 	basketMu.Lock()

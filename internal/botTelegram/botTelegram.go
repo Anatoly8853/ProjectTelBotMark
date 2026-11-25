@@ -35,6 +35,7 @@ type MessageService struct {
 
 var (
 	DeliveryDateChatID = make(map[int64]int)
+	pendingDeliveryDates = make(map[int64]string)
 	deliveryDateMu     sync.RWMutex
 	orderDetails       = make(map[int64]string)
 	orderDetailsMu     sync.RWMutex
@@ -364,6 +365,9 @@ func (m *MessageService) RequestDeliveryDetails(chatID int64) {
 
 	// Удаление сообщения
 	m.deleteMessages(chatID)
+	deliveryDateMu.Lock()
+	delete(pendingDeliveryDates, chatID)
+	deliveryDateMu.Unlock()
 
 	DeliveryDate := `Дату доставки:`
 

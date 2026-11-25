@@ -97,6 +97,17 @@ func TestProcessOrderCreatesSeparateOrders(t *testing.T) {
 	if orderCount != 2 || itemCount != 2 || totalCost != 1800 {
 		t.Fatalf("неверный результат: заказов=%d, позиций=%d, сумма=%d", orderCount, itemCount, totalCost)
 	}
+	webOrders, err := repo.GetOrdersWithFilters(structs.QueryParams{
+		OrderBy: "tg_user_orders_date.delivery_date",
+		OrderDir: "DESC",
+	})
+	if err != nil {
+		t.Fatalf("не удалось прочитать заказ для веб-интерфейса: %v", err)
+	}
+	if len(webOrders) == 0 || webOrders[0].Comment != "Тестовый комментарий" {
+		t.Fatalf("комментарий не вернулся из запроса заказов: %#v", webOrders)
+	}
+
 	lastPurchases, err := repo.GetLastOrderPurchases(10001)
 	if err != nil {
 		t.Fatalf("не удалось прочитать последний заказ для повтора: %v", err)

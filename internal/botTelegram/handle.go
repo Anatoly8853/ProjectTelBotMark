@@ -51,6 +51,9 @@ func (m *MessageService) UpdateMessage(cfg config.Config) {
 					continue // Прерываем выполнение, если user_black != 0
 				}
 
+				// Удаляем предыдущий экран до обработки действия, чтобы не затронуть новое меню.
+				m.deletePreviousMessages(userChatID, update.CallbackQuery.Message.MessageID)
+
 				// Обработка CallbackQuery
 				m.handleCallbackQueryData(cfg, update)
 				continue // Переход к следующему обновлению после обработки CallbackQuery
@@ -66,6 +69,10 @@ func (m *MessageService) UpdateMessage(cfg config.Config) {
 					m.app.Log.Infof("Юзер из черного списка %v имя %v", update.Message.Chat.ID, update.Message.From.UserName)
 					continue // Прерываем выполнение, если user_black != 0
 				}
+
+				// Удаляем предыдущий экран и входящее сообщение до формирования нового ответа.
+				// Команда /start отдельно создаёт приветствие, которое сохраняется между переходами.
+				m.deletePreviousMessages(update.Message.Chat.ID, update.Message.MessageID)
 
 				// В этом месте обрабатываем все сообщения, включая команды
 				if update.Message.IsCommand() {
@@ -131,14 +138,27 @@ func (m *MessageService) handleStartCommand(update tgbotapi.Update) {
 		m.app.Log.Errorf("Ошибка при удалении сообщения: %v", err)
 		return
 	}
-	// Отправляем приветственное сообщение
+	// Если приветствие уже есть, не создаём его повторно.
+	basketMu.Lock()
+	greetingID := greetingMessagesToKeep[update.Message.Chat.ID]
+	basketMu.Unlock()
+	if greetingID != 0 {
+		m.app.Log.Debugf("handleStartCommand: приветствие уже существует: chatID=%d, messageID=%d", update.Message.Chat.ID, greetingID)
+		return
+	}
+
+	// Отправляем приветственное сообщение и сохраняем его ID отдельно от остальных сообщений.
 	msg := tgbotapi.NewMessage(update.Message.Chat.ID, fmt.Sprintf("Добро пожаловать %s! Нажмите 'Старт' для начала.", update.Message.Chat.UserName))
 	msg.ReplyMarkup = createStartKeyboard()
-	_, err = m.bot.Send(msg)
+	sent, err := m.bot.Send(msg)
 	if err != nil {
 		m.app.Log.Errorf("Ошибка при отправке сообщения: %v", err)
 		return
 	}
+	basketMu.Lock()
+	greetingMessagesToKeep[update.Message.Chat.ID] = sent.MessageID
+	basketMu.Unlock()
+	m.app.Log.Infof("handleStartCommand: приветствие отправлено: chatID=%d, messageID=%d", update.Message.Chat.ID, sent.MessageID)
 }
 
 // handleMessageText Разбор MessageText для определения действия текстовых сообщений.
@@ -231,7 +251,6 @@ func (m *MessageService) handleMessageText(update tgbotapi.Update) {
 				}
 			}
 		}
-		m.deletePreviousMessages(update.Message.Chat.ID, update.Message.MessageID)
 	}
 }
 

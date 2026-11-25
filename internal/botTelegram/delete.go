@@ -157,6 +157,9 @@ func (m *MessageService) clearOrder(chatID int64) {
 	commentPendingMu.Lock()
 	delete(commentPending, chatID)
 	commentPendingMu.Unlock()
+	deliveryDateMu.Lock()
+	delete(pendingDeliveryDates, chatID)
+	deliveryDateMu.Unlock()
 }
 
 // deletePreviousMessages удаляет все предыдущие сообщения бота и указанное сообщение пользователя.

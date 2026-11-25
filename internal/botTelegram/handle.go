@@ -51,8 +51,11 @@ func (m *MessageService) UpdateMessage(cfg config.Config) {
 					continue // Прерываем выполнение, если user_black != 0
 				}
 
-				// Удаляем предыдущий экран до обработки действия, чтобы не затронуть новое меню.
-				m.deletePreviousMessages(userChatID, update.CallbackQuery.Message.MessageID)
+				// Очищаем старый экран только при реальном переходе на другой экран.
+				// Кнопки добавления товара, +/- корзины и перелистывания календаря остаются на месте.
+				if m.callbackOpensNewScreen(update.CallbackQuery) {
+					m.deletePreviousMessages(userChatID, update.CallbackQuery.Message.MessageID)
+				}
 
 				// Обработка CallbackQuery
 				m.handleCallbackQueryData(cfg, update)

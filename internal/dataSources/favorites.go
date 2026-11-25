@@ -74,10 +74,11 @@ func (r *Repository) GetFavoriteProducts(userID int64) ([]structs.Product, error
 	}
 
 	rows, err := r.db.QueryContext(context.Background(), `
-		SELECT pc.id, COALESCE(c2.name, ''), COALESCE(c2.description, ''), pc.weight_kg, pc.price_rub,
-		       pc.text, pc.callback, COALESCE(ph.name, '')
+		SELECT pc.id, COALESCE(c.display_name, ''), COALESCE(c2.display_name, ''), COALESCE(c2.description, ''),
+		       pc.weight_kg, pc.price_rub, pc.text, pc.callback, COALESCE(ph.name, '')
 		FROM tg_user_favorites f
 		JOIN products_categories pc ON pc.id = f.product_id
+		LEFT JOIN categories c ON c.id = pc.category_id
 		LEFT JOIN categories_2 c2 ON c2.id = pc.categories_2_id
 		LEFT JOIN photo ph ON ph.id = pc.photo_id
 		WHERE f.user_id = ?
@@ -96,7 +97,7 @@ func (r *Repository) GetFavoriteProducts(userID int64) ([]structs.Product, error
 	products := make([]structs.Product, 0)
 	for rows.Next() {
 		var product structs.Product
-		if err := rows.Scan(&product.ID, &product.Title, &product.Description,
+		if err := rows.Scan(&product.ID, &product.Category, &product.Title, &product.Description,
 			&product.Packaging, &product.Price, &product.Text, &product.Callback, &product.Image); err != nil {
 			r.app.Log.Errorf("GetFavoriteProducts: ошибка чтения товара: %v", err)
 			return nil, err
@@ -108,6 +109,29 @@ func (r *Repository) GetFavoriteProducts(userID int64) ([]structs.Product, error
 		return nil, err
 	}
 	return products, nil
+}
+
+// GetProductCategoriesByCallback возвращает родительскую категорию и подкатегорию товара по неизменённому callback из каталога.
+func (r *Repository) GetProductCategoriesByCallback(callback string) (string, string, error) {
+	if callback == "" {
+		err := fmt.Errorf("пустой callback товара")
+		r.app.Log.Error("GetProductCategoriesByCallback", err.Error())
+		return "", "", err
+	}
+
+	var category, subcategory string
+	err := r.db.QueryRowContext(context.Background(), `
+		SELECT COALESCE(c.display_name, ''), COALESCE(c2.display_name, '')
+		FROM products_categories pc
+		LEFT JOIN categories c ON c.id = pc.category_id
+		LEFT JOIN categories_2 c2 ON c2.id = pc.categories_2_id
+		WHERE pc.callback = ?
+		LIMIT 1`, callback).Scan(&category, &subcategory)
+	if err != nil {
+		r.app.Log.Errorf("GetProductCategoriesByCallback: не удалось найти категории товара по callback=%q: %v", callback, err)
+		return "", "", err
+	}
+	return category, subcategory, nil
 }
 
 // GetLastOrderPurchases возвращает позиции последнего заказа пользователя.

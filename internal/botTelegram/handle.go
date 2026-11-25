@@ -897,6 +897,71 @@ func (m *MessageService) handleCallbackQueryData(cfg config.Config, update tgbot
 			answerCallback("Неизвестное действие")
 		}
 
+	case "fav":
+		if len(parts) != 3 || parts[1] != "toggle" {
+			err := fmt.Errorf("неверный callback избранного: chatID=%d, callback=%q", chatID, callbackData)
+			m.app.Log.Error("handleCallbackQueryData", err.Error())
+			answerCallback("Некорректная команда")
+			return
+		}
+		productID, err := strconv.Atoi(parts[2])
+		if err != nil || productID <= 0 {
+			m.app.Log.Errorf("handleCallbackQueryData: неверный ID товара в избранном: chatID=%d, callback=%q", chatID, callbackData)
+			answerCallback("Некорректный товар")
+			return
+		}
+		added, err := m.repo.ToggleFavorite(chatID, productID)
+		if err != nil {
+			m.app.Log.Errorf("handleCallbackQueryData: ошибка изменения избранного: chatID=%d, productID=%d, ошибка=%v", chatID, productID, err)
+			answerCallback("Не удалось изменить избранное")
+			return
+		}
+		if added {
+			answerCallback("Добавлено в избранное ⭐")
+		} else {
+			answerCallback("Удалено из избранного")
+		}
+		if callbackQuery.Message != nil && strings.HasPrefix(callbackQuery.Message.Text, "⭐ Избранные товары") {
+			m.MainFavoritesByUserID(chatID)
+		}
+
+	case "repeat":
+		if len(parts) != 2 || parts[1] != "last" {
+			m.app.Log.Errorf("handleCallbackQueryData: неверный callback повтора заказа: chatID=%d, callback=%q", chatID, callbackData)
+			answerCallback("Некорректная команда")
+			return
+		}
+		basketMu.Lock()
+		basketNotEmpty := len(structs.Baskets[chatID]) > 0
+		basketMu.Unlock()
+		if basketNotEmpty {
+			answerCallback("Сначала очистите текущую корзину")
+			return
+		}
+		purchases, err := m.repo.GetLastOrderPurchases(chatID)
+		if err != nil {
+			m.app.Log.Errorf("handleCallbackQueryData: ошибка получения последнего заказа: chatID=%d, ошибка=%v", chatID, err)
+			answerCallback("Не удалось повторить заказ")
+			return
+		}
+		if len(purchases) == 0 {
+			answerCallback("Предыдущий заказ не найден")
+			return
+		}
+		for i := range purchases {
+			if purchases[i].Quantity <= 0 || purchases[i].Cost <= 0 || strings.TrimSpace(purchases[i].Item) == "" {
+				m.app.Log.Errorf("handleCallbackQueryData: в предыдущем заказе некорректная позиция: chatID=%d, товар=%q", chatID, purchases[i].Item)
+				answerCallback("В предыдущем заказе есть некорректный товар")
+				return
+			}
+			purchases[i].ID = generateBasketItemID()
+		}
+		basketMu.Lock()
+		structs.Baskets[chatID] = purchases
+		basketMu.Unlock()
+		answerCallback("Последний заказ добавлен в корзину")
+		m.deleteMessages(chatID)
+		m.ShowBasket(chatID)
 	case "nextmonth":
 		if len(parts) != 2 || strings.TrimSpace(parts[1]) == "" {
 			m.app.Log.Errorf(

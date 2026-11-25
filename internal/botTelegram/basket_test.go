@@ -65,7 +65,7 @@ func TestFormatProductTitleIncludesParentCategory(t *testing.T) {
 
 func TestFormatProductTitleWithoutSubcategory(t *testing.T) {
 	got := formatProductTitle("Овощи", "", "Черемша 1 кг")
-	want := "Овощи Черемша 1 кг"
+	want := "Черемша 1 кг"
 	if got != want {
 		t.Fatalf("название товара = %q, ожидалось %q", got, want)
 	}

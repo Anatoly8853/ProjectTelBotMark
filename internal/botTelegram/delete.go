@@ -20,6 +20,9 @@ var messagesToDelete = make(map[int64][]int)
 // BasketMessages Карта для хранения данных о покупках для каждого пользователя.
 var BasketMessages = make(map[int64]int)
 
+// greetingMessagesToKeep хранит ID приветственного сообщения, которое остаётся в чате.
+var greetingMessagesToKeep = make(map[int64]int)
+
 // photoMessagesDelete удаляем предыдущее сообщение с фото, если оно есть.
 func (m *MessageService) photoMessagesDelete(chatID int64) {
 	basketMu.Lock()
@@ -75,42 +78,65 @@ func (m *MessageService) clearOrder(chatID int64) {
 	commentPendingMu.Unlock()
 }
 
-// deletePreviousMessages Удаляем сообщения.
+// deletePreviousMessages удаляет все предыдущие сообщения бота и указанное сообщение пользователя.
+ // Приветственное сообщение сохраняется; при нажатии его кнопки удаляется только клавиатура.
 func (m *MessageService) deletePreviousMessages(chatID int64, messageID int) {
-	if chatID == 0 || messageID == 0 {
-		m.app.Log.Errorf("нет данных для обработки chatID = %v messageID = %v", chatID, messageID)
+	if chatID == 0 {
+		m.app.Log.Errorf("deletePreviousMessages: некорректный chatID=%d", chatID)
 		return
 	}
 
-	// Проверяем, есть ли сообщения для удаления в этом чате
 	basketMu.Lock()
-	_, found := messagesToDelete[chatID]
-	basketMu.Unlock()
-	if found {
-		// Проходимся по каждому идентификатору сообщения и удаляем его
-		deleteMsg := tgbotapi.NewDeleteMessage(chatID, messageID)
-		if _, err := m.bot.Request(deleteMsg); err != nil {
-			//log.Printf("Ошибка при удалении сообщения: %v", err)
-			// Не используйте log.Panic, чтобы избежать прерывания работы бота из-за одной ошибки
+	messageIDs := make(map[int]struct{})
+	for _, id := range messagesToDelete[chatID] {
+		if id != 0 {
+			messageIDs[id] = struct{}{}
 		}
-		/*
-			for chatIDs, messageIDs := range messagesToDelete {
-				fmt.Printf("ChatID: %d-----------------------------------\n", chatIDs)
+	}
+	if id := photoMessagesToDelete[chatID]; id != 0 {
+		messageIDs[id] = struct{}{}
+	}
+	if id := keyboardMessagesToDelete[chatID]; id != 0 {
+		messageIDs[id] = struct{}{}
+	}
+	if id := BasketMessages[chatID]; id != 0 {
+		messageIDs[id] = struct{}{}
+	}
 
-				for _, messageIDa := range messageIDs {
-					fmt.Println("len(messageIDa)---------------------------------------------------------------------------", len(messageIDs))
-					fmt.Printf(" MessageID: %d---------------------------------------------------------------------------------------\n", messageIDa)
-					deleteMsg = tgbotapi.NewDeleteMessage(chatIDs, messageIDa)
-					if _, err := bot.Request(deleteMsg); err != nil {
-						//log.Printf("Ошибка при удалении сообщения: %v", err)
-						// Не используйте log.Panic, чтобы избежать прерывания работы бота из-за одной ошибки
-					}
+	greetingID := greetingMessagesToKeep[chatID]
+	keepGreeting := greetingID != 0 && greetingID == messageID
+	if messageID != 0 && messageID != greetingID {
+		messageIDs[messageID] = struct{}{}
+	}
 
-				}
-			}
+	delete(messagesToDelete, chatID)
+	delete(photoMessagesToDelete, chatID)
+	delete(keyboardMessagesToDelete, chatID)
+	delete(BasketMessages, chatID)
+	basketMu.Unlock()
 
-		*/
+	if keepGreeting {
+		edit := tgbotapi.NewEditMessageReplyMarkup(chatID, greetingID, tgbotapi.InlineKeyboardMarkup{})
+		if _, err := m.bot.Request(edit); err != nil {
+			m.app.Log.Errorf(
+				"deletePreviousMessages: не удалось убрать клавиатуру приветствия: chatID=%d, messageID=%d, ошибка=%v",
+				chatID, greetingID, err,
+			)
+		} else {
+			m.app.Log.Debugf("deletePreviousMessages: клавиатура приветствия убрана: chatID=%d, messageID=%d", chatID, greetingID)
+		}
+	}
 
+	delete(messageIDs, greetingID)
+	for id := range messageIDs {
+		if _, err := m.bot.Request(tgbotapi.NewDeleteMessage(chatID, id)); err != nil {
+			m.app.Log.Errorf(
+				"deletePreviousMessages: ошибка удаления сообщения: chatID=%d, messageID=%d, ошибка=%v",
+				chatID, id, err,
+			)
+			continue
+		}
+		m.app.Log.Debugf("deletePreviousMessages: сообщение удалено: chatID=%d, messageID=%d", chatID, id)
 	}
 }
 

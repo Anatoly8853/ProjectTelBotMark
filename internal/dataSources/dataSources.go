@@ -9,8 +9,9 @@ import (
 
 	"database/sql"
 	"fmt"
-	"io"
 	"os"
+	"strings"
+	"sync"
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -26,18 +27,38 @@ func NewRepository(db *sql.DB, app *slogavp.Application) *Repository {
 	return &Repository{db, app}
 }
 
-var UserBlack = make(map[int64]int)
+var (
+	UserBlack   = make(map[int64]int)
+	UserBlackMu sync.RWMutex
+)
+
+// GetUserBlack безопасно возвращает статус пользователя из общего чёрного списка.
+func GetUserBlack(userID int64) int {
+	UserBlackMu.RLock()
+	status := UserBlack[userID]
+	UserBlackMu.RUnlock()
+	return status
+}
+
+// SetUserBlack обновляет статус пользователя в общей карте.
+func SetUserBlack(userID int64, status int) {
+	UserBlackMu.Lock()
+	UserBlack[userID] = status
+	UserBlackMu.Unlock()
+}
 
 // Общая часть запроса
 const baseQuery = `
 	SELECT
 		tg_user_Chat_ID.user_id,
+		tg_user_orders_date.id,
 		tg_user_full_name.full_name,
 		tg_user_orders_date.date_time,
 		tg_user_orders_date.total_cost,
 		tg_user_orders_date.delivery_date,
 		tg_user_phone_number.phone_number,
 		tg_user_delivery_address.delivery_address,
+		tg_user_orders_date.comment,
 		tg_user_order_id.item_name,
 		tg_user_orders.quantity,
 		tg_user_orders.cost
@@ -61,17 +82,19 @@ const limitedOrdersQuery = `
         WHERE
             tg_user_Chat_ID.user_id = ?
         ORDER BY
-            tg_user_orders_date.delivery_date DESC
+            tg_user_orders_date.delivery_date DESC, tg_user_orders_date.id DESC
         LIMIT ?
     )
     SELECT
         tg_user_Chat_ID.user_id,
+        tg_user_orders_date.id,
         tg_user_full_name.full_name,
         tg_user_orders_date.date_time,
         tg_user_orders_date.total_cost,
         tg_user_orders_date.delivery_date,
         tg_user_phone_number.phone_number,
         tg_user_delivery_address.delivery_address,
+        tg_user_orders_date.comment,
         tg_user_order_id.item_name,
         tg_user_orders.quantity,
         tg_user_orders.cost
@@ -86,7 +109,7 @@ const limitedOrdersQuery = `
     WHERE
         tg_user_orders_date.id IN (SELECT order_id FROM LimitedOrders)
     ORDER BY
-        tg_user_orders_date.delivery_date DESC;
+        tg_user_orders_date.delivery_date DESC, tg_user_orders_date.id DESC, tg_user_orders.id ASC;
 `
 
 const baseQueryOrders = `
@@ -112,11 +135,13 @@ func InitDB(app *slogavp.Application) (db *sql.DB, err error) {
 	// Открываем соединение с базой данных SQLite
 	ctx := context.Background()
 
-	db, err = sql.Open("sqlite3", "./sqlite/data.db")
+	db, err = sql.Open("sqlite3", "./sqlite/data.db?_busy_timeout=5000&_foreign_keys=on&_journal_mode=WAL&_txlock=immediate")
 	if err != nil {
-		app.Log.Fatalf("Error opening database: %v", err)
+		app.Log.Errorf("InitDB: ошибка открытия базы данных: %v", err)
 		return nil, err
 	}
+	db.SetMaxOpenConns(5)
+	db.SetMaxIdleConns(5)
 
 	_, err = db.ExecContext(ctx, `
 	CREATE TABLE IF NOT EXISTS tg_user_Chat_ID (
@@ -201,6 +226,7 @@ func InitDB(app *slogavp.Application) (db *sql.DB, err error) {
     date_time TEXT,
     delivery_date DATE,
     total_cost INTEGER,
+    comment TEXT NOT NULL DEFAULT '',
     FOREIGN KEY (user_id) REFERENCES tg_user_Chat_ID(id),
     FOREIGN KEY (phone_number_id) REFERENCES tg_user_phone_number(id),
     FOREIGN KEY (full_name_id) REFERENCES tg_user_full_name(id),
@@ -210,6 +236,43 @@ func InitDB(app *slogavp.Application) (db *sql.DB, err error) {
 	if err != nil {
 		app.Log.Fatalf("Error creating reminders table tg_user_orders_date: %v", err)
 		return nil, err
+	}
+
+	// Добавляем поле комментария в уже существующие базы данных.
+	rows, err := db.QueryContext(ctx, `PRAGMA table_info(tg_user_orders_date)`)
+	if err != nil {
+		app.Log.Errorf("Ошибка проверки структуры tg_user_orders_date: %v", err)
+		return nil, err
+	}
+	commentColumnExists := false
+	for rows.Next() {
+		var cid, notNull, primaryKey int
+		var name, columnType string
+		var defaultValue interface{}
+		if err = rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
+			_ = rows.Close()
+			app.Log.Errorf("Ошибка чтения структуры tg_user_orders_date: %v", err)
+			return nil, err
+		}
+		if name == "comment" {
+			commentColumnExists = true
+		}
+	}
+	if err = rows.Err(); err != nil {
+		_ = rows.Close()
+		app.Log.Errorf("Ошибка обхода структуры tg_user_orders_date: %v", err)
+		return nil, err
+	}
+	if err = rows.Close(); err != nil {
+		app.Log.Errorf("Ошибка закрытия проверки структуры tg_user_orders_date: %v", err)
+		return nil, err
+	}
+	if !commentColumnExists {
+		if _, err = db.ExecContext(ctx, `ALTER TABLE tg_user_orders_date ADD COLUMN comment TEXT NOT NULL DEFAULT ''`); err != nil {
+			app.Log.Errorf("Ошибка добавления столбца comment в tg_user_orders_date: %v", err)
+			return nil, err
+		}
+		app.Log.Info("В базу данных добавлен столбец комментария заказа")
 	}
 
 	_, err = db.ExecContext(ctx, `
@@ -267,6 +330,20 @@ func InitDB(app *slogavp.Application) (db *sql.DB, err error) {
 		return nil, err
 	}
 
+	_, err = db.ExecContext(ctx, `
+	CREATE TABLE IF NOT EXISTS tg_user_favorites (
+		user_id INTEGER NOT NULL,
+		product_id INTEGER NOT NULL,
+		created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		PRIMARY KEY (user_id, product_id),
+		FOREIGN KEY (product_id) REFERENCES products_categories(id) ON DELETE CASCADE
+	)
+	`)
+	if err != nil {
+		app.Log.Errorf("InitDB: ошибка создания таблицы избранного: %v", err)
+		return nil, err
+	}
+
 	return db, nil
 }
 
@@ -291,16 +368,26 @@ func (r *Repository) UserID() []structs.User {
 		return nil
 	}
 
+	defer func() {
+		if closeErr := row.Close(); closeErr != nil {
+			r.app.Log.Errorf("UserID: ошибка закрытия SQL rows: %v", closeErr)
+		}
+	}()
+
 	var user []structs.User
 
 	for row.Next() {
 		u := structs.User{}
 		err = row.Scan(&u.UserID)
 		if err != nil {
-			r.app.Log.Errorf("Error getting user id: %v", err)
+			r.app.Log.Errorf("UserID: ошибка чтения ID пользователя: %v", err)
 			return nil
 		}
 		user = append(user, u)
+	}
+	if err := row.Err(); err != nil {
+		r.app.Log.Errorf("UserID: ошибка обхода SQL rows: %v", err)
+		return nil
 	}
 	return user
 }
@@ -318,8 +405,8 @@ func (r *Repository) getOrInsertValues(tx *sql.Tx, tables []string, columns []st
 		var idd int64
 
 		// Создаем динамический запрос для выбора строки
-		selectQuery := "SELECT id FROM" + table + " WHERE "
-		insertQuery := "INSERT INTO" + table + " ("
+		selectQuery := "SELECT id FROM " + table + " WHERE "
+		insertQuery := "INSERT INTO " + table + " ("
 		valuesPlaceholders := "VALUES ("
 
 		for i, column := range columns {
@@ -404,82 +491,208 @@ func (r *Repository) getOrInsertValues(tx *sql.Tx, tables []string, columns []st
 	return ids, nil
 }
 
-// ProcessOrder Функция для парсинга деталей заказа и добавления в базу данных.
-func (r *Repository) ProcessOrder(update tgbotapi.Update) error {
-	ctx := context.Background()
+// ProcessOrder сохраняет заказ пользователя в базе данных.
+func (r *Repository) ProcessOrder(
+	update tgbotapi.Update,
+	purchases []structs.Purchase,
+) error {
+	if update.CallbackQuery == nil {
+		err := fmt.Errorf("отсутствует CallbackQuery")
+		r.app.Log.Error("ProcessOrder", err.Error())
+		return err
+	}
+
+	if update.CallbackQuery.Message == nil ||
+		update.CallbackQuery.Message.Chat == nil {
+		err := fmt.Errorf("отсутствует сообщение или Chat")
+		r.app.Log.Error("ProcessOrder", err.Error())
+		return err
+	}
+
+	if update.CallbackQuery.From == nil {
+		err := fmt.Errorf("отсутствуют данные пользователя в CallbackQuery.From")
+		r.app.Log.Error("ProcessOrder", err.Error())
+		return err
+	}
+
 	userID := update.CallbackQuery.Message.Chat.ID
 	userName := update.CallbackQuery.From.UserName
 
-	r.app.Log.Infof("userName = %s", userName)
+	if userID == 0 {
+		err := fmt.Errorf("некорректный userID: %d", userID)
+		r.app.Log.Error("ProcessOrder", err.Error())
+		return err
+	}
 
-	// Регулярные выражения для извлечения информации
-	fields := []string{"PhoneNumber", "DeliveryAddress", "DeliveryDate", "FullName"}
-	values := make(map[string]string)
+	if len(purchases) == 0 {
+		err := fmt.Errorf("корзина пользователя %d пуста", userID)
+		r.app.Log.Error("ProcessOrder", err.Error())
+		return err
+	}
+
+	r.app.Log.Infof(
+		"Начало оформления заказа: userID=%d, userName=%q, позиций=%d",
+		userID,
+		userName,
+		len(purchases),
+	)
+
+	ctx := context.Background()
+
+	// Проверяем содержимое корзины и рассчитываем общую стоимость тем же способом,
+	// что и при отображении корзины в Telegram.
+	totalCost, err := structs.CalculatePurchasesTotal(purchases)
+	if err != nil {
+		r.app.Log.Errorf("ProcessOrder: некорректная корзина: userID=%d, ошибка=%v", userID, err)
+		return err
+	}
+
+	// Получаем данные пользователя.
+	fields := []string{
+		"PhoneNumber",
+		"DeliveryAddress",
+		"DeliveryDate",
+		"FullName",
+	}
+
+	values := make(map[string]string, len(fields)+1)
+	values["Comment"] = ""
 
 	for _, field := range fields {
-		if value, err := bychat.GetFieldByChatID(r.app, userID, field); err == nil {
-			values[field] = value.(string)
-		} else {
-			r.app.Log.Errorf("Error getting field %s: %v", field, err)
+		value, err := bychat.GetFieldByChatID(r.app, userID, field)
+		if err != nil {
+			r.app.Log.Errorf(
+				"ProcessOrder: ошибка получения поля: userID=%d, поле=%s, ошибка=%v",
+				userID,
+				field,
+				err,
+			)
 			return err
+		}
+
+		strValue, ok := value.(string)
+		if !ok {
+			err := fmt.Errorf(
+				"поле имеет неверный тип: userID=%d, поле=%s, тип=%T",
+				userID,
+				field,
+				value,
+			)
+			r.app.Log.Error("ProcessOrder", err.Error())
+			return err
+		}
+
+		if strings.TrimSpace(strValue) == "" {
+			err := fmt.Errorf(
+				"пустое обязательное поле: userID=%d, поле=%s",
+				userID,
+				field,
+			)
+			r.app.Log.Error("ProcessOrder", err.Error())
+			return err
+		}
+
+		values[field] = strValue
+	}
+
+	// Комментарий необязателен, но сохраняется вместе с заказом.
+	if commentValue, commentErr := bychat.GetFieldByChatID(r.app, userID, "Comment"); commentErr == nil {
+		if commentText, ok := commentValue.(string); ok {
+			values["Comment"] = strings.TrimSpace(commentText)
 		}
 	}
 
-	// Получение содержимого корзины
-	purchases := structs.Baskets[userID]
-
-	groupedPurchases := groupPurchases(purchases)
-
-	totalCost := calculateTotalCost(groupedPurchases)
-
-	// Парсинг строки времени в тип time.Time
+	// Проверяем дату доставки.
 	t, err := time.Parse("02.01.2006", values["DeliveryDate"])
 	if err != nil {
-		r.app.Log.Errorf("Ошибка парсинга строки времени: %v", err)
+		r.app.Log.Errorf(
+			"ProcessOrder: ошибка разбора даты доставки: userID=%d, дата=%q, ошибка=%v",
+			userID,
+			values["DeliveryDate"],
+			err,
+		)
 		return err
 	}
 
-	// Преобразуем дату в строку формата "YYYY-MM-DD" для вставки в базу данных
 	formattedDeliveryDate := t.Format("2006-01-02")
+	formattedDateTime := time.Now().Format("15:04 02.01.2006")
 
-	// Начало транзакции
-	tx, err := r.db.Begin()
+	// Начинаем транзакцию.
+	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
-		r.app.Log.Errorf("Error starting transaction: %v", err)
+		r.app.Log.Errorf(
+			"ProcessOrder: ошибка начала транзакции: userID=%d, ошибка=%v",
+			userID,
+			err,
+		)
 		return err
 	}
+
+	committed := false
 
 	defer func() {
-		if err != nil {
+		if !committed {
 			if rbErr := tx.Rollback(); rbErr != nil {
-				r.app.Log.Errorf("tx.Rollback() failed: %v", rbErr)
-			}
-		} else {
-			if cmErr := tx.Commit(); cmErr != nil {
-				r.app.Log.Errorf("tx.Commit() failed: %v", cmErr)
+				r.app.Log.Errorf(
+					"ProcessOrder: ошибка отката транзакции: userID=%d, ошибка=%v",
+					userID,
+					rbErr,
+				)
 			}
 		}
 	}()
 
+	// Сохраняем пользователя.
 	userBlack := 0
 
-	err = r.UpsertUser(tx, userID, userName, userBlack)
-	if err != nil {
-		r.app.Log.Errorf("Error upserting user: %v", err)
+	if err = r.UpsertUser(tx, userID, userName, userBlack); err != nil {
+		r.app.Log.Errorf(
+			"ProcessOrder: ошибка сохранения пользователя: userID=%d, ошибка=%v",
+			userID,
+			err,
+		)
+		return err
 	}
 
-	// Форматирование текущей даты и времени в указанный формат
-	formattedDateTime := time.Now().Format("15:04 02.01.2006")
+	// Сохраняем связанные данные пользователя.
+	tables := []string{
+		"tg_user_Chat_ID",
+		"tg_user_full_name",
+		"tg_user_phone_number",
+		"tg_user_delivery_address",
+	}
 
-	// Вставка новой записи в tg_user_Chat_ID
-	tables := []string{"tg_user_Chat_ID", "tg_user_full_name", "tg_user_phone_number", "tg_user_delivery_address"}
-	columns := []string{"user_id", "full_name", "phone_number", "delivery_address"}
-	valueList := []interface{}{userID, values["FullName"], values["PhoneNumber"], values["DeliveryAddress"]}
+	columns := []string{
+		"user_id",
+		"full_name",
+		"phone_number",
+		"delivery_address",
+	}
+
+	valueList := []interface{}{
+		userID,
+		values["FullName"],
+		values["PhoneNumber"],
+		values["DeliveryAddress"],
+	}
 
 	ids, err := r.getOrInsertValues(tx, tables, columns, valueList)
 	if err != nil {
-		// Обработать ошибку
-		r.app.Log.Errorf("Error inserting row: %v", err)
+		r.app.Log.Errorf(
+			"ProcessOrder: ошибка сохранения данных пользователя: userID=%d, ошибка=%v",
+			userID,
+			err,
+		)
+		return err
+	}
+
+	if len(ids) != 4 {
+		err := fmt.Errorf(
+			"неверное количество ID после сохранения данных пользователя: userID=%d, получено=%d, ожидалось=4",
+			userID,
+			len(ids),
+		)
+		r.app.Log.Error("ProcessOrder", err.Error())
 		return err
 	}
 
@@ -488,60 +701,166 @@ func (r *Repository) ProcessOrder(update tgbotapi.Update) error {
 	existingPhoneID := ids[2]
 	existingAddressID := ids[3]
 
-	// Вставляем новую запись в tg_orders_date
-	var existingOrdersDateID int64
-
+	// Создаём запись заказа.
 	tables = []string{"tg_user_orders_date"}
-	columns = []string{"user_id", "phone_number_id", "full_name_id", "delivery_address_id", "date_time", "delivery_date", "total_cost"}
-	valueList = []interface{}{existingUserID, existingPhoneID, existingFullNameID, existingAddressID, formattedDateTime, formattedDeliveryDate, totalCost}
 
-	ids, err = r.getOrInsertValues(tx, tables, columns, valueList)
+	columns = []string{
+		"user_id",
+		"phone_number_id",
+		"full_name_id",
+		"delivery_address_id",
+		"date_time",
+		"delivery_date",
+		"total_cost",
+		"comment",
+	}
+
+	valueList = []interface{}{
+		existingUserID,
+		existingPhoneID,
+		existingFullNameID,
+		existingAddressID,
+		formattedDateTime,
+		formattedDeliveryDate,
+		totalCost,
+		values["Comment"],
+	}
+
+	insertOrderQuery := `INSERT INTO tg_user_orders_date
+		(user_id, phone_number_id, full_name_id, delivery_address_id, date_time, delivery_date, total_cost, comment)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+	result, err := tx.ExecContext(ctx, insertOrderQuery, valueList...)
 	if err != nil {
-		// Обработать ошибку
-		r.app.Log.Errorf("Error inserting row: %v", err)
+		r.app.Log.Errorf("ProcessOrder: ошибка создания отдельной записи заказа: userID=%d, ошибка=%v", userID, err)
+		return err
+	}
+	existingOrdersDateID, err := result.LastInsertId()
+	if err != nil {
+		r.app.Log.Errorf("ProcessOrder: не удалось получить ID нового заказа: userID=%d, ошибка=%v", userID, err)
 		return err
 	}
 
-	existingOrdersDateID = ids[0]
-
-	// Вставляем новые записи в tg_user_orders
-	stmt, err := tx.PrepareContext(ctx, `INSERT INTO tg_user_orders (order_id, item_name, quantity, cost) VALUES (?, ?, ?, ?)`)
+	// Подготавливаем добавление товаров в заказ.
+	stmt, err := tx.PrepareContext(
+		ctx,
+		`INSERT INTO tg_user_orders
+		(order_id, item_name, quantity, cost)
+		VALUES (?, ?, ?, ?)`,
+	)
 	if err != nil {
-		r.app.Log.Errorf("Error inserting row: %v", err)
+		r.app.Log.Errorf(
+			"ProcessOrder: ошибка подготовки запроса товаров: userID=%d, ошибка=%v",
+			userID,
+			err,
+		)
 		return err
 	}
 
-	for _, p := range groupedPurchases {
-		itemTotalCost := p.Cost // Общая стоимость для этой группы товаров
-		itemName := p.Item
-		quantity := p.Quantity
-		cost := itemTotalCost
+	// Гарантируем закрытие подготовленного запроса и до Commit.
+	stmtClosed := false
+	defer func() {
+		if !stmtClosed {
+			if closeErr := stmt.Close(); closeErr != nil {
+				r.app.Log.Errorf(
+					"ProcessOrder: ошибка закрытия SQL-запроса: userID=%d, ошибка=%v",
+					userID,
+					closeErr,
+				)
+			}
+		}
+	}()
 
-		// Вставка новой записи в tg_user_Chat_ID
-		// Проверяем, существует ли пользователь с таким user_id
+	// Сохраняем каждую позицию корзины.
+	for _, p := range purchases {
 		tables = []string{"tg_user_order_id"}
 		columns = []string{"item_name"}
-		valueList = []interface{}{itemName}
+		valueList = []interface{}{p.Item}
 
 		ids, err = r.getOrInsertValues(tx, tables, columns, valueList)
 		if err != nil {
-			// Обработать ошибку
-			r.app.Log.Errorf("Error inserting row: %v", err)
+			r.app.Log.Errorf(
+				"ProcessOrder: ошибка получения ID товара: userID=%d, товар=%q, ошибка=%v",
+				userID,
+				p.Item,
+				err,
+			)
 			return err
 		}
 
-		_, err = stmt.Exec(existingOrdersDateID, ids[0], quantity, cost)
+		if len(ids) != 1 {
+			err := fmt.Errorf(
+				"неверное количество ID товара: userID=%d, товар=%q, получено=%d",
+				userID,
+				p.Item,
+				len(ids),
+			)
+			r.app.Log.Error("ProcessOrder", err.Error())
+			return err
+		}
+
+		// Cost — цена одной единицы товара.
+		// Quantity — количество единиц.
+		_, err = stmt.ExecContext(
+			ctx,
+			existingOrdersDateID,
+			ids[0],
+			p.Quantity,
+			p.Cost,
+		)
 		if err != nil {
-			r.app.Log.Errorf("Error inserting row: %v", err)
+			r.app.Log.Errorf(
+				"ProcessOrder: ошибка сохранения позиции заказа: userID=%d, товар=%q, количество=%d, цена=%d, ошибка=%v",
+				userID,
+				p.Item,
+				p.Quantity,
+				p.Cost,
+				err,
+			)
 			return err
 		}
 	}
+
+	if err = stmt.Close(); err != nil {
+		r.app.Log.Errorf("ProcessOrder: ошибка закрытия SQL-запроса: userID=%d, ошибка=%v", userID, err)
+		return err
+	}
+	stmtClosed = true
+
+	// Завершаем транзакцию.
+	if err = tx.Commit(); err != nil {
+		r.app.Log.Errorf(
+			"ProcessOrder: ошибка фиксации транзакции: userID=%d, ошибка=%v",
+			userID,
+			err,
+		)
+		return err
+	}
+
+	committed = true
+
+	r.app.Log.Infof(
+		"Заказ успешно сохранён: userID=%d, orderID=%d, позиций=%d, сумма=%d руб.",
+		userID,
+		existingOrdersDateID,
+		len(purchases),
+		totalCost,
+	)
 
 	return nil
 }
 
 // processRows функция для обработки строк результата SQL-запроса.
 func (r *Repository) processRows(rows *sql.Rows) ([]structs.OrderDb, error) {
+	if rows == nil {
+		err := fmt.Errorf("processRows: получен nil вместо SQL rows")
+		r.app.Log.Error(err.Error())
+		return nil, err
+	}
+	defer func() {
+		if err := rows.Close(); err != nil {
+			r.app.Log.Errorf("processRows: ошибка закрытия SQL rows: %v", err)
+		}
+	}()
 
 	var orders []structs.OrderDb
 
@@ -549,12 +868,14 @@ func (r *Repository) processRows(rows *sql.Rows) ([]structs.OrderDb, error) {
 		var order structs.OrderDb
 		err := rows.Scan(
 			&order.UserID.UserID,
+			&order.OrderID,
 			&order.FullName,
 			&order.DateTime,
 			&order.TotalCost,
 			&order.DeliveryDate,
 			&order.PhoneNumber,
 			&order.DeliveryAddress,
+			&order.Comment,
 			&order.Purchase.Item,
 			&order.Purchase.Quantity,
 			&order.Purchase.Cost,
@@ -623,6 +944,7 @@ func (r *Repository) GetOrdersWithFilters(params structs.QueryParams) ([]structs
 		if params.OrderDir != "" {
 			query += " " + params.OrderDir
 		}
+		query += ", tg_user_orders_date.id DESC, tg_user_orders.id ASC"
 	}
 
 	rows, err := r.db.QueryContext(ctx, query, queryArgs...)
@@ -674,21 +996,26 @@ func (r *Repository) GetUsers() ([]structs.User, error) {
 	ctx := context.Background()
 	rows, err := r.db.QueryContext(ctx, "SELECT user_id, user_name, user_black FROM tg_user_Chat_ID")
 	if err != nil {
-		r.app.Log.Errorf("Error preparing query: %v", err)
+		r.app.Log.Errorf("GetUsers: ошибка выполнения запроса: %v", err)
 		return nil, err
 	}
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil {
+			r.app.Log.Errorf("GetUsers: ошибка закрытия SQL rows: %v", closeErr)
+		}
+	}()
 
 	var users []structs.User
 	for rows.Next() {
 		var user structs.User
 		err = rows.Scan(&user.UserID, &user.UserBlack.UserName, &user.UserBlack.UserBlack)
 		if err != nil {
-			r.app.Log.Errorf("Error scanning rows: %v", err)
+			r.app.Log.Errorf("GetUsers: ошибка чтения пользователя: %v", err)
 			return nil, err
 		}
 
 		users = append(users, user)
-		UserBlack[user.UserID] = user.UserBlack.UserBlack
+		SetUserBlack(user.UserID, user.UserBlack.UserBlack)
 	}
 
 	if err = rows.Err(); err != nil {
@@ -706,55 +1033,91 @@ func (r *Repository) UpdateUserBlack(userID, userBlack int) error {
 		r.app.Log.Errorf("Error updating user_name: %v", err)
 	}
 
+	if err == nil {
+		SetUserBlack(int64(userID), userBlack)
+	}
 	return err
 }
 
-// backupDatabase резервного копирования базы данных SQLite.
+// backupDatabase создаёт согласованную резервную копию SQLite через VACUUM INTO.
+// В отличие от копирования открытого файла, этот способ учитывает активный журнал SQLite.
 func (r *Repository) backupDatabase() {
+	const sourceDBPath = "./sqlite/data.db"
+	const backupPath = "./backup_old.db"
 
-	// Путь к файлу текущей и новой резервной копии
-	oldBackupPath := "./backup_old.db"
-	newBackupPath := "./backup.db"
-
-	// Создаем новую резервную копию
-	inputFile, err := os.Open("./data.db")
-	if err != nil {
-		r.app.Log.Errorf("Ошибка не удается открыть базу данных: %v", err)
+	if r == nil {
+		return
 	}
-	defer func(inputFile *os.File) {
-		_ = inputFile.Close()
-	}(inputFile)
-
-	outputFile, err := os.Create(newBackupPath)
-	if err != nil {
-		r.app.Log.Errorf("Ошибка при создании нового файла резервной копии: %v", err)
-	}
-	_, err = io.Copy(outputFile, inputFile)
-	if err != nil {
-		r.app.Log.Errorf("Ошибка при копировании базы данных в файл резервной копии: %v", err)
-	}
-	_ = outputFile.Close() // Закрываем файл перед переименованием
-
-	// Ждем немного, чтобы ОС завершила все операции с файлом
-	time.Sleep(500 * time.Millisecond)
-
-	// Удаляем старую резервную копию, если она существует
-	if _, err = os.Stat(oldBackupPath); err == nil {
-		err = os.Remove(oldBackupPath)
-		if err != nil {
-			r.app.Log.Errorf("Ошибка при удалении старого файла резервной копии: %v", err)
+	if r.db == nil {
+		if r.app != nil {
+			r.app.Log.Error("backupDatabase: соединение с базой данных не инициализировано")
 		}
-	} else if !os.IsNotExist(err) {
-		r.app.Log.Errorf("Error checking old backup file: %v", err)
+		return
+	}
+	if r.app == nil {
+		return
 	}
 
-	// Переименовываем новую резервную копию в старую
-	err = os.Rename(newBackupPath, oldBackupPath)
+	tmpFile, err := os.CreateTemp(".", "backup-*.db")
 	if err != nil {
-		r.app.Log.Fatalf("Error renaming new backup file to old: %v", err)
+		r.app.Log.Errorf("backupDatabase: не удалось создать временный файл: %v", err)
+		return
+	}
+	tmpPath := tmpFile.Name()
+	if err := tmpFile.Close(); err != nil {
+		r.app.Log.Errorf("backupDatabase: ошибка закрытия временного файла: %v", err)
+		_ = os.Remove(tmpPath)
+		return
+	}
+	if err := os.Remove(tmpPath); err != nil {
+		r.app.Log.Errorf("backupDatabase: не удалось подготовить временный путь: %v", err)
+		return
+	}
+	defer func() {
+		if err := os.Remove(tmpPath); err != nil && !os.IsNotExist(err) {
+			r.app.Log.Errorf("backupDatabase: не удалось удалить временный файл %q: %v", tmpPath, err)
+		}
+	}()
+
+	if _, err := os.Stat(sourceDBPath); err != nil {
+		r.app.Log.Errorf("backupDatabase: файл базы данных %q недоступен: %v", sourceDBPath, err)
+		return
 	}
 
-	r.app.Log.Info("Backup completed successfully and old backup removed.")
+	if _, err := r.db.Exec(`VACUUM INTO ?`, tmpPath); err != nil {
+		r.app.Log.Errorf("backupDatabase: ошибка создания согласованной копии SQLite: %v", err)
+		return
+	}
+
+	if info, err := os.Stat(tmpPath); err != nil || info.Size() == 0 {
+		r.app.Log.Errorf("backupDatabase: резервная копия не создана или пуста: path=%q, ошибка=%v", tmpPath, err)
+		return
+	}
+
+	if err := os.Rename(tmpPath, backupPath); err != nil {
+		// На Windows нельзя переименовать файл поверх существующего.
+		previousPath := backupPath + ".previous"
+		_ = os.Remove(previousPath)
+		if _, statErr := os.Stat(backupPath); statErr == nil {
+			if moveErr := os.Rename(backupPath, previousPath); moveErr != nil {
+				r.app.Log.Errorf("backupDatabase: не удалось временно сохранить старую копию: %v", moveErr)
+				return
+			}
+		}
+		if retryErr := os.Rename(tmpPath, backupPath); retryErr != nil {
+			if _, statErr := os.Stat(previousPath); statErr == nil {
+				if restoreErr := os.Rename(previousPath, backupPath); restoreErr != nil {
+					r.app.Log.Errorf("backupDatabase: не удалось восстановить предыдущую копию: %v", restoreErr)
+				}
+			}
+			r.app.Log.Errorf("backupDatabase: не удалось сохранить резервную копию: %v", retryErr)
+			return
+		}
+		if removeErr := os.Remove(previousPath); removeErr != nil && !os.IsNotExist(removeErr) {
+			r.app.Log.Warnf("backupDatabase: не удалось удалить предыдущую копию: %v", removeErr)
+		}
+	}
+	r.app.Log.Infof("backupDatabase: резервная копия успешно создана: %s", backupPath)
 }
 
 // StartBackupRoutine запускает Go-рутину для ежедневного копирования базы данных SQLite.
@@ -797,27 +1160,26 @@ func (r *Repository) GetByUserID(userID int64) structs.OrderDb {
 	return o
 }
 
-// groupPurchases группируем товары.
+// groupPurchases объединяет только одинаковые товары с одинаковой ценой.
 func groupPurchases(purchases []structs.Purchase) map[string]structs.Purchase {
 	groupedPurchases := make(map[string]structs.Purchase)
-	for _, p := range purchases {
-		key := p.Item
+	for _, purchase := range purchases {
+		key := fmt.Sprintf("%s\x00%d", purchase.Item, purchase.Cost)
 		if existing, found := groupedPurchases[key]; found {
-			existing.Quantity += p.Quantity
-			existing.Cost += p.Cost
+			existing.Quantity += purchase.Quantity
 			groupedPurchases[key] = existing
 		} else {
-			groupedPurchases[key] = p
+			groupedPurchases[key] = purchase
 		}
 	}
 	return groupedPurchases
 }
 
-// calculateTotalCost суммируем товары.
+// calculateTotalCost рассчитывает стоимость с учётом количества.
 func calculateTotalCost(groupedPurchases map[string]structs.Purchase) int {
 	totalCost := 0
-	for _, p := range groupedPurchases {
-		totalCost += p.Cost
+	for _, purchase := range groupedPurchases {
+		totalCost += purchase.Cost * purchase.Quantity
 	}
 	return totalCost
 }

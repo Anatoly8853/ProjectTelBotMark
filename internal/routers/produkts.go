@@ -3,14 +3,19 @@ package routers
 import (
 	"ProjectTelBotMark/internal/structs"
 	"fmt"
-	"github.com/disintegration/imaging"
-	"github.com/gin-gonic/gin"
-	"github.com/xuri/excelize/v2"
+	"image"
+	_ "image/jpeg"
+	_ "image/png"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
+
+	"github.com/disintegration/imaging"
+	"github.com/gin-gonic/gin"
+	"github.com/xuri/excelize/v2"
 )
 
 func (h *Handler) handlerProducts(c *gin.Context) {
@@ -18,12 +23,13 @@ func (h *Handler) handlerProducts(c *gin.Context) {
 	sort := c.Query("sort")
 	data, err := h.repo.HandlerProducts(category, sort)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		h.app.Log.Errorf("handlerProducts: ошибка получения каталога: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка получения каталога"})
 		return
 	}
 
 	c.HTML(http.StatusOK, "products.html", gin.H{
-		//"Title":    "Заказы Салаты корейские",
+		//"Title": "Заказы Салаты корейские",
 		"Categories": data.Categories,
 		"Products":   "current",
 		"data":       data})
@@ -59,87 +65,57 @@ func (h *Handler) handlerProductsPage(c *gin.Context) {
 }
 
 func (h *Handler) showAddForm(c *gin.Context) {
-	c.HTML(http.StatusOK, "form.html", nil)
+	c.HTML(http.StatusOK, "form.html", gin.H{"p": structs.Product{}})
 }
 
 func (h *Handler) addProduct(c *gin.Context) {
-	title := c.PostForm("title")
-	description := c.PostForm("description")
-	price := c.PostForm("price")
-	category := c.PostForm("category")
-	packaging := c.PostForm("packaging")
-
-	text := fmt.Sprintf("⚖%s\n💵%s рублей", packaging, price)
-	callback := fmt.Sprintf("add_%s %s_1_%s", title, packaging, price)
-	priceAt, _ := strconv.Atoi(price)
-
-	file, err := c.FormFile("image")
-	imagePath := ""
-
-	if err == nil {
-		ext := filepath.Ext(file.Filename)
-		filename := fmt.Sprintf("img_%d%s", time.Now().UnixNano(), ext)
-		tempPath := filepath.Join(UploadsDir, "temp_"+filename)
-		finalPath := filepath.Join(UploadsDir, filename)
-
-		// Сохраняем во временный файл
-		if err = c.SaveUploadedFile(file, tempPath); err != nil {
-			h.app.Log.Error("Ошибка при сохранении файла: " + err.Error())
-			c.String(http.StatusInternalServerError, "Ошибка сохранения файла")
-			return
-		}
-
-		// Обработка изображения
-		src, err := imaging.Open(tempPath)
-		if err != nil {
-			h.app.Log.Error("Ошибка при открытии изображения: " + err.Error())
-			c.String(http.StatusInternalServerError, "Неверный формат изображения")
-			return
-		}
-
-		dst := imaging.Fill(src, 400, 400, imaging.Center, imaging.Lanczos)
-
-		if err = imaging.Save(dst, finalPath); err != nil {
-			h.app.Log.Error("Ошибка при сохранении обработанного изображения: " + err.Error())
-			c.String(http.StatusInternalServerError, "Ошибка обработки изображения")
-			return
-		}
-
-		_ = os.Remove(tempPath)
-
-		// Записываем URL-адрес, а не локальный путь
-		imagePath = "uploads/" + filename
+	title := strings.TrimSpace(c.PostForm("title"))
+	description := strings.TrimSpace(c.PostForm("description"))
+	category := strings.TrimSpace(c.PostForm("category"))
+	packaging := strings.TrimSpace(c.PostForm("packaging"))
+	priceRaw := strings.TrimSpace(c.PostForm("price"))
+	priceAt, err := strconv.Atoi(priceRaw)
+	if title == "" || description == "" || category == "" || packaging == "" || err != nil || priceAt <= 0 {
+		c.String(http.StatusBadRequest, "Заполните все обязательные поля и укажите положительную цену")
+		return
 	}
 
-	product := structs.Product{
-		Title:       title,
-		Description: description,
-		Price:       priceAt,
-		Category:    category,
-		Image:       imagePath,
-		Packaging:   packaging,
-		Text:        text,
-		Callback:    callback,
-	}
-	err = h.repo.AddProduct(product)
+	imagePath, err := h.saveUploadedImage(c, "image")
 	if err != nil {
-		h.app.Log.Error("Database error: " + err.Error())
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
+		h.app.Log.Errorf("addProduct: ошибка загрузки изображения: %v", err)
+		c.String(http.StatusBadRequest, "Не удалось загрузить изображение: %v", err)
+		return
 	}
 
+	text := fmt.Sprintf("⚖%s\n💵%s рублей", packaging, priceRaw)
+	callback := fmt.Sprintf("add_%s %s_1_%s", title, packaging, priceRaw)
+	product := structs.Product{
+		Title: title, Description: description, Price: priceAt, Category: category,
+		Image: imagePath, Packaging: packaging, Text: text, Callback: callback,
+	}
+	if err := h.repo.AddProduct(product); err != nil {
+		h.app.Log.Errorf("addProduct: ошибка сохранения товара: %v", err)
+		if imagePath != "" {
+			_ = os.Remove(filepath.Join(UploadsDir, filepath.Base(imagePath)))
+		}
+		c.String(http.StatusInternalServerError, "Не удалось сохранить товар")
+		return
+	}
+	h.app.Log.Infof("addProduct: товар добавлен: название=%q, категория=%q", title, category)
 	c.Redirect(http.StatusSeeOther, "/product")
 }
 
 func (h *Handler) editProduct(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	if err != nil || id <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Некорректный ID товара"})
 		return
 	}
 	p, err := h.repo.EditProduct(id)
 	if err != nil {
-		h.app.Log.Error("Database error: " + err.Error())
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
+		h.app.Log.Errorf("editProduct: ошибка получения товара id=%d: %v", id, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Не удалось получить товар"})
+		return
 	}
 	c.HTML(http.StatusOK, "form.html", gin.H{
 		"p":           p,
@@ -148,94 +124,131 @@ func (h *Handler) editProduct(c *gin.Context) {
 
 func (h *Handler) updateProduct(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	if err != nil || id <= 0 {
+		c.String(http.StatusBadRequest, "Некорректный ID товара")
 		return
 	}
-	title := c.PostForm("title")
-	description := c.PostForm("description")
-	price := c.PostForm("price")
-	category := c.PostForm("category")
-	packaging := c.PostForm("packaging")
-
-	text := fmt.Sprintf("⚖%s\n💵%s рублей", packaging, price)
-	callback := fmt.Sprintf("add_%s %s_1_%s", title, packaging, price)
-	priceAt, _ := strconv.Atoi(price)
-
-	existingImage := c.PostForm("existing_image")
-	file, err := c.FormFile("image")
-
-	imagePath := ""
-	if err == nil {
-		// загружаем новый файл
-		ext := filepath.Ext(file.Filename)
-		filename := fmt.Sprintf("img_%d%s", time.Now().UnixNano(), ext)
-		tempPath := filepath.Join(UploadsDir, "temp_"+filename)
-		finalPath := filepath.Join(UploadsDir, filename)
-
-		// Сохраняем во временный файл
-		if err = c.SaveUploadedFile(file, tempPath); err != nil {
-			h.app.Log.Error("Ошибка при сохранении файла: " + err.Error())
-			c.String(http.StatusInternalServerError, "Ошибка сохранения файла")
-			return
-		}
-
-		// Обработка изображения
-		src, err := imaging.Open(tempPath)
-		if err != nil {
-			h.app.Log.Error("Ошибка при открытии изображения: " + err.Error())
-			c.String(http.StatusInternalServerError, "Неверный формат изображения")
-			return
-		}
-
-		dst := imaging.Fill(src, 400, 400, imaging.Center, imaging.Lanczos)
-
-		if err = imaging.Save(dst, finalPath); err != nil {
-			h.app.Log.Error("Ошибка при сохранении обработанного изображения: " + err.Error())
-			c.String(http.StatusInternalServerError, "Ошибка обработки изображения")
-			return
-		}
-
-		_ = os.Remove(tempPath)
-
-		// Записываем URL-адрес, а не локальный путь
-		imagePath = "uploads/" + filename
-	} else {
-		// используем старый путь
-		imagePath = existingImage
+	title := strings.TrimSpace(c.PostForm("title"))
+	description := strings.TrimSpace(c.PostForm("description"))
+	category := strings.TrimSpace(c.PostForm("category"))
+	packaging := strings.TrimSpace(c.PostForm("packaging"))
+	priceRaw := strings.TrimSpace(c.PostForm("price"))
+	priceAt, err := strconv.Atoi(priceRaw)
+	if title == "" || description == "" || category == "" || packaging == "" || err != nil || priceAt <= 0 {
+		c.String(http.StatusBadRequest, "Заполните все обязательные поля и укажите положительную цену")
+		return
 	}
 
-	p := structs.Product{
-		ID:          id,
-		Title:       title,
-		Description: description,
-		Price:       priceAt,
-		Category:    category,
-		Image:       imagePath,
-		Packaging:   packaging,
-		Text:        text,
-		Callback:    callback,
-	}
-
-	err = h.repo.UpdateProduct(p)
+	imagePath, err := h.saveUploadedImage(c, "image")
 	if err != nil {
-		h.app.Log.Error("Ошибка обновления: " + err.Error())
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка обновления"})
+		h.app.Log.Errorf("updateProduct: ошибка загрузки изображения: id=%d, ошибка=%v", id, err)
+		c.String(http.StatusBadRequest, "Не удалось загрузить изображение: %v", err)
+		return
 	}
+	newImageUploaded := imagePath != ""
+	if imagePath == "" {
+		imagePath = strings.TrimSpace(c.PostForm("existing_image"))
+		if imagePath != "" && !isSafeProductImagePath(imagePath) {
+			c.String(http.StatusBadRequest, "Некорректный путь к изображению")
+			return
+		}
+	}
+
+	text := fmt.Sprintf("⚖%s\n💵%s рублей", packaging, priceRaw)
+	callback := fmt.Sprintf("add_%s %s_1_%s", title, packaging, priceRaw)
+	product := structs.Product{
+		ID: id, Title: title, Description: description, Price: priceAt, Category: category,
+		Image: imagePath, Packaging: packaging, Text: text, Callback: callback,
+	}
+	if err := h.repo.UpdateProduct(product); err != nil {
+		h.app.Log.Errorf("updateProduct: ошибка обновления товара id=%d: %v", id, err)
+		if newImageUploaded {
+			_ = os.Remove(filepath.Join(UploadsDir, filepath.Base(imagePath)))
+		}
+		c.String(http.StatusInternalServerError, "Не удалось обновить товар")
+		return
+	}
+	h.app.Log.Infof("updateProduct: товар обновлён: id=%d, название=%q", id, title)
 	c.Redirect(http.StatusSeeOther, "/product")
+}
+
+// saveUploadedImage проверяет размер и формат файла, сохраняет обработанную копию с безопасным именем.
+func (h *Handler) saveUploadedImage(c *gin.Context, fieldName string) (string, error) {
+	file, err := c.FormFile(fieldName)
+	if err == http.ErrMissingFile {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("не удалось прочитать файл: %w", err)
+	}
+	if file.Size <= 0 || file.Size > 8<<20 {
+		return "", fmt.Errorf("размер файла должен быть от 1 байта до 8 МБ")
+	}
+	ext := strings.ToLower(filepath.Ext(file.Filename))
+	if ext != ".jpg" && ext != ".jpeg" && ext != ".png" {
+		return "", fmt.Errorf("поддерживаются только JPG и PNG")
+	}
+	opened, err := file.Open()
+	if err != nil {
+		return "", fmt.Errorf("не удалось открыть загруженный файл: %w", err)
+	}
+	imageConfig, _, decodeErr := image.DecodeConfig(opened)
+	closeErr := opened.Close()
+	if decodeErr != nil {
+		return "", fmt.Errorf("файл не является корректным изображением: %w", decodeErr)
+	}
+	if closeErr != nil {
+		return "", fmt.Errorf("не удалось закрыть загруженный файл: %w", closeErr)
+	}
+	if imageConfig.Width <= 0 || imageConfig.Height <= 0 || int64(imageConfig.Width)*int64(imageConfig.Height) > 40_000_000 {
+		return "", fmt.Errorf("слишком большие размеры изображения")
+	}
+	if err := os.MkdirAll(UploadsDir, 0o755); err != nil {
+		return "", fmt.Errorf("не удалось создать каталог загрузок: %w", err)
+	}
+	tmpPath := filepath.Join(UploadsDir, fmt.Sprintf("tmp_%d%s", time.Now().UnixNano(), ext))
+	if err := c.SaveUploadedFile(file, tmpPath); err != nil {
+		return "", fmt.Errorf("не удалось сохранить временный файл: %w", err)
+	}
+	defer func() { _ = os.Remove(tmpPath) }()
+	src, err := imaging.Open(tmpPath)
+	if err != nil {
+		return "", fmt.Errorf("файл не является корректным изображением: %w", err)
+	}
+	if src.Bounds().Dx() <= 0 || src.Bounds().Dy() <= 0 || int64(src.Bounds().Dx())*int64(src.Bounds().Dy()) > 40_000_000 {
+		return "", fmt.Errorf("слишком большие размеры изображения")
+	}
+	dst := imaging.Fill(src, 400, 400, imaging.Center, imaging.Lanczos)
+	filename := fmt.Sprintf("img_%d.jpg", time.Now().UnixNano())
+	finalPath := filepath.Join(UploadsDir, filename)
+	if err := imaging.Save(dst, finalPath); err != nil {
+		_ = os.Remove(finalPath)
+		return "", fmt.Errorf("не удалось обработать изображение: %w", err)
+	}
+	return "uploads/" + filename, nil
+}
+
+func isSafeProductImagePath(path string) bool {
+	clean := filepath.ToSlash(filepath.Clean(filepath.FromSlash(path)))
+	if clean != path || strings.Contains(path, "..") {
+		return false
+	}
+	return strings.HasPrefix(path, "uploads/") || strings.HasPrefix(path, "jpeg/")
 }
 
 func (h *Handler) deleteProduct(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	if err != nil || id <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Некорректный ID товара"})
 		return
 	}
 	err = h.repo.DeleteProduct(id)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		h.app.Log.Errorf("deleteProduct: ошибка удаления товара id=%d: %v", id, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Не удалось удалить товар"})
 		return
 	}
+	h.app.Log.Infof("deleteProduct: товар удалён: id=%d", id)
 	c.Redirect(http.StatusSeeOther, "/product")
 }
 

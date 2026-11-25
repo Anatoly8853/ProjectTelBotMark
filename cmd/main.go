@@ -9,6 +9,7 @@ import (
 	"ProjectTelBotMark/internal/structs"
 	"fmt"
 	"os"
+	"strings"
 
 	slogavp "github.com/Anatoly8853/slog-avp/v2"
 
@@ -19,7 +20,7 @@ func main() {
 	// Настраиваем логгер
 	app, err := slogavp.New(
 		slogavp.WithConsole(false),
-		slogavp.WithLogDir("var/log/myapp"),
+		slogavp.WithLogDir("log"),
 	)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "не удалось настроить логгер: %v\n", err)
@@ -28,6 +29,10 @@ func main() {
 	defer app.Close()
 
 	cfg := config.LoadConfig(app)
+	if strings.TrimSpace(cfg.AdminUsername) == "" || len(cfg.AdminPassword) < 12 {
+		app.Log.Error("Не заданы ADMIN_USERNAME и ADMIN_PASSWORD (не менее 12 символов). Добавьте их в app.env перед запуском.")
+		return
+	}
 
 	bot, err := tgbotapi.NewBotAPI(cfg.TGtoken)
 	if err != nil {
@@ -40,24 +45,7 @@ func main() {
 	}
 
 	repo := dataSources.NewRepository(db, app)
-	app.Log.Info("Все норм")
-	/*
-		// 1. Чтение файла JSON
-		jsonData, er := os.ReadFile("data.json")
-		if er != nil {
 
-			app.Log.Fatalf("Ошибка чтения файла JSON: %v", er)
-
-		}
-
-		// 2. Распаковка данных
-		err = json.Unmarshal(jsonData, &structs.Categories)
-		if err != nil {
-
-			app.Log.Fatalf("Ошибка распаковки JSON: %v", err)
-
-		}
-	*/
 	cat, err := repo.GetCategoriesWithProducts()
 	if err != nil {
 		app.Log.Error("GetCategoriesWithProducts", err)
@@ -67,7 +55,7 @@ func main() {
 
 	defer repo.CloseDB()
 
-	bot.Debug = false //false //true   // выводим лог или нет
+	bot.Debug = true //false //true   // выводим лог или нет
 
 	_, err = repo.GetUsers()
 	if err != nil {
@@ -85,6 +73,6 @@ func main() {
 	messageservice.StartDailyCheck()
 
 	// Запускаем сервер
-	haydler := routers.NewGinRouter(repo, app, bot)
+	haydler := routers.NewGinRouter(repo, app, bot, cfg)
 	haydler.GinRouter()
 }

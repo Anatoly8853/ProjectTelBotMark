@@ -18,16 +18,18 @@ type MessageInfo struct {
 
 // Purchase товары.
 type Purchase struct {
+	ID       int64  `json:"id"`
 	Item     string `json:"item"`
 	Quantity int    `json:"quantity"`
-	Cost     int    `json:"cost"` // Стоимость одного товара
+	Cost     int    `json:"cost"` // Цена одной единицы товара
 }
 
 // ButtonData Кнопки.
 type ButtonData struct {
-	Text     string `json:"text,omitempty"`
-	Callback string `json:"callback,omitempty"`
-	Photo    string `json:"photo,omitempty"`
+	Text             string `json:"text,omitempty"`
+	Callback         string `json:"callback,omitempty"`
+	Photo            string `json:"photo,omitempty"`
+	FavoriteCallback string `json:"favorite_callback,omitempty"`
 }
 
 // Category представляет категорию с именем и кнопками.
@@ -61,6 +63,7 @@ type Webnums struct {
 }
 
 type OrderDb struct {
+	OrderID         int64  `json:"order_id,omitempty"`
 	UserID          User   `json:"user_id,omitempty"`
 	FullName        string `json:"full_name,omitempty"`
 	DateTime        string `json:"date_time,omitempty"`
@@ -68,6 +71,7 @@ type OrderDb struct {
 	DeliveryDate    string `json:"delivery_date,omitempty"`
 	PhoneNumber     string `json:"phone_number,omitempty"`
 	DeliveryAddress string `json:"delivery_address,omitempty"`
+	Comment         string `json:"comment,omitempty"`
 	Purchase        Purchase
 }
 

@@ -3,6 +3,7 @@ package botTelegram
 import (
 	"ProjectTelBotMark/internal/bychat"
 	"ProjectTelBotMark/internal/structs"
+	"fmt"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
@@ -21,32 +22,40 @@ var BasketMessages = make(map[int64]int)
 
 // photoMessagesDelete удаляем предыдущее сообщение с фото, если оно есть.
 func (m *MessageService) photoMessagesDelete(chatID int64) {
-
-	// Удаляем предыдущее сообщение с фото, если оно есть
-	if msgID, ok := photoMessagesToDelete[chatID]; ok {
-		deleteMessage := tgbotapi.NewDeleteMessage(chatID, msgID)
-		if _, err := m.bot.Send(deleteMessage); err != nil {
-			//logger.Errorf("Ошибка при удалении предыдущего сообщения с фото: %v", err)
-		} else {
-			delete(photoMessagesToDelete, chatID) // Удаляем запись из карты после успешного удаления
-		}
+	basketMu.Lock()
+	msgID := photoMessagesToDelete[chatID]
+	basketMu.Unlock()
+	if msgID == 0 {
+		return
 	}
-
+	if _, err := m.bot.Request(tgbotapi.NewDeleteMessage(chatID, msgID)); err != nil {
+		m.app.Log.Errorf("photoMessagesDelete: ошибка удаления фото: chatID=%d, messageID=%d, ошибка=%v", chatID, msgID, err)
+		return
+	}
+	basketMu.Lock()
+	if photoMessagesToDelete[chatID] == msgID {
+		delete(photoMessagesToDelete, chatID)
+	}
+	basketMu.Unlock()
 }
 
 // keyboardMessagesDelete удаляем предыдущее сообщение с клавиатурой, если оно есть.
 func (m *MessageService) keyboardMessagesDelete(chatID int64) {
-
-	// Удаляем предыдущее сообщение с клавиатурой, если оно есть
-	if msgID, ok := keyboardMessagesToDelete[chatID]; ok {
-		deleteMessage := tgbotapi.NewDeleteMessage(chatID, msgID)
-		if _, err := m.bot.Send(deleteMessage); err != nil {
-			//logger.Errorf("Ошибка при удалении предыдущего сообщения с клавиатурой: %v", err)
-		} else {
-			delete(keyboardMessagesToDelete, chatID) // Удаляем запись из карты после успешного удаления
-		}
+	basketMu.Lock()
+	msgID := keyboardMessagesToDelete[chatID]
+	basketMu.Unlock()
+	if msgID == 0 {
+		return
 	}
-
+	if _, err := m.bot.Request(tgbotapi.NewDeleteMessage(chatID, msgID)); err != nil {
+		m.app.Log.Errorf("keyboardMessagesDelete: ошибка удаления клавиатуры: chatID=%d, messageID=%d, ошибка=%v", chatID, msgID, err)
+		return
+	}
+	basketMu.Lock()
+	if keyboardMessagesToDelete[chatID] == msgID {
+		delete(keyboardMessagesToDelete, chatID)
+	}
+	basketMu.Unlock()
 }
 
 // clearOrder Функция для очистки данных заказа по chatID.
@@ -55,7 +64,15 @@ func (m *MessageService) clearOrder(chatID int64) {
 		m.app.Log.Errorf("нет данных для обработки chatID = %v", chatID)
 		return
 	}
+	bychat.OrdersMu.Lock()
 	delete(bychat.Orders, chatID)
+	bychat.OrdersMu.Unlock()
+	orderDetailsMu.Lock()
+	delete(orderDetails, chatID)
+	orderDetailsMu.Unlock()
+	commentPendingMu.Lock()
+	delete(commentPending, chatID)
+	commentPendingMu.Unlock()
 }
 
 // deletePreviousMessages Удаляем сообщения.
@@ -66,7 +83,10 @@ func (m *MessageService) deletePreviousMessages(chatID int64, messageID int) {
 	}
 
 	// Проверяем, есть ли сообщения для удаления в этом чате
-	if _, found := messagesToDelete[chatID]; found {
+	basketMu.Lock()
+	_, found := messagesToDelete[chatID]
+	basketMu.Unlock()
+	if found {
 		// Проходимся по каждому идентификатору сообщения и удаляем его
 		deleteMsg := tgbotapi.NewDeleteMessage(chatID, messageID)
 		if _, err := m.bot.Request(deleteMsg); err != nil {
@@ -100,42 +120,51 @@ func (m *MessageService) deleteMessages(chatID int64) {
 		m.app.Log.Errorf("нет данных для обработки chatID = %v", chatID)
 		return
 	}
-	// Удаление сообщения
-	messageIDs := BasketMessages[chatID]
-	deleteMsg := tgbotapi.NewDeleteMessage(chatID, messageIDs)
-	if _, err := m.bot.Request(deleteMsg); err != nil {
-		//log.Panic(err) // Обработка ошибки по вашему усмотрению
-	}
-}
-
-// DeleteBasketContents Очищаем корзину.
-func (m *MessageService) DeleteBasketContents(chatID int64) {
-	if chatID == 0 {
-		m.app.Log.Errorf("нет данных для обработки chatID = %v", chatID)
-		return
-	}
-
-	// Очистка содержимого корзины пользователя
-	structs.Baskets[chatID] = nil // Или 	baskets[chatID] = []Purchase{} //для обнуления без удаления ключа
-
-	// Удаление сообщения с содержимым корзины
-	if BasketMessages[chatID] == 0 {
-		m.app.Log.Errorf("нет данных для обработки BasketMessages[chatID] = %v", BasketMessages[chatID])
-		return
-	}
-
+	// Получаем ID сообщения под общей блокировкой.
+	basketMu.Lock()
 	messageID := BasketMessages[chatID]
-
-	if messageID != 0 {
-		deleteMsg := tgbotapi.NewDeleteMessage(chatID, messageID)
-		if _, err := m.bot.Request(deleteMsg); err != nil {
-			m.app.Log.Errorf("Удаление сообщения с содержимым корзины %v", err)
-		}
-		// После успешного удаления сообщения можно обнулить идентификатор сообщения в basketMessages
+	basketMu.Unlock()
+	if messageID == 0 {
+		m.app.Log.Debugf("deleteMessages: нет сохранённого ID сообщения: chatID=%d", chatID)
+		return
+	}
+	if _, err := m.bot.Request(tgbotapi.NewDeleteMessage(chatID, messageID)); err != nil {
+		m.app.Log.Errorf("deleteMessages: ошибка удаления сообщения: chatID=%d, messageID=%d, ошибка=%v", chatID, messageID, err)
+		return
+	}
+	basketMu.Lock()
+	if BasketMessages[chatID] == messageID {
 		BasketMessages[chatID] = 0
 	}
+	basketMu.Unlock()
+}
 
-	// Отправка подтверждающего сообщения пользователю, что корзина была очищена
+// DeleteBasketContents очищает корзину пользователя.
+func (m *MessageService) DeleteBasketContents(chatID int64) {
+	if chatID == 0 {
+		err := fmt.Errorf("некорректный chatID: %d", chatID)
+		m.app.Log.Error("DeleteBasketContents", err.Error())
+		return
+	}
+
+	basketMu.Lock()
+	_, basketExists := structs.Baskets[chatID]
+	delete(structs.Baskets, chatID)
+	messageID := BasketMessages[chatID]
+	BasketMessages[chatID] = 0
+	basketMu.Unlock()
+
+	if !basketExists {
+		m.app.Log.Warnf("DeleteBasketContents: корзина уже была пустой: chatID=%d", chatID)
+	} else {
+		m.app.Log.Infof("DeleteBasketContents: корзина очищена: chatID=%d", chatID)
+	}
+
+	if messageID != 0 {
+		if _, err := m.bot.Request(tgbotapi.NewDeleteMessage(chatID, messageID)); err != nil {
+			m.app.Log.Errorf("DeleteBasketContents: ошибка удаления сообщения корзины: chatID=%d, messageID=%d, ошибка=%v", chatID, messageID, err)
+		}
+	}
+
 	m.sendMessage(chatID, "Корзина успешно очищена.")
-
 }

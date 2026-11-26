@@ -29,3 +29,10 @@ func TestNormalizeProductTitleRemovesRepeatedFirstWord(t *testing.T) {
 		t.Fatalf("normalizeProductTitle() = %q, want %q", got, want)
 	}
 }
+
+func TestFormatProductTitleIgnoresEmojiWhenComparingCategory(t *testing.T) {
+	got := formatProductTitle("Морковка", "🥕Морковка", "🥕Морковка 1 кг")
+	if want := "Морковка 1 кг"; got != want {
+		t.Fatalf("formatProductTitle() = %q, want %q", got, want)
+	}
+}

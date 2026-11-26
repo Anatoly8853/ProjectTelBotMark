@@ -207,7 +207,6 @@ func (r *Repository) HandlerProductsPage(page structs.PageProduct) ([]structs.Pr
 	return products, page, nil
 }
 
-// AddProduct добавляем продукты.
 // upsertProductReferences создаёт или получает ID категории, подкатегории и фотографии товара.
 func upsertProductReferences(tx *sql.Tx, productID int, title, category, image string) (int64, int64, int64, error) {
 	categoryID, err := insertOrUpdateCategory(tx, category)
@@ -228,6 +227,8 @@ func upsertProductReferences(tx *sql.Tx, productID int, title, category, image s
 	return categoryID, subcategoryID, photoID, nil
 }
 
+// AddProduct добавляет товар и его фасовку.
+// AddProduct добавляет товар и его фасовку.
 func (r *Repository) AddProduct(product structs.Product) error {
 	if strings.TrimSpace(product.Title) == "" {
 		return errors.New("product title cannot be empty")
@@ -707,7 +708,7 @@ func insertOrUpdatePhoto(tx *sql.Tx, productID int, newImage string) (int64, err
 
 	// Проверяем — есть ли уже такое фото в таблице photo
 	var newPhotoID int64
-	err = tx.QueryRowContext(ctx, `SELECT id FROM photo WHERE name = ?`, newImage).Scan(&newPhotoID)
+	err := tx.QueryRowContext(ctx, `SELECT id FROM photo WHERE name = ?`, newImage).Scan(&newPhotoID)
 	if err == sql.ErrNoRows {
 		// Добавляем новое фото
 		res, err := tx.ExecContext(ctx, `INSERT INTO photo(name) VALUES (?)`, newImage)

@@ -561,7 +561,6 @@ func (m *MessageService) MainOrdersByUserID(userID int64) {
 	}
 
 	if len(orders) > 0 {
-
 		var msgBuilder strings.Builder
 		var currentOrderID int64
 
@@ -572,38 +571,35 @@ func (m *MessageService) MainOrdersByUserID(userID int64) {
 				return
 			}
 
-			// Форматирование времени в нужный формат
 			formattedDeliveryDate := t.Format(`02.01.2006`)
 
-			// Группировка по дате доставки
 			if order.OrderID != currentOrderID {
 				msgBuilder.WriteString(fmt.Sprintf(`Дата заказа: %v
-`, order.DateTime)
+`, order.DateTime))
 				msgBuilder.WriteString(fmt.Sprintf(`Дата доставки: %v
-`, formattedDeliveryDate)
+`, formattedDeliveryDate))
 				msgBuilder.WriteString(fmt.Sprintf(`Заказчик: %v
-`, order.FullName)
+`, order.FullName))
 				msgBuilder.WriteString(fmt.Sprintf(`Телефон для связи: %v
-`, order.PhoneNumber)
+`, order.PhoneNumber))
 				msgBuilder.WriteString(fmt.Sprintf(`%s %v
-`, DeliveryAddress, order.DeliveryAddress)
+`, DeliveryAddress, order.DeliveryAddress))
 				if strings.TrimSpace(order.Comment) != "" {
-					msgBuilder.WriteString(fmt.Sprintf("Комментарий: %s\n", order.Comment)
+					msgBuilder.WriteString(fmt.Sprintf("Комментарий: %s\n", order.Comment))
 				}
-				msgText += `Список заказанных товаров :
-`
+				msgBuilder.WriteString(`Список заказанных товаров :
+`)
 				currentOrderID = order.OrderID
 			}
 
 			msgBuilder.WriteString(fmt.Sprintf(`%v кол-во: %v цена: %v руб.
-`, normalizeProductTitle(order.Purchase.Item), order.Purchase.Quantity, order.Purchase.Cost)
+`, normalizeProductTitle(order.Purchase.Item), order.Purchase.Quantity, order.Purchase.Cost))
 
 			if i == len(orders)-1 || (i+1 < len(orders) && orders[i+1].OrderID != currentOrderID) {
 				msgBuilder.WriteString(fmt.Sprintf(`Общая стоимость:  %v руб.
-`, order.TotalCost)
-				msgText += `------------------------------------------------------------
-`
-
+`, order.TotalCost))
+				msgBuilder.WriteString(`------------------------------------------------------------
+`)
 			}
 		}
 		m.deleteMessages(userID)

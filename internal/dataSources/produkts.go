@@ -404,7 +404,7 @@ func (r *Repository) UpdateProduct(p structs.Product) (err error) {
 		var count int
 		err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM products_categories WHERE category_id = ?`, oldCatID).Scan(&count)
 		if err != nil {
-			r.app.Log.Errorf("failed to count category: %w", err)
+			r.app.Log.Errorf("failed to count category: %v", err)
 			return fmt.Errorf("failed to check category usage: %w", err)
 		}
 		if count == 0 {

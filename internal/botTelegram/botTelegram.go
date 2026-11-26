@@ -102,7 +102,7 @@ func BuildPurchaseReport(purchases []structs.Purchase) string {
 		lineTotal := purchase.Cost * purchase.Quantity
 		fmt.Fprintf(&builder,
 			"📦 %s\nКоличество: %d\nЦена за единицу: %d руб.\nСумма: %d руб.\n\n",
-			purchase.Item, purchase.Quantity, purchase.Cost, lineTotal,
+			normalizeProductTitle(purchase.Item), purchase.Quantity, purchase.Cost, lineTotal,
 		)
 	}
 	fmt.Fprintf(&builder, "💰 Итого: %d руб.", totalCost)
@@ -122,8 +122,26 @@ func formatProductTitle(category, subcategory, item string) string {
 		return item
 	}
 
-	suffix := strings.TrimSpace(strings.TrimPrefix(item, subcategory))
+	suffix := item
+	if len(item) >= len(subcategory) && strings.EqualFold(item[:len(subcategory)], subcategory) {
+		suffix = strings.TrimSpace(item[len(subcategory):])
+	}
+
+	// Если категория и подкатегория совпадают, выводим название только один раз.
+	if strings.EqualFold(category, subcategory) {
+		return strings.TrimSpace(category + " " + suffix)
+	}
+
 	return strings.TrimSpace(category + " " + strings.ToLower(subcategory) + " " + suffix)
+}
+
+// normalizeProductTitle исправляет повтор первого слова в ранее сохранённых заказах.
+func normalizeProductTitle(item string) string {
+	words := strings.Fields(strings.TrimSpace(item))
+	if len(words) > 1 && strings.EqualFold(words[0], words[1]) {
+		words = append(words[:1], words[2:]...)
+	}
+	return strings.Join(words, " ")
 }
 
 // addPurchaseToBasket добавляет позицию к снимку корзины и проверяет общую сумму.
@@ -578,7 +596,7 @@ func (m *MessageService) MainOrdersByUserID(userID int64) {
 			}
 
 			msgText += fmt.Sprintf(`%v кол-во: %v цена: %v руб.
-`, order.Purchase.Item, order.Purchase.Quantity, order.Purchase.Cost)
+`, normalizeProductTitle(order.Purchase.Item), order.Purchase.Quantity, order.Purchase.Cost)
 
 			if i == len(orders)-1 || (i+1 < len(orders) && orders[i+1].OrderID != currentOrderID) {
 				msgText += fmt.Sprintf(`Общая стоимость:  %v руб.

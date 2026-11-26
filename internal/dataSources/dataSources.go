@@ -1164,27 +1164,3 @@ func (r *Repository) GetByUserID(userID int64) structs.OrderDb {
 
 	return o
 }
-
-// groupPurchases объединяет только одинаковые товары с одинаковой ценой.
-func groupPurchases(purchases []structs.Purchase) map[string]structs.Purchase {
-	groupedPurchases := make(map[string]structs.Purchase)
-	for _, purchase := range purchases {
-		key := fmt.Sprintf("%s\x00%d", purchase.Item, purchase.Cost)
-		if existing, found := groupedPurchases[key]; found {
-			existing.Quantity += purchase.Quantity
-			groupedPurchases[key] = existing
-		} else {
-			groupedPurchases[key] = purchase
-		}
-	}
-	return groupedPurchases
-}
-
-// calculateTotalCost рассчитывает стоимость с учётом количества.
-func calculateTotalCost(groupedPurchases map[string]structs.Purchase) int {
-	totalCost := 0
-	for _, purchase := range groupedPurchases {
-		totalCost += purchase.Cost * purchase.Quantity
-	}
-	return totalCost
-}

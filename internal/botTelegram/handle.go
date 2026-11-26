@@ -949,6 +949,8 @@ func (m *MessageService) handleCallbackQueryData(cfg config.Config, update tgbot
 			return
 		}
 		for i := range purchases {
+			// Старые заказы могли содержать повтор категории и подкатегории в названии.
+			purchases[i].Item = normalizeProductTitle(purchases[i].Item)
 			if purchases[i].Quantity <= 0 || purchases[i].Cost <= 0 || strings.TrimSpace(purchases[i].Item) == "" {
 				m.app.Log.Errorf("handleCallbackQueryData: в предыдущем заказе некорректная позиция: chatID=%d, товар=%q", chatID, purchases[i].Item)
 				answerCallback("В предыдущем заказе есть некорректный товар")

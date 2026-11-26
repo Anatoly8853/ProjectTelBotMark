@@ -100,12 +100,12 @@ func BuildPurchaseReport(purchases []structs.Purchase) string {
 	var builder strings.Builder
 	for _, purchase := range purchases {
 		lineTotal := purchase.Cost * purchase.Quantity
-		fmt.Fprintf(&builder,
+		builder.WriteString(fmt.Sprintf(
 			"📦 %s\nКоличество: %d\nЦена за единицу: %d руб.\nСумма: %d руб.\n\n",
-			purchase.Item, purchase.Quantity, purchase.Cost, lineTotal,
-		)
+			normalizeProductTitle(purchase.Item), purchase.Quantity, purchase.Cost, lineTotal,
+		))
 	}
-	fmt.Fprintf(&builder, "💰 Итого: %d руб.", totalCost)
+	builder.WriteString(fmt.Sprintf("💰 Итого: %d руб.", totalCost))
 	return builder.String()
 }
 
@@ -122,8 +122,33 @@ func formatProductTitle(category, subcategory, item string) string {
 		return item
 	}
 
-	suffix := strings.TrimSpace(strings.TrimPrefix(item, subcategory))
+	suffix := item
+	if len(item) >= len(subcategory) && strings.EqualFold(item[:len(subcategory)], subcategory) {
+		suffix = strings.TrimSpace(item[len(subcategory):])
+	} else {
+		// В callback и display_name emoji могут отличаться, поэтому сравниваем очищенные варианты.
+		cleanItem := dataSources.StripEmojis(item)
+		cleanSubcategory := dataSources.StripEmojis(subcategory)
+		if len(cleanItem) >= len(cleanSubcategory) && strings.EqualFold(cleanItem[:len(cleanSubcategory)], cleanSubcategory) {
+			suffix = strings.TrimSpace(cleanItem[len(cleanSubcategory):])
+		}
+	}
+
+	// Если категория и подкатегория совпадают, выводим название только один раз.
+	if strings.EqualFold(dataSources.StripEmojis(category), dataSources.StripEmojis(subcategory)) {
+		return strings.TrimSpace(category + " " + suffix)
+	}
+
 	return strings.TrimSpace(category + " " + strings.ToLower(subcategory) + " " + suffix)
+}
+
+// normalizeProductTitle исправляет повтор первого слова в ранее сохранённых заказах.
+func normalizeProductTitle(item string) string {
+	words := strings.Fields(strings.TrimSpace(item))
+	if len(words) > 1 && strings.EqualFold(words[0], words[1]) {
+		words = append(words[:1], words[2:]...)
+	}
+	return strings.Join(words, " ")
 }
 
 // addPurchaseToBasket добавляет позицию к снимку корзины и проверяет общую сумму.
@@ -507,7 +532,7 @@ func (m *MessageService) MainFavoritesByUserID(userID int64) {
 	rows := make([][]tgbotapi.InlineKeyboardButton, 0, len(products)+1)
 	for _, product := range products {
 		productTitle := formatProductTitle(product.Category, product.Title, "")
-		fmt.Fprintf(&builder, "• %s, %s — %d руб.\n", productTitle, product.Packaging, product.Price)
+		builder.WriteString(fmt.Sprintf("• %s, %s — %d руб.\n", productTitle, product.Packaging, product.Price))
 		buttonText := truncateButtonText("⭐ "+productTitle+" "+product.Packaging, 60)
 		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData(buttonText, product.Callback),
@@ -543,8 +568,7 @@ func (m *MessageService) MainOrdersByUserID(userID int64) {
 	}
 
 	if len(orders) > 0 {
-
-		var msgText string
+		var msgBuilder strings.Builder
 		var currentOrderID int64
 
 		for i, order := range orders {
@@ -554,42 +578,39 @@ func (m *MessageService) MainOrdersByUserID(userID int64) {
 				return
 			}
 
-			// Форматирование времени в нужный формат
 			formattedDeliveryDate := t.Format(`02.01.2006`)
 
-			// Группировка по дате доставки
 			if order.OrderID != currentOrderID {
-				msgText += fmt.Sprintf(`Дата заказа: %v
-`, order.DateTime)
-				msgText += fmt.Sprintf(`Дата доставки: %v
-`, formattedDeliveryDate)
-				msgText += fmt.Sprintf(`Заказчик: %v
-`, order.FullName)
-				msgText += fmt.Sprintf(`Телефон для связи: %v
-`, order.PhoneNumber)
-				msgText += fmt.Sprintf(`%s %v
-`, DeliveryAddress, order.DeliveryAddress)
+				msgBuilder.WriteString(fmt.Sprintf(`Дата заказа: %v
+`, order.DateTime))
+				msgBuilder.WriteString(fmt.Sprintf(`Дата доставки: %v
+`, formattedDeliveryDate))
+				msgBuilder.WriteString(fmt.Sprintf(`Заказчик: %v
+`, order.FullName))
+				msgBuilder.WriteString(fmt.Sprintf(`Телефон для связи: %v
+`, order.PhoneNumber))
+				msgBuilder.WriteString(fmt.Sprintf(`%s %v
+`, DeliveryAddress, order.DeliveryAddress))
 				if strings.TrimSpace(order.Comment) != "" {
-					msgText += fmt.Sprintf("Комментарий: %s\n", order.Comment)
+					msgBuilder.WriteString(fmt.Sprintf("Комментарий: %s\n", order.Comment))
 				}
-				msgText += `Список заказанных товаров :
-`
+				msgBuilder.WriteString(`Список заказанных товаров :
+`)
 				currentOrderID = order.OrderID
 			}
 
-			msgText += fmt.Sprintf(`%v кол-во: %v цена: %v руб.
-`, order.Purchase.Item, order.Purchase.Quantity, order.Purchase.Cost)
+			msgBuilder.WriteString(fmt.Sprintf(`%v кол-во: %v цена: %v руб.
+`, normalizeProductTitle(order.Purchase.Item), order.Purchase.Quantity, order.Purchase.Cost))
 
 			if i == len(orders)-1 || (i+1 < len(orders) && orders[i+1].OrderID != currentOrderID) {
-				msgText += fmt.Sprintf(`Общая стоимость:  %v руб.
-`, order.TotalCost)
-				msgText += `------------------------------------------------------------
-`
-
+				msgBuilder.WriteString(fmt.Sprintf(`Общая стоимость:  %v руб.
+`, order.TotalCost))
+				msgBuilder.WriteString(`------------------------------------------------------------
+`)
 			}
 		}
 		m.deleteMessages(userID)
-		if err := m.sendMessageWithKeyboard(userID, msgText, ordersNavigationKeyboard(true)); err != nil {
+		if err := m.sendMessageWithKeyboard(userID, msgBuilder.String(), ordersNavigationKeyboard(true)); err != nil {
 			m.app.Log.Errorf("MainOrdersByUserID: ошибка отправки заказов: userID=%d, ошибка=%v", userID, err)
 		}
 
@@ -602,7 +623,7 @@ func (m *MessageService) MainOrdersByUserID(userID int64) {
 }
 
 // addOrUpdateOrderField для добавления или обновления конкретного поля заказа.
-func (m *MessageService) addOrUpdateOrderField(chatID int64, fieldName string, value interface{}) error {
+func (m *MessageService) addOrUpdateOrderField(chatID int64, fieldName string, value any) error {
 	if chatID == 0 {
 		m.app.Log.Errorf(`нет данных для обработки chatID = %v`, chatID)
 		return errors.New(`нет chatID`)
@@ -819,7 +840,7 @@ func (m *MessageService) createCategoryMessage(update tgbotapi.Update, categoryN
 		photo := tgbotapi.NewInputMediaPhoto(tgbotapi.FilePath(UploadsDir + `/` + categoryData.Photo))
 
 		// Создаем медиагруппу с изображением и URL
-		mediaGroup := tgbotapi.NewMediaGroup(chatID, []interface{}{photo})
+		mediaGroup := tgbotapi.NewMediaGroup(chatID, []any{photo})
 
 		// Отправляем медиагруппу
 		sentMsgs, err := m.bot.SendMediaGroup(mediaGroup)
@@ -884,9 +905,9 @@ func SeparateEmojiAndText(text string) (string, string) {
 // joinStrings Объединяем все строки из среза в одну строку из update.Message.Text.
 func joinStrings(str []string) string {
 	// Объединяем все строки из среза в одну строку
-	result := ``
+	var builder strings.Builder
 	for _, s := range str {
-		result += s
+		builder.WriteString(s)
 	}
-	return result
+	return builder.String()
 }

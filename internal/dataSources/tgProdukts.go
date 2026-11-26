@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"strings"
 	"unicode"
 
@@ -83,9 +84,7 @@ func (r *Repository) GetCategoriesWithProducts() (map[string]structs.Category, e
 
 	// 🔄 Постраничная разбивка "Старт" + "Стр. 2", "Стр. 3", ...
 	paginated := paginateCategories(mainCategories)
-	for key, val := range paginated {
-		jsonResult[key] = val
-	}
+	maps.Copy(jsonResult, paginated)
 
 	// 📦 JSON отладка — можно закомментировать
 	_, err = json.MarshalIndent(jsonResult, "", "  ")
@@ -125,10 +124,7 @@ func paginateCategories(mainCategories map[string]structs.Category) map[string]s
 
 	// Разбиваем на страницы по 6 штук
 	for i := 0; i < len(currentButtons); i += maxButtonsPerPage {
-		end := i + maxButtonsPerPage
-		if end > len(currentButtons) {
-			end = len(currentButtons)
-		}
+		end := min(i+maxButtonsPerPage, len(currentButtons))
 		page := structs.Category{
 			CategoryName: fmt.Sprintf("Стр %d", len(pages)+1),
 			Buttons:      currentButtons[i:end],
@@ -190,7 +186,6 @@ func paginateCategories(mainCategories map[string]structs.Category) map[string]s
 	return result
 }
 
-// getDefaultButtonsM Возвращает стандартные кнопки меню.
 // GetDefaultButtonsM возвращает стандартные кнопки меню для внешних пакетов.
 func (r *Repository) GetDefaultButtonsM() []structs.ButtonData {
 	return getDefaultButtonsM()

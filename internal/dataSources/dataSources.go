@@ -417,7 +417,8 @@ func (r *Repository) getOrInsertValues(tx *sql.Tx, tables []string, columns []st
 				insertQuery.WriteString(", ")
 				valuesPlaceholders.WriteString(", ")
 			}
-			fmt.Fprintf(&selectQuery, "%s = ?", column)
+			selectQuery.WriteString(column)
+			selectQuery.WriteString(" = ?")
 			insertQuery.WriteString(column)
 			valuesPlaceholders.WriteString("?")
 		}

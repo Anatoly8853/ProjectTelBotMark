@@ -228,7 +228,6 @@ func upsertProductReferences(tx *sql.Tx, productID int, title, category, image s
 }
 
 // AddProduct добавляет товар и его фасовку.
-// AddProduct добавляет товар и его фасовку.
 func (r *Repository) AddProduct(product structs.Product) error {
 	if strings.TrimSpace(product.Title) == "" {
 		return errors.New("product title cannot be empty")

@@ -125,6 +125,13 @@ func formatProductTitle(category, subcategory, item string) string {
 	suffix := item
 	if len(item) >= len(subcategory) && strings.EqualFold(item[:len(subcategory)], subcategory) {
 		suffix = strings.TrimSpace(item[len(subcategory):])
+	} else {
+		// В callback и display_name emoji могут отличаться, поэтому сравниваем очищенные варианты.
+		cleanItem := dataSources.StripEmojis(item)
+		cleanSubcategory := dataSources.StripEmojis(subcategory)
+		if len(cleanItem) >= len(cleanSubcategory) && strings.EqualFold(cleanItem[:len(cleanSubcategory)], cleanSubcategory) {
+			suffix = strings.TrimSpace(cleanItem[len(cleanSubcategory):])
+		}
 	}
 
 	// Если категория и подкатегория совпадают, выводим название только один раз.

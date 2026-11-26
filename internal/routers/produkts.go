@@ -83,7 +83,7 @@ func parseProductForm(c *gin.Context) (structs.Product, error) {
 	return structs.Product{
 		Title: title, Description: description, Price: price, Category: category,
 		Packaging: packaging,
-		Text:      fmt.Sprintf("⚖%s\\n💵%s рублей", packaging, priceRaw),
+		Text:      fmt.Sprintf("⚖%s\n💵%s рублей", packaging, priceRaw),
 		Callback:  fmt.Sprintf("add_%s %s_1_%s", title, packaging, priceRaw),
 	}, nil
 }
@@ -362,7 +362,12 @@ func (h *Handler) exportExcel(c *gin.Context) {
 			continue
 		}
 		for col, val := range row {
-			colName, _ := excelize.ColumnNumberToName(col + 1)
+			colName, err := excelize.ColumnNumberToName(col + 1)
+			if err != nil {
+				h.app.Log.Errorf("exportExcel: не удалось определить имя столбца %d: %v", col+1, err)
+				c.String(http.StatusInternalServerError, "Ошибка формирования Excel")
+				return
+			}
 			cell := colName + strconv.Itoa(rowNum)
 
 			if err := f.SetCellValue("Sheet1", cell, val); err != nil {

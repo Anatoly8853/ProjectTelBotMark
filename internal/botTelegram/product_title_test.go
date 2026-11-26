@@ -36,3 +36,10 @@ func TestFormatProductTitleIgnoresEmojiWhenComparingCategory(t *testing.T) {
 		t.Fatalf("formatProductTitle() = %q, want %q", got, want)
 	}
 }
+
+func TestFormatProductTitleWhenCallbackOmitsEmoji(t *testing.T) {
+	got := formatProductTitle("Морковка", "🥕Морковка", "Морковка 1 кг")
+	if want := "Морковка 1 кг"; got != want {
+		t.Fatalf("formatProductTitle() = %q, want %q", got, want)
+	}
+}

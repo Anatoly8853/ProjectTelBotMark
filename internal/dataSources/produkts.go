@@ -338,7 +338,7 @@ func (r *Repository) UpdateProduct(p structs.Product) (err error) {
 	ctx := context.Background()
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
-		r.app.Log.Errorf("failed to start transaction: %w", err)
+		r.app.Log.Errorf("failed to start transaction: %v", err)
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer func() {
@@ -373,7 +373,7 @@ func (r *Repository) UpdateProduct(p structs.Product) (err error) {
 	var oldCatID int64
 	err = tx.QueryRowContext(ctx, `SELECT category_id FROM products_categories WHERE id = ?`, p.ID).Scan(&oldCatID)
 	if err != nil {
-		r.app.Log.Errorf("failed to count category: %w", err)
+		r.app.Log.Errorf("failed to count category: %v", err)
 		return fmt.Errorf("failed to get old category: %w", err)
 	}
 
@@ -385,13 +385,13 @@ func (r *Repository) UpdateProduct(p structs.Product) (err error) {
 		newCatID, subID, newPhotoID, p.Packaging, p.Price, p.Text, p.Callback, p.ID,
 	)
 	if err != nil {
-		r.app.Log.Errorf("failed to update category: %w", err)
+		r.app.Log.Errorf("failed to update category: %v", err)
 		return fmt.Errorf("failed to update product: %w", err)
 	}
 
 	rowsAffected, err := res.RowsAffected()
 	if err != nil {
-		r.app.Log.Errorf("failed to check affected rows: %w", err)
+		r.app.Log.Errorf("failed to check affected rows: %v", err)
 		return fmt.Errorf("failed to check rows affected: %w", err)
 	}
 	if rowsAffected == 0 {
@@ -410,7 +410,7 @@ func (r *Repository) UpdateProduct(p structs.Product) (err error) {
 		if count == 0 {
 			_, err = tx.ExecContext(ctx, `DELETE FROM categories WHERE id = ?`, oldCatID)
 			if err != nil {
-				r.app.Log.Errorf("failed to delete category: %w", err)
+				r.app.Log.Errorf("failed to delete category: %v", err)
 				return fmt.Errorf("failed to delete unused category: %w", err)
 			}
 			r.app.Log.Infof("Deleted unused category with ID: %d", oldCatID)
@@ -419,7 +419,7 @@ func (r *Repository) UpdateProduct(p structs.Product) (err error) {
 
 	// --- 7. Commit
 	if err = tx.Commit(); err != nil {
-		r.app.Log.Errorf("failed to commit transaction: %w", err)
+		r.app.Log.Errorf("failed to commit transaction: %v", err)
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
@@ -530,8 +530,8 @@ func (r *Repository) DeleteProduct(productID int) error {
 	return nil
 }
 
-func (r *Repository) ExportExcel() ([]interface{}, error) {
-	var result []interface{}
+func (r *Repository) ExportExcel() ([]any, error) {
+	var result []any
 
 	rows, err := r.db.Query(`
 		SELECT 
@@ -563,7 +563,7 @@ func (r *Repository) ExportExcel() ([]interface{}, error) {
 			continue
 		}
 
-		entry := []interface{}{
+		entry := []any{
 			rowNum,
 			p.Title,
 			p.Price,

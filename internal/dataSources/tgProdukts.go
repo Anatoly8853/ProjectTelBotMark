@@ -94,7 +94,15 @@ func (r *Repository) GetCategoriesWithProducts() (map[string]structs.Category, e
 
 	// 🧩 Преобразуем в финальную структуру
 	final := make(map[string]structs.Category)
-	maps.Copy(final, jsonResult)
+	for key, val := range jsonResult {
+		final[key] = structs.Category{
+			CategoryName: val.CategoryName,
+			CategoryMsg:  val.CategoryMsg,
+			Photo:        val.Photo,
+			Buttons:      val.Buttons,
+			ButtonsM:     val.ButtonsM,
+		}
+	}
 
 	return final, nil
 }

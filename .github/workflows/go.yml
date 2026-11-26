@@ -1,0 +1,43 @@
+name: Go CI
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Проверка Go-кода
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Получить исходный код
+        uses: actions/checkout@v4
+
+      - name: Установить Go из go.mod
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Проверить форматирование gofmt
+        run: |
+          files="$(gofmt -l $(git ls-files '*.go'))"
+          if [ -n "$files" ]; then
+            echo "Следующие Go-файлы не отформатированы:"
+            echo "$files"
+            exit 1
+          fi
+
+      - name: Запустить тесты
+        run: go test ./...
+
+      - name: Проверить код через go vet
+        run: go vet ./...

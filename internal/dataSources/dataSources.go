@@ -248,7 +248,7 @@ func InitDB(app *slogavp.Application) (db *sql.DB, err error) {
 	for rows.Next() {
 		var cid, notNull, primaryKey int
 		var name, columnType string
-		var defaultValue interface{}
+		var defaultValue any
 		if err = rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
 			_ = rows.Close()
 			app.Log.Errorf("Ошибка чтения структуры tg_user_orders_date: %v", err)
@@ -393,70 +393,63 @@ func (r *Repository) UserID() []structs.User {
 }
 
 // getOrInsertValues Функция для получения или вставки значений в таблицы базы данных.
-func (r *Repository) getOrInsertValues(tx *sql.Tx, tables []string, columns []string, values []interface{}) ([]int64, error) {
+func (r *Repository) getOrInsertValues(tx *sql.Tx, tables []string, columns []string, values []any) ([]int64, error) {
 	ctx := context.Background()
 	var ids []int64
 
-	// Проверяем, вставляем ли данные в одну таблицу
+	// Проверяем, вставляем ли данные в одну таблицу.
 	if len(tables) == 1 {
-
-		// Вставка данных в одну таблицу с несколькими колонками
 		table := tables[0]
 		var idd int64
 
-		// Создаем динамический запрос для выбора строки
-		selectQuery := "SELECT id FROM " + table + " WHERE "
-		insertQuery := "INSERT INTO " + table + " ("
-		valuesPlaceholders := "VALUES ("
+		var selectQuery, insertQuery, valuesPlaceholders strings.Builder
+		selectQuery.WriteString("SELECT id FROM ")
+		selectQuery.WriteString(table)
+		selectQuery.WriteString(" WHERE ")
+		insertQuery.WriteString("INSERT INTO ")
+		insertQuery.WriteString(table)
+		insertQuery.WriteString(" (")
+		valuesPlaceholders.WriteString("VALUES (")
 
 		for i, column := range columns {
-
 			if i > 0 {
-
-				selectQuery += " AND "
-				insertQuery += ", "
-				valuesPlaceholders += ", "
-
+				selectQuery.WriteString(" AND ")
+				insertQuery.WriteString(", ")
+				valuesPlaceholders.WriteString(", ")
 			}
-
-			selectQuery += fmt.Sprintf("%s = ?", column)
-			insertQuery += column
-			valuesPlaceholders += "?"
+			fmt.Fprintf(&selectQuery, "%s = ?", column)
+			insertQuery.WriteString(column)
+			valuesPlaceholders.WriteString("?")
 		}
 
-		insertQuery += ") " + valuesPlaceholders + ")"
+		insertQuery.WriteString(") ")
+		insertQuery.WriteString(valuesPlaceholders.String())
+		insertQuery.WriteString(")")
 
-		// Проверяем, существует ли строка
-		err := tx.QueryRowContext(ctx, selectQuery, values...).Scan(&idd)
-
+		// Проверяем, существует ли строка.
+		err := tx.QueryRowContext(ctx, selectQuery.String(), values...).Scan(&idd)
 		if err != nil && err != sql.ErrNoRows {
 			r.app.Log.Errorf("Ошибка при выборе строки: %v", err)
 			return nil, err
 		}
 
 		if idd == 0 {
-
-			// Вставляем новую строку, если она не существует
-			res, err := tx.ExecContext(ctx, insertQuery, values...)
+			// Вставляем новую строку, если она не существует.
+			res, err := tx.ExecContext(ctx, insertQuery.String(), values...)
 			if err != nil {
-
 				r.app.Log.Errorf("Ошибка при вставке строки: %v", err)
 				return nil, err
-
 			}
-
 			idd, err = res.LastInsertId()
 			if err != nil {
-
-				r.app.Log.Errorf("Ошибка при вставке строки: %v", err)
+				r.app.Log.Errorf("Ошибка при получении ID вставленной строки: %v", err)
 				return nil, err
-
 			}
 		}
 
 		ids = append(ids, idd)
 	} else {
-		// Вставка данных в несколько таблиц с одной колонкой в каждой
+		// Вставка данных в несколько таблиц с одной колонкой в каждой.
 		for i, table := range tables {
 			column := columns[i]
 			value := values[i]
@@ -476,14 +469,12 @@ func (r *Repository) getOrInsertValues(tx *sql.Tx, tables []string, columns []st
 					r.app.Log.Errorf("Ошибка при вставке строки: %v", err)
 					return nil, err
 				}
-
 				idd, err = res.LastInsertId()
 				if err != nil {
-					r.app.Log.Errorf("Ошибка при вставке строки: %v", err)
+					r.app.Log.Errorf("Ошибка при получении ID вставленной строки: %v", err)
 					return nil, err
 				}
 			}
-
 			ids = append(ids, idd)
 		}
 	}
@@ -678,7 +669,7 @@ func (r *Repository) ProcessOrder(
 		"delivery_address",
 	}
 
-	valueList := []interface{}{
+	valueList := []any{
 		userID,
 		values["FullName"],
 		values["PhoneNumber"],
@@ -724,7 +715,7 @@ func (r *Repository) ProcessOrder(
 		"comment",
 	}
 
-	valueList = []interface{}{
+	valueList = []any{
 		existingUserID,
 		existingPhoneID,
 		existingFullNameID,
@@ -783,7 +774,7 @@ func (r *Repository) ProcessOrder(
 	for _, p := range purchases {
 		tables = []string{"tg_user_order_id"}
 		columns = []string{"item_name"}
-		valueList = []interface{}{p.Item}
+		valueList = []any{p.Item}
 
 		ids, err = r.getOrInsertValues(tx, tables, columns, valueList)
 		if err != nil {
@@ -865,11 +856,6 @@ func (r *Repository) processRows(rows *sql.Rows) ([]structs.OrderDb, error) {
 		r.app.Log.Error(err.Error())
 		return nil, err
 	}
-	defer func() {
-		if err := rows.Close(); err != nil {
-			r.app.Log.Errorf("processRows: ошибка закрытия SQL rows: %v", err)
-		}
-	}()
 
 	var orders []structs.OrderDb
 
@@ -910,9 +896,14 @@ func (r *Repository) GetOrdersByUserID(userID int64, limit uint8) ([]structs.Ord
 	// Выполняем запрос для получения заказов
 	rows, err := r.db.QueryContext(ctx, limitedOrdersQuery, userID, limit)
 	if err != nil {
-		r.app.Log.Printf("Error preparing query: %v", err)
+		r.app.Log.Errorf("GetOrdersByUserID: ошибка запроса заказов userID=%d: %v", userID, err)
 		return nil, err
 	}
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil {
+			r.app.Log.Errorf("GetOrdersByUserID: ошибка закрытия SQL rows: %v", closeErr)
+		}
+	}()
 
 	return r.processRows(rows)
 }
@@ -923,7 +914,7 @@ func (r *Repository) GetOrdersWithFilters(params structs.QueryParams) ([]structs
 	query := baseQuery
 
 	// Инициализация пустого среза с помощью make
-	queryArgs := make([]interface{}, 0)
+	queryArgs := make([]any, 0)
 
 	if params.UserID != 0 {
 		query += " WHERE tg_user_Chat_ID.user_id = ?"
@@ -958,9 +949,14 @@ func (r *Repository) GetOrdersWithFilters(params structs.QueryParams) ([]structs
 
 	rows, err := r.db.QueryContext(ctx, query, queryArgs...)
 	if err != nil {
-		r.app.Log.Errorf("Error preparing query %v ", err)
+		r.app.Log.Errorf("GetOrdersWithFilters: ошибка запроса заказов: %v", err)
 		return nil, err
 	}
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil {
+			r.app.Log.Errorf("GetOrdersWithFilters: ошибка закрытия SQL rows: %v", closeErr)
+		}
+	}()
 
 	return r.processRows(rows)
 }
@@ -973,7 +969,7 @@ func (r *Repository) UpsertUser(tx *sql.Tx, userID int64, userName string, userB
 		VALUES (?, ?, ?)`, userID, userName, userBlack)
 	if err != nil {
 		r.app.Log.Errorf("error inserting record: %v", err)
-		return fmt.Errorf("error inserting record: %v", err)
+		return fmt.Errorf("error inserting record: %w", err)
 	}
 
 	// Обновляем user_name, если он отличается
@@ -984,7 +980,7 @@ func (r *Repository) UpsertUser(tx *sql.Tx, userID int64, userName string, userB
 		  AND user_name != ?`, userName, userID, userName)
 	if err != nil {
 		r.app.Log.Errorf("error updating user_name: %v", err)
-		return fmt.Errorf("error updating user_name: %v", err)
+		return fmt.Errorf("error updating user_name: %w", err)
 	}
 
 	// Обновляем user_black, если он отличается
@@ -995,7 +991,7 @@ func (r *Repository) UpsertUser(tx *sql.Tx, userID int64, userName string, userB
 		  AND user_black != ?`, userBlack, userID, userBlack)
 	if err != nil {
 		r.app.Log.Errorf("error updating user_black: %v", err)
-		return fmt.Errorf("error updating user_black: %v", err)
+		return fmt.Errorf("error updating user_black: %w", err)
 	}
 
 	return nil

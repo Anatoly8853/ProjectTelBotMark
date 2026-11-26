@@ -7,3 +7,5 @@
 /httpRequests/
 # Игнорирование файлов с расширением app.env
 app.env
+server.crt
+server.key

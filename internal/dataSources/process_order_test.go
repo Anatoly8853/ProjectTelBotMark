@@ -98,7 +98,7 @@ func TestProcessOrderCreatesSeparateOrders(t *testing.T) {
 		t.Fatalf("неверный результат: заказов=%d, позиций=%d, сумма=%d", orderCount, itemCount, totalCost)
 	}
 	webOrders, err := repo.GetOrdersWithFilters(structs.QueryParams{
-		OrderBy: "tg_user_orders_date.delivery_date",
+		OrderBy:  "tg_user_orders_date.delivery_date",
 		OrderDir: "DESC",
 	})
 	if err != nil {

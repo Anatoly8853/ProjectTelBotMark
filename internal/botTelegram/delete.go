@@ -24,7 +24,7 @@ var BasketMessages = make(map[int64]int)
 // greetingMessagesToKeep хранит ID приветственного сообщения, которое остаётся в чате.
 var greetingMessagesToKeep = make(map[int64]int)
 
- // trackMessage сохраняет ID нового сообщения бота для последующей общей очистки.
+// trackMessage сохраняет ID нового сообщения бота для последующей общей очистки.
 func (m *MessageService) trackMessage(chatID int64, messageID int) {
 	if chatID == 0 || messageID == 0 {
 		m.app.Log.Errorf("trackMessage: некорректные идентификаторы: chatID=%d, messageID=%d", chatID, messageID)
@@ -41,7 +41,7 @@ func (m *MessageService) trackMessage(chatID int64, messageID int) {
 	basketMu.Unlock()
 }
 
- // forgetTrackedMessage убирает уже удалённое сообщение из всех списков учёта.
+// forgetTrackedMessage убирает уже удалённое сообщение из всех списков учёта.
 func forgetTrackedMessage(chatID int64, messageID int) {
 	if chatID == 0 || messageID == 0 {
 		return
@@ -71,7 +71,7 @@ func forgetTrackedMessage(chatID int64, messageID int) {
 	basketMu.Unlock()
 }
 
- // callbackOpensNewScreen определяет, должно ли нажатие убрать текущий экран.
+// callbackOpensNewScreen определяет, должно ли нажатие убрать текущий экран.
 func (m *MessageService) callbackOpensNewScreen(callback *tgbotapi.CallbackQuery) bool {
 	if callback == nil || callback.Message == nil || callback.Message.Chat == nil {
 		return false
@@ -112,6 +112,7 @@ func (m *MessageService) callbackOpensNewScreen(callback *tgbotapi.CallbackQuery
 		return false
 	}
 }
+
 // photoMessagesDelete удаляем предыдущее сообщение с фото, если оно есть.
 func (m *MessageService) photoMessagesDelete(chatID int64) {
 	basketMu.Lock()
@@ -163,7 +164,7 @@ func (m *MessageService) clearOrder(chatID int64) {
 }
 
 // deletePreviousMessages удаляет все предыдущие сообщения бота и указанное сообщение пользователя.
- // Приветственное сообщение сохраняется; при нажатии его кнопки удаляется только клавиатура.
+// Приветственное сообщение сохраняется; при нажатии его кнопки удаляется только клавиатура.
 func (m *MessageService) deletePreviousMessages(chatID int64, messageID int) {
 	if chatID == 0 {
 		m.app.Log.Errorf("deletePreviousMessages: некорректный chatID=%d", chatID)

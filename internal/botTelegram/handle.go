@@ -739,7 +739,6 @@ func (m *MessageService) handleCallbackQueryData(cfg config.Config, update tgbot
 			return
 		}
 
-
 		answerCallback("")
 
 		m.requestOrderComment(chatID)
@@ -759,7 +758,6 @@ func (m *MessageService) handleCallbackQueryData(cfg config.Config, update tgbot
 			m.SendPopupMessage(update, "Некорректные данные")
 			return
 		}
-
 
 		instructions := "\nПожалуйста, введите " + PhoneNumber + "\n" +
 			"Пример:\n" +

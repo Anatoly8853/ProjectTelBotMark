@@ -34,17 +34,17 @@ type MessageService struct {
 }
 
 var (
-	DeliveryDateChatID = make(map[int64]int)
+	DeliveryDateChatID   = make(map[int64]int)
 	pendingDeliveryDates = make(map[int64]string)
-	deliveryDateMu     sync.RWMutex
-	orderDetails       = make(map[int64]string)
-	orderDetailsMu     sync.RWMutex
-	commentPending     = make(map[int64]bool)
-	commentPendingMu   sync.Mutex
-	orderProcessing    = make(map[int64]bool)
-	orderProcessingMu  sync.Mutex
-	basketMu           sync.Mutex
-	basketItemID       atomic.Int64
+	deliveryDateMu       sync.RWMutex
+	orderDetails         = make(map[int64]string)
+	orderDetailsMu       sync.RWMutex
+	commentPending       = make(map[int64]bool)
+	commentPendingMu     sync.Mutex
+	orderProcessing      = make(map[int64]bool)
+	orderProcessingMu    sync.Mutex
+	basketMu             sync.Mutex
+	basketItemID         atomic.Int64
 )
 
 // requestOrderComment запрашивает у пользователя комментарий к заказу.

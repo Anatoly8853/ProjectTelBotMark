@@ -68,15 +68,30 @@ func (h *Handler) showAddForm(c *gin.Context) {
 	c.HTML(http.StatusOK, "form.html", gin.H{"p": structs.Product{}})
 }
 
-func (h *Handler) addProduct(c *gin.Context) {
+// parseProductForm читает и проверяет общие поля формы добавления и редактирования товара.
+func parseProductForm(c *gin.Context) (structs.Product, error) {
 	title := strings.TrimSpace(c.PostForm("title"))
 	description := strings.TrimSpace(c.PostForm("description"))
 	category := strings.TrimSpace(c.PostForm("category"))
 	packaging := strings.TrimSpace(c.PostForm("packaging"))
 	priceRaw := strings.TrimSpace(c.PostForm("price"))
-	priceAt, err := strconv.Atoi(priceRaw)
-	if title == "" || description == "" || category == "" || packaging == "" || err != nil || priceAt <= 0 {
-		c.String(http.StatusBadRequest, "Заполните все обязательные поля и укажите положительную цену")
+	price, err := strconv.Atoi(priceRaw)
+	if title == "" || description == "" || category == "" || packaging == "" || err != nil || price <= 0 {
+		return structs.Product{}, fmt.Errorf("заполните все обязательные поля и укажите положительную цену")
+	}
+
+	return structs.Product{
+		Title: title, Description: description, Price: price, Category: category,
+		Packaging: packaging,
+		Text:      fmt.Sprintf("⚖%s\\n💵%s рублей", packaging, priceRaw),
+		Callback:  fmt.Sprintf("add_%s %s_1_%s", title, packaging, priceRaw),
+	}, nil
+}
+
+func (h *Handler) addProduct(c *gin.Context) {
+	product, err := parseProductForm(c)
+	if err != nil {
+		c.String(http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -87,12 +102,7 @@ func (h *Handler) addProduct(c *gin.Context) {
 		return
 	}
 
-	text := fmt.Sprintf("⚖%s\n💵%s рублей", packaging, priceRaw)
-	callback := fmt.Sprintf("add_%s %s_1_%s", title, packaging, priceRaw)
-	product := structs.Product{
-		Title: title, Description: description, Price: priceAt, Category: category,
-		Image: imagePath, Packaging: packaging, Text: text, Callback: callback,
-	}
+	product.Image = imagePath
 	if err := h.repo.AddProduct(product); err != nil {
 		h.app.Log.Errorf("addProduct: ошибка сохранения товара: %v", err)
 		if imagePath != "" {
@@ -101,7 +111,7 @@ func (h *Handler) addProduct(c *gin.Context) {
 		c.String(http.StatusInternalServerError, "Не удалось сохранить товар")
 		return
 	}
-	h.app.Log.Infof("addProduct: товар добавлен: название=%q, категория=%q", title, category)
+	h.app.Log.Infof("addProduct: товар добавлен: название=%q, категория=%q", product.Title, product.Category)
 	c.Redirect(http.StatusSeeOther, "/product")
 }
 
@@ -128,16 +138,12 @@ func (h *Handler) updateProduct(c *gin.Context) {
 		c.String(http.StatusBadRequest, "Некорректный ID товара")
 		return
 	}
-	title := strings.TrimSpace(c.PostForm("title"))
-	description := strings.TrimSpace(c.PostForm("description"))
-	category := strings.TrimSpace(c.PostForm("category"))
-	packaging := strings.TrimSpace(c.PostForm("packaging"))
-	priceRaw := strings.TrimSpace(c.PostForm("price"))
-	priceAt, err := strconv.Atoi(priceRaw)
-	if title == "" || description == "" || category == "" || packaging == "" || err != nil || priceAt <= 0 {
-		c.String(http.StatusBadRequest, "Заполните все обязательные поля и укажите положительную цену")
+	product, err := parseProductForm(c)
+	if err != nil {
+		c.String(http.StatusBadRequest, err.Error())
 		return
 	}
+	product.ID = id
 
 	imagePath, err := h.saveUploadedImage(c, "image")
 	if err != nil {
@@ -154,12 +160,7 @@ func (h *Handler) updateProduct(c *gin.Context) {
 		}
 	}
 
-	text := fmt.Sprintf("⚖%s\n💵%s рублей", packaging, priceRaw)
-	callback := fmt.Sprintf("add_%s %s_1_%s", title, packaging, priceRaw)
-	product := structs.Product{
-		ID: id, Title: title, Description: description, Price: priceAt, Category: category,
-		Image: imagePath, Packaging: packaging, Text: text, Callback: callback,
-	}
+	product.Image = imagePath
 	if err := h.repo.UpdateProduct(product); err != nil {
 		h.app.Log.Errorf("updateProduct: ошибка обновления товара id=%d: %v", id, err)
 		if newImageUploaded {
@@ -168,7 +169,7 @@ func (h *Handler) updateProduct(c *gin.Context) {
 		c.String(http.StatusInternalServerError, "Не удалось обновить товар")
 		return
 	}
-	h.app.Log.Infof("updateProduct: товар обновлён: id=%d, название=%q", id, title)
+	h.app.Log.Infof("updateProduct: товар обновлён: id=%d, название=%q", id, product.Title)
 	c.Redirect(http.StatusSeeOther, "/product")
 }
 
@@ -321,11 +322,28 @@ func (h *Handler) exportExcel(c *gin.Context) {
 	}
 
 	for col, x := range headers {
-		colName, _ := excelize.ColumnNumberToName(col + 1)
+		colName, err := excelize.ColumnNumberToName(col + 1)
+		if err != nil {
+			h.app.Log.Errorf("exportExcel: не удалось определить имя столбца %d: %v", col+1, err)
+			c.String(http.StatusInternalServerError, "Ошибка формирования Excel")
+			return
+		}
 		cell := colName + "1"
-		f.SetCellValue("Sheet1", cell, x.Name)
-		f.SetCellStyle("Sheet1", cell, cell, styleIDs["header"])
-		f.SetColWidth("Sheet1", colName, colName, x.Width)
+		if err := f.SetCellValue("Sheet1", cell, x.Name); err != nil {
+			h.app.Log.Errorf("exportExcel: ошибка записи заголовка %q: %v", x.Name, err)
+			c.String(http.StatusInternalServerError, "Ошибка записи заголовка Excel")
+			return
+		}
+		if err := f.SetCellStyle("Sheet1", cell, cell, styleIDs["header"]); err != nil {
+			h.app.Log.Errorf("exportExcel: ошибка оформления заголовка %q: %v", x.Name, err)
+			c.String(http.StatusInternalServerError, "Ошибка оформления заголовка Excel")
+			return
+		}
+		if err := f.SetColWidth("Sheet1", colName, colName, x.Width); err != nil {
+			h.app.Log.Errorf("exportExcel: ошибка установки ширины столбца %s: %v", colName, err)
+			c.String(http.StatusInternalServerError, "Ошибка настройки столбцов Excel")
+			return
+		}
 	}
 
 	// --- Данные
@@ -336,10 +354,10 @@ func (h *Handler) exportExcel(c *gin.Context) {
 		return
 	}
 
-	// rawData — []interface{}, где каждый элемент это []interface{}
+	// rawData — срез строк Excel, каждая строка содержит значения any.
 	rowNum := 2
 	for _, raw := range rawData {
-		row, ok := raw.([]interface{})
+		row, ok := raw.([]any)
 		if !ok || len(row) < 6 {
 			continue
 		}

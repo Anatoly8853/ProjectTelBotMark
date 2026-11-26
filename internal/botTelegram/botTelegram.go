@@ -128,7 +128,7 @@ func formatProductTitle(category, subcategory, item string) string {
 	}
 
 	// Если категория и подкатегория совпадают, выводим название только один раз.
-	if strings.EqualFold(category, subcategory) {
+	if strings.EqualFold(dataSources.StripEmojis(category), dataSources.StripEmojis(subcategory)) {
 		return strings.TrimSpace(category + " " + suffix)
 	}
 

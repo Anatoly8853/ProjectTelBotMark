@@ -983,8 +983,24 @@ func (m *MessageService) handleCallbackQueryData(cfg config.Config, update tgbot
 	// ---------------------------------------------------------
 
 	case "delete":
-		answerCallback("")
+		answerCallback("Корзина успешно очищена")
 		m.DeleteBasketContents(chatID)
+
+		// Даём Telegram время показать всплывающее уведомление, затем открываем главное меню.
+		time.AfterFunc(2*time.Second, func() {
+			categoryUpdate := tgbotapi.Update{
+				Message: &tgbotapi.Message{Chat: callbackQuery.Message.Chat},
+			}
+			if err := m.createCategoryMessage(categoryUpdate, "Старт"); err != nil {
+				m.app.Log.Errorf(
+					"handleCallbackQueryData: ошибка возврата в главное меню после очистки корзины: chatID=%d, ошибка=%v",
+					chatID,
+					err,
+				)
+				return
+			}
+			m.app.Log.Infof("handleCallbackQueryData: после очистки корзины открыто главное меню: chatID=%d", chatID)
+		})
 
 	// ---------------------------------------------------------
 	// НЕИЗВЕСТНОЕ ДЕЙСТВИЕ

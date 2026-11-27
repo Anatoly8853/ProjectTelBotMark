@@ -674,7 +674,7 @@ func (m *MessageService) handleCallbackQueryData(cfg config.Config, update tgbot
 			orders.FullName == "" ||
 			orders.DeliveryAddress == "" {
 
-			err := fmt.Errorf(
+			err = fmt.Errorf(
 				"отсутствуют данные заказа: chatID=%d, телефон=%q, ФИО=%q, адрес=%q",
 				chatID,
 				orders.PhoneNumber,
@@ -687,7 +687,7 @@ func (m *MessageService) handleCallbackQueryData(cfg config.Config, update tgbot
 			return
 		}
 
-		err := m.addOrUpdateOrderField(chatID, "FullName", orders.FullName)
+		err = m.addOrUpdateOrderField(chatID, "FullName", orders.FullName)
 		if err != nil {
 			m.app.Log.Errorf(
 				"handleCallbackQueryData: ошибка сохранения ФИО: chatID=%d, ошибка=%v",

@@ -15,7 +15,7 @@ func TestToggleFavoriteAddsAndRemovesProduct(t *testing.T) {
 		`INSERT INTO categories(id, name, display_name) VALUES (1, 'Баклажаны', 'Баклажаны')`,
 		`INSERT INTO categories_2(id, name, display_name, description) VALUES (1, 'Рулетики', 'Рулетики', 'Тестовый товар')`,
 		`INSERT INTO photo(id, name) VALUES (1, 'uploads/test.jpg')`,
-		`INSERT INTO products_categories(id, category_id, categories_2_id, photo_id, weight_kg, price_rub, text, callback) VALUES (11, 1, 1, 1, 'ведёрко 0,9', 450, 'Рулетики ведёрко 0,9', 'add_11')`,
+		`INSERT INTO products_categories(id, category_id, categories_2_id, photo_id, weight_kg, price_rub, text, callback) VALUES (11, 1, 1, 1, 'ведёрко 0,9', 450, 'Рулетики ведёрко 0,9', 'add_Рулетики ведёрко 0,9_1_450')`,
 	}
 	for _, statement := range statements {
 		if _, err := db.Exec(statement); err != nil {

@@ -75,7 +75,7 @@ func (r *Repository) GetCategoriesWithProducts() (map[string]structs.Category, e
 						CategoryMsg:  subCat.CategoryMsg,
 						Photo:        product.Photo,
 						Buttons:      productButtons,
-						ButtonsM:     getDefaultButtonsM(),
+						ButtonsM:     getSubcategoryButtonsM(mainCatName),
 					}
 				}
 			}
@@ -196,6 +196,15 @@ func paginateCategories(mainCategories map[string]structs.Category) map[string]s
 	}
 
 	return result
+}
+
+// getSubcategoryButtonsM возвращает кнопки подкатегории с возвратом в родительскую категорию.
+func getSubcategoryButtonsM(parentCategory string) []structs.ButtonData {
+	return []structs.ButtonData{
+		{Text: "🔙Назад🔙", Callback: fmt.Sprintf("cat_%s", StripEmojis(parentCategory))},
+		{Text: "🔙Мои заказы🔙", Callback: "cat_Мои заказы"},
+		{Text: "🛒Корзина🛒", Callback: "cat_Корзина"},
+	}
 }
 
 // GetDefaultButtonsM возвращает стандартные кнопки меню для внешних пакетов.

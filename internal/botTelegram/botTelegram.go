@@ -43,6 +43,8 @@ var (
 	commentPendingMu     sync.Mutex
 	orderProcessing      = make(map[int64]bool)
 	orderProcessingMu    sync.Mutex
+	scheduledCleanup     = make(map[int64]uint64)
+	scheduledCleanupMu   sync.Mutex
 	basketMu             sync.Mutex
 	basketItemID         atomic.Int64
 )
@@ -714,9 +716,48 @@ func trimFilePath(fullFilePath string) string {
 	return fullFilePath
 }
 
+// cancelScheduledCleanup отменяет отложенную очистку после завершённого заказа.
+func (m *MessageService) cancelScheduledCleanup(chatID int64) {
+	if chatID == 0 {
+		m.app.Log.Errorf("cancelScheduledCleanup: некорректный chatID=%d", chatID)
+		return
+	}
+
+	scheduledCleanupMu.Lock()
+	scheduledCleanup[chatID]++
+	generation := scheduledCleanup[chatID]
+	scheduledCleanupMu.Unlock()
+
+	m.app.Log.Debugf("cancelScheduledCleanup: отложенная очистка отменена новым заказом: chatID=%d, поколение=%d", chatID, generation)
+}
+
 func (m *MessageService) ScheduleOnce(chatID int64) {
+	if chatID == 0 {
+		m.app.Log.Errorf("ScheduleOnce: некорректный chatID=%d", chatID)
+		return
+	}
+
+	scheduledCleanupMu.Lock()
+	scheduledCleanup[chatID]++
+	generation := scheduledCleanup[chatID]
+	scheduledCleanupMu.Unlock()
+
+	m.app.Log.Debugf("ScheduleOnce: запланирована очистка после заказа: chatID=%d, поколение=%d", chatID, generation)
+
 	go func() {
 		time.Sleep(1 * time.Minute)
+
+		// Не позволяем старому таймеру очистить данные нового заказа.
+		scheduledCleanupMu.Lock()
+		if scheduledCleanup[chatID] != generation {
+			scheduledCleanupMu.Unlock()
+			m.app.Log.Infof("ScheduleOnce: очистка отменена, пользователь начал новый заказ: chatID=%d, поколение=%d", chatID, generation)
+			return
+		}
+		// Блокировка удерживается до завершения очистки, чтобы новый заказ
+		// не начался между проверкой поколения и удалением его данных.
+		defer scheduledCleanupMu.Unlock()
+
 		// Удаление сообщения
 		m.deleteMessages(chatID)
 

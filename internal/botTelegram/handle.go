@@ -353,6 +353,12 @@ func (m *MessageService) handleCallbackQueryData(cfg config.Config, update tgbot
 			return
 		}
 
+		// Переход к каталогу означает начало нового заказа.
+		// Отменяем отложенную очистку, оставшуюся от предыдущего заказа.
+		if categoryName != "Корзина" && categoryName != "Мои заказы" && categoryName != "Избранное" {
+			m.cancelScheduledCleanup(chatID)
+		}
+
 		if categoryName == "Корзина" {
 			basketMu.Lock()
 			purchases := len(structs.Baskets[chatID])

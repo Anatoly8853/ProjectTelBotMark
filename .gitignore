@@ -9,3 +9,12 @@
 app.env
 server.crt
 server.key
+sqlite/
+log/
+.idea/
+*.db
+*.db-shm
+*.db-wal
+internal/routers/html/uploads/
+qodana.sarif.json
+backup*.db

@@ -89,7 +89,7 @@ func (r *Repository) GetCategoriesWithProducts() (map[string]structs.Category, e
 
 			category := structs.Category{
 				CategoryName: mainCat.CategoryName,
-				ButtonsM:     getDefaultButtonsM(),
+				ButtonsM:     getMainCategoryButtonsM(),
 			}
 			if len(products) > 0 {
 				// В последнем элементе находятся все кнопки товаров категории.
@@ -230,6 +230,15 @@ func getSubcategoryButtonsM(parentCategory string) []structs.ButtonData {
 // GetDefaultButtonsM возвращает стандартные кнопки меню для внешних пакетов.
 func (r *Repository) GetDefaultButtonsM() []structs.ButtonData {
 	return getDefaultButtonsM()
+}
+
+// getMainCategoryButtonsM возвращает в главное меню из самостоятельной категории.
+func getMainCategoryButtonsM() []structs.ButtonData {
+	return []structs.ButtonData{
+		{Text: "🔙Назад🔙", Callback: "cat_Старт"},
+		{Text: "🔙Мои заказы🔙", Callback: "cat_Мои заказы"},
+		{Text: "🛒Корзина🛒", Callback: "cat_Корзина"},
+	}
 }
 
 func getDefaultButtonsM() []structs.ButtonData {

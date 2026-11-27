@@ -194,10 +194,6 @@ func (m *MessageService) deletePreviousMessages(chatID int64, messageID int) {
 		messageIDs[messageID] = struct{}{}
 	}
 
-	delete(messagesToDelete, chatID)
-	delete(photoMessagesToDelete, chatID)
-	delete(keyboardMessagesToDelete, chatID)
-	delete(BasketMessages, chatID)
 	basketMu.Unlock()
 
 	if keepGreeting {
@@ -221,6 +217,7 @@ func (m *MessageService) deletePreviousMessages(chatID int64, messageID int) {
 			)
 			continue
 		}
+		forgetTrackedMessage(chatID, id)
 		m.app.Log.Debugf("deletePreviousMessages: сообщение удалено: chatID=%d, messageID=%d", chatID, id)
 	}
 }

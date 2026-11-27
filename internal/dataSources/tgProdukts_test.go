@@ -23,3 +23,16 @@ func TestPaginateCategoriesEmptyCatalog(t *testing.T) {
 		t.Fatal("на стартовой странице должны оставаться служебные кнопки")
 	}
 }
+
+func TestSubcategoryBackButtonReturnsToParentCategory(t *testing.T) {
+	buttons := getSubcategoryButtonsM("Капуста")
+	if len(buttons) == 0 {
+		t.Fatal("для подкатегории должны быть созданы кнопки навигации")
+	}
+	if buttons[0].Text != "🔙Назад🔙" {
+		t.Fatalf("текст первой кнопки = %q, ожидалось %q", buttons[0].Text, "🔙Назад🔙")
+	}
+	if buttons[0].Callback != "cat_Капуста" {
+		t.Fatalf("callback кнопки Назад = %q, ожидалось %q", buttons[0].Callback, "cat_Капуста")
+	}
+}

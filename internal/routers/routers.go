@@ -284,7 +284,12 @@ func (h *Handler) postHandlerInfo(c *gin.Context) {
 		}()
 	}
 
-	users := h.repo.UserID()
+	users, err := h.repo.UserID()
+	if err != nil {
+		h.app.Log.Errorf("postHandlerInfo: ошибка получения списка пользователей для рассылки: %v", err)
+		c.String(http.StatusInternalServerError, "Не удалось получить список пользователей для рассылки")
+		return
+	}
 	if len(users) == 0 {
 		c.String(http.StatusOK, "Пользователей для рассылки нет")
 		return

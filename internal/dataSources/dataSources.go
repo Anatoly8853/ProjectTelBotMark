@@ -1027,17 +1027,6 @@ func (r *Repository) UpsertUser(tx *sql.Tx, userID int64, userName string, userB
 		return fmt.Errorf("error updating user_name: %w", err)
 	}
 
-	// Обновляем user_black, если он отличается
-	_, err = tx.ExecContext(ctx, `
-		UPDATE tg_user_Chat_ID
-		SET user_black = ?
-		WHERE user_id = ?
-		  AND user_black != ?`, userBlack, userID, userBlack)
-	if err != nil {
-		r.app.Log.Errorf("error updating user_black: %v", err)
-		return fmt.Errorf("error updating user_black: %w", err)
-	}
-
 	return nil
 }
 

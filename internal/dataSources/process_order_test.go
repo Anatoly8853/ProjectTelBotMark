@@ -72,6 +72,39 @@ func prepareProcessOrderTestData(t *testing.T, userID int64) tgbotapi.Update {
 	}}
 }
 
+func TestProcessOrderPreservesUserBlackStatus(t *testing.T) {
+	repo, db := newProcessOrderTestRepository(t)
+	const userID int64 = 10003
+
+	if _, err := db.Exec(
+		`INSERT INTO tg_user_Chat_ID (user_id, user_name, user_black) VALUES (?, ?, ?)`,
+		userID,
+		"test_user",
+		1,
+	); err != nil {
+		t.Fatalf("не удалось создать заблокированного пользователя: %v", err)
+	}
+
+	update := prepareProcessOrderTestData(t, userID)
+	purchases := []structs.Purchase{{Item: "Черемша", Quantity: 1, Cost: 450}}
+
+	if err := repo.ProcessOrder(update, purchases); err != nil {
+		t.Fatalf("не удалось оформить заказ заблокированному пользователю: %v", err)
+	}
+
+	var userBlack int
+	if err := db.QueryRow(
+			`SELECT user_black FROM tg_user_Chat_ID WHERE user_id = ?`,
+			userID,
+		).Scan(&userBlack); err != nil {
+		t.Fatalf("не удалось прочитать статус пользователя: %v", err)
+	}
+
+	if userBlack != 1 {
+		t.Fatalf("оформление заказа изменило статус чёрного списка: ожидалось 1, получено %d", userBlack)
+	}
+}
+
 func TestProcessOrderCreatesSeparateOrders(t *testing.T) {
 	repo, db := newProcessOrderTestRepository(t)
 	update := prepareProcessOrderTestData(t, 10001)

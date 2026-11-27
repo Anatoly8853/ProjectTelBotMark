@@ -908,7 +908,11 @@ func (m *MessageService) createCategoryMessage(update tgbotapi.Update, categoryN
 		}
 
 		// Создаем сообщение с инлайн-клавиатурой
-		msg := tgbotapi.NewMessage(chatID, `Выберите нужное количество продукта: `+categoryData.CategoryMsg)
+		messageText := "Выберите нужное количество продукта:\n" + categoryData.CategoryName
+		if strings.TrimSpace(categoryData.CategoryMsg) != "" {
+			messageText += "\n" + categoryData.CategoryMsg
+		}
+		msg := tgbotapi.NewMessage(chatID, messageText)
 		msg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(keyboard...)
 
 		// Отправляем сообщение с клавиатурой

@@ -297,7 +297,8 @@ func (m *MessageService) handleCallbackQueryData(cfg config.Config, update tgbot
 	}
 
 	if callbackQuery.Data == "" {
-		m.app.Log.Error("handleCallbackQueryData: пустой CallbackQuery.Data")		return
+		m.app.Log.Error("handleCallbackQueryData: пустой CallbackQuery.Data")
+		return
 	}
 
 	if callbackQuery.Message == nil || callbackQuery.Message.Chat == nil {
@@ -596,6 +597,7 @@ func (m *MessageService) handleCallbackQueryData(cfg config.Config, update tgbot
 			answerCallback("Не удалось сохранить заказ")
 			return
 		}
+
 		// Заказ успешно сохранён.
 		m.GroupMessagesChatID(cfg, chatID)
 
@@ -895,7 +897,8 @@ func (m *MessageService) handleCallbackQueryData(cfg config.Config, update tgbot
 		}
 		if added {
 			answerCallback("Добавлено в избранное ⭐")
-		} else {			answerCallback("Удалено из избранного")
+		} else {
+			answerCallback("Удалено из избранного")
 		}
 		if callbackQuery.Message != nil && strings.HasPrefix(callbackQuery.Message.Text, "⭐ Избранные товары") {
 			m.MainFavoritesByUserID(chatID)
@@ -1195,3 +1198,73 @@ func (m *MessageService) handleFieldByChatID(update tgbotapi.Update, pureText st
 
 			return pureText
 		}
+	}
+
+	return pureText
+}
+
+// handleDeliveryDetailsMessage анализируем и извлекаем данные из сообщения.
+// Объединяем данные заказа с содержимым корзины.
+func (m *MessageService) handleDeliveryDetailsMessage(chatID int64) {
+	if chatID == 0 {
+		m.app.Log.Errorf("нет данных для обработки chatID = %v", chatID)
+		return
+	}
+
+	var MsgText string
+
+	//"Номер телефона: [ваш номер]\n" +
+	if field, err := bychat.GetFieldByChatID(m.app, chatID, "PhoneNumber"); err == nil {
+		str, _ := field.(string)
+		MsgText += "Номер телефона: " + str + "\n"
+	}
+
+	//"Адрес доставки: [ваш адрес]\n" +
+	if field, err := bychat.GetFieldByChatID(m.app, chatID, "DeliveryAddress"); err == nil {
+		str, _ := field.(string)
+		MsgText += DeliveryAddress + " " + str + "\n"
+	}
+
+	//"Дата доставки: [желаемая дата]\n" +
+	if field, err := bychat.GetFieldByChatID(m.app, chatID, "DeliveryDate"); err == nil {
+		str, _ := field.(string)
+		MsgText += "Дата доставки: " + str + "\n"
+	}
+
+	//"ФИО: [ваше имя и фамилия]\n\n" +
+	if field, err := bychat.GetFieldByChatID(m.app, chatID, "FullName"); err == nil {
+		str, _ := field.(string)
+		MsgText += "ФИО: " + str + "\n"
+	}
+
+	if comment, err := bychat.GetFieldByChatID(m.app, chatID, "Comment"); err == nil {
+		if commentText, ok := comment.(string); ok && strings.TrimSpace(commentText) != "" {
+			MsgText += "Комментарий: " + strings.TrimSpace(commentText) + "\n"
+		}
+	}
+
+	// Получаем согласованный снимок корзины.
+	basketMu.Lock()
+	purchases := append([]structs.Purchase(nil), structs.Baskets[chatID]...)
+	basketMu.Unlock()
+
+	orderText := "Детали заказа:\n" + MsgText + BuildPurchaseReport(purchases)
+	orderDetailsMu.Lock()
+	orderDetails[chatID] = orderText
+	orderDetailsMu.Unlock()
+
+	// Отправляем пользователю подтверждение с деталями заказа и кнопкой "Заказать"
+	btnOrder := tgbotapi.NewInlineKeyboardButtonData("Заказать", "confirm_order")
+	inlineKeyboard := tgbotapi.NewInlineKeyboardMarkup(tgbotapi.NewInlineKeyboardRow(btnOrder))
+
+	confirmMsg := tgbotapi.NewMessage(chatID, orderText)
+	confirmMsg.ReplyMarkup = inlineKeyboard
+
+	if sentMsg, err := m.bot.Send(confirmMsg); err != nil {
+		m.app.Log.Errorf("%v", err)
+		return
+	} else {
+		// Сохраняем подтверждение заказа в общем списке сообщений для очистки.
+		m.trackMessage(chatID, sentMsg.MessageID)
+	}
+}

@@ -102,6 +102,9 @@ func (r *Repository) GetFavoriteProducts(userID int64) ([]structs.Product, error
 			r.app.Log.Errorf("GetFavoriteProducts: ошибка чтения товара: %v", err)
 			return nil, err
 		}
+		// Старые записи callback в SQLite могли содержать цену и название.
+		// Для избранного всегда формируем безопасный callback по ID строки.
+		product.Callback = fmt.Sprintf("add_%d", product.ID)
 		products = append(products, product)
 	}
 	if err := rows.Err(); err != nil {

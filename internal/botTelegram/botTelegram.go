@@ -807,7 +807,7 @@ func (m *MessageService) createCategoryMessage(update tgbotapi.Update, categoryN
 
 	chatID := update.Message.Chat.ID
 	// Поиск категории в данных
-	categoryData, found := structs.Categories[categoryName]
+	categoryData, found := structs.GetCategory(categoryName)
 	if !found {
 		er := `категория не найдена`
 		//m.app.Log.Errorf(" %v categoryData : %q", er, categoryName)

@@ -1,5 +1,7 @@
 package structs
 
+import "sync"
+
 type UserBlack struct {
 	UserName  string `json:"user_name,omitempty"`
 	UserBlack int    `json:"user_black,omitempty"`
@@ -42,8 +44,51 @@ type Category struct {
 	ButtonsM     []ButtonData `json:"buttonsM,omitempty"`
 }
 
-// Categories Распаковка данных.
-var Categories = make(map[string]Category)
+// Categories содержит текущий каталог товаров для Telegram-бота.
+// Доступ к карте выполняется только через функции ниже.
+var (
+	Categories   = make(map[string]Category)
+	categoriesMu sync.RWMutex
+)
+
+// SetCategories атомарно заменяет каталог и копирует вложенные срезы кнопок.
+func SetCategories(categories map[string]Category) {
+	copy := cloneCategories(categories)
+	categoriesMu.Lock()
+	Categories = copy
+	categoriesMu.Unlock()
+}
+
+// GetCategory возвращает копию данных одной категории.
+func GetCategory(name string) (Category, bool) {
+	categoriesMu.RLock()
+	category, ok := Categories[name]
+	categoriesMu.RUnlock()
+	if !ok {
+		return Category{}, false
+	}
+	category.Buttons = append([]ButtonData(nil), category.Buttons...)
+	category.ButtonsM = append([]ButtonData(nil), category.ButtonsM...)
+	return category, true
+}
+
+// GetCategoriesSnapshot возвращает независимую копию всего каталога.
+func GetCategoriesSnapshot() map[string]Category {
+	categoriesMu.RLock()
+	copy := cloneCategories(Categories)
+	categoriesMu.RUnlock()
+	return copy
+}
+
+func cloneCategories(categories map[string]Category) map[string]Category {
+	copy := make(map[string]Category, len(categories))
+	for name, category := range categories {
+		category.Buttons = append([]ButtonData(nil), category.Buttons...)
+		category.ButtonsM = append([]ButtonData(nil), category.ButtonsM...)
+		copy[name] = category
+	}
+	return copy
+}
 
 // Baskets карта для хранения данных о покупках для каждого пользователя.
 var Baskets = make(map[int64][]Purchase)

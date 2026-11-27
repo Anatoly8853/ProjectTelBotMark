@@ -96,7 +96,7 @@ func (h *Handler) GinRouter() {
 	router.POST("/black/update", h.updateBlackList)
 	router.GET("/jsonred", func(c *gin.Context) {
 		c.HTML(http.StatusOK, "jsonred.html", gin.H{
-			"categories":   structs.Categories,
+			"categories":   structs.GetCategoriesSnapshot(),
 			"Classjsonred": "current",
 		})
 	})

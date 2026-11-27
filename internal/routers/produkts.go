@@ -18,6 +18,18 @@ import (
 	"github.com/xuri/excelize/v2"
 )
 
+// refreshCatalogCache перечитывает каталог из БД и безопасно публикует его для Telegram-бота.
+func (h *Handler) refreshCatalogCache() error {
+	categories, err := h.repo.GetCategoriesWithProducts()
+	if err != nil {
+		h.app.Log.Errorf("refreshCatalogCache: не удалось перечитать каталог из базы данных: %v", err)
+		return err
+	}
+	structs.SetCategories(categories)
+	h.app.Log.Infof("refreshCatalogCache: кэш каталога обновлён: категорий=%d", len(categories))
+	return nil
+}
+
 func (h *Handler) handlerProducts(c *gin.Context) {
 	category := c.Query("category")
 	sort := c.Query("sort")
@@ -111,6 +123,10 @@ func (h *Handler) addProduct(c *gin.Context) {
 		return
 	}
 	h.app.Log.Infof("addProduct: товар добавлен: название=%q, категория=%q", product.Title, product.Category)
+	if err := h.refreshCatalogCache(); err != nil {
+		c.String(http.StatusInternalServerError, "Изменения сохранены в базе данных, но каталог бота не обновлён. Не повторяйте операцию; проверьте журнал приложения.")
+		return
+	}
 	c.Redirect(http.StatusSeeOther, "/product")
 }
 
@@ -169,6 +185,10 @@ func (h *Handler) updateProduct(c *gin.Context) {
 		return
 	}
 	h.app.Log.Infof("updateProduct: товар обновлён: id=%d, название=%q", id, product.Title)
+	if err := h.refreshCatalogCache(); err != nil {
+		c.String(http.StatusInternalServerError, "Изменения сохранены в базе данных, но каталог бота не обновлён. Не повторяйте операцию; проверьте журнал приложения.")
+		return
+	}
 	c.Redirect(http.StatusSeeOther, "/product")
 }
 
@@ -249,6 +269,10 @@ func (h *Handler) deleteProduct(c *gin.Context) {
 		return
 	}
 	h.app.Log.Infof("deleteProduct: товар удалён: id=%d", id)
+	if err := h.refreshCatalogCache(); err != nil {
+		c.String(http.StatusInternalServerError, "Изменения сохранены в базе данных, но каталог бота не обновлён. Не повторяйте операцию; проверьте журнал приложения.")
+		return
+	}
 	c.Redirect(http.StatusSeeOther, "/product")
 }
 

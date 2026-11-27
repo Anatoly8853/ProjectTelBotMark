@@ -55,7 +55,7 @@ func main() {
 
 	defer repo.CloseDB()
 
-	bot.Debug = cfg.BotDebug //false //true// выводим лог или нет
+	bot.Debug = cfg.BotDebug // выводим лог или нет
 
 	_, err = repo.GetUsers()
 	if err != nil {

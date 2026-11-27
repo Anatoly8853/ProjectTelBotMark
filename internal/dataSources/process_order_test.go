@@ -94,7 +94,7 @@ func TestProcessOrderPreservesUserBlackStatus(t *testing.T) {
 
 	var userBlack int
 	if err := db.QueryRow(
-			`SELECT user_black FROM tg_user_Chat_ID WHERE user_id = ?`,
+		`SELECT user_black FROM tg_user_Chat_ID WHERE user_id = ?`,
 			userID,
 	).Scan(&userBlack); err != nil {
 		t.Fatalf("не удалось прочитать статус пользователя: %v", err)

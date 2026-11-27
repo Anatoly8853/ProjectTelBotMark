@@ -45,6 +45,7 @@ func TestGetCategoriesWithProductsSeparatesDirectProductsFromSubcategories(t *te
 		t.Fatalf("открытие тестовой БД: %v", err)
 	}
 	defer db.Close()
+	db.SetMaxOpenConns(1)
 
 	const schema = `
 		CREATE TABLE categories (

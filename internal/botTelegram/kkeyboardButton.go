@@ -20,7 +20,7 @@ func createStartKeyboard() tgbotapi.InlineKeyboardMarkup {
 func CreateCategoryKeyboardReply(categoryName string) ([][]tgbotapi.InlineKeyboardButton, error) {
 	// Получаем данные для выбранной категории
 	cat := dataSources.StripEmojis(categoryName)
-	categoryData, found := structs.Categories[cat]
+	categoryData, found := structs.GetCategory(cat)
 	if !found {
 		return nil, errors.New("категория не найдена в CreateCategoryKeyboardReply")
 	}
@@ -61,7 +61,7 @@ func CreateCategoryKeyboardReply(categoryName string) ([][]tgbotapi.InlineKeyboa
 
 // CreateCategoryKeyboard строит кнопки фасовки, избранного и навигации.
 func CreateCategoryKeyboard(categoryName string) ([][]tgbotapi.InlineKeyboardButton, error) {
-	categoryData, found := structs.Categories[categoryName]
+	categoryData, found := structs.GetCategory(categoryName)
 	if !found {
 		return nil, errors.New("категория не найдена в createCategoryKeyboard")
 	}

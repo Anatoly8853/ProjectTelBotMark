@@ -320,7 +320,7 @@ func (r *Repository) getProductsForMainCategory(ctx context.Context, mainCatID i
 		//displayText := fmt.Sprintf("⚖%s \uD83D\uDCB5 %d рублей", weight, price)
 		products = append(products, structs.ButtonData{
 			Text:             text,
-			Callback:         callback, // существующий callback товара сохраняется без изменений
+			Callback:         fmt.Sprintf("add_%d", productID),
 			FavoriteCallback: fmt.Sprintf("fav_toggle_%d", productID),
 		})
 
@@ -368,7 +368,7 @@ func (r *Repository) getProductsForSubCategory(ctx context.Context, mainCatID, s
 
 		products = append(products, structs.ButtonData{
 			Text:             text,
-			Callback:         callback,
+			Callback:         fmt.Sprintf("add_%d", productID),
 			FavoriteCallback: fmt.Sprintf("fav_toggle_%d", productID),
 		})
 

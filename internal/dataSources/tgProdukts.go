@@ -167,8 +167,20 @@ func paginateCategories(mainCategories map[string]structs.Category) map[string]s
 		pages[i].ButtonsM = buttonsM
 	}
 
-	// Собираем в карту
+	// Собираем в карту. При пустом каталоге создаём пустую стартовую страницу,
+	// чтобы приложение могло запуститься до добавления первых товаров.
 	result := make(map[string]structs.Category)
+	if len(pages) == 0 {
+		result["Старт"] = structs.Category{
+			CategoryName: "Старт",
+			Buttons:      []structs.ButtonData{},
+			ButtonsM: []structs.ButtonData{
+				{Text: "🛒Корзина🛒", Callback: "cat_Корзина"},
+				{Text: "🔙Мои заказы🔙", Callback: "cat_Мои заказы"},
+			},
+		}
+		return result
+	}
 
 	// Категория "Старт" — первая страница
 	result["Старт"] = pages[0]

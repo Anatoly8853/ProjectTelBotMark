@@ -291,11 +291,54 @@ func InitDB(app *slogavp.Application) (db *sql.DB, err error) {
 	CREATE TABLE IF NOT EXISTS categories_2 (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	name TEXT NOT NULL UNIQUE,
+	display_name TEXT NOT NULL DEFAULT '',
 	description TEXT NOT NULL
     )
 	`)
 	if err != nil {
-		app.Log.Fatalf("Error creating reminders table product: %v", err)
+		app.Log.Errorf("InitDB: ошибка создания таблицы categories_2: %v", err)
+		return nil, err
+	}
+
+	// Совместимость с существующими базами: добавляем display_name,
+	// если таблица categories_2 была создана старой версией приложения.
+	subcategoryColumns, err := db.QueryContext(ctx, `PRAGMA table_info(categories_2)`)
+	if err != nil {
+		app.Log.Errorf("InitDB: ошибка проверки структуры categories_2: %v", err)
+		return nil, err
+	}
+	displayNameExists := false
+	for subcategoryColumns.Next() {
+		var cid, notNull, primaryKey int
+		var name, columnType string
+		var defaultValue any
+		if err = subcategoryColumns.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
+			_ = subcategoryColumns.Close()
+			app.Log.Errorf("InitDB: ошибка чтения структуры categories_2: %v", err)
+			return nil, err
+		}
+		if name == "display_name" {
+			displayNameExists = true
+		}
+	}
+	if err = subcategoryColumns.Err(); err != nil {
+		_ = subcategoryColumns.Close()
+		app.Log.Errorf("InitDB: ошибка обхода структуры categories_2: %v", err)
+		return nil, err
+	}
+	if err = subcategoryColumns.Close(); err != nil {
+		app.Log.Errorf("InitDB: ошибка закрытия проверки categories_2: %v", err)
+		return nil, err
+	}
+	if !displayNameExists {
+		if _, err = db.ExecContext(ctx, `ALTER TABLE categories_2 ADD COLUMN display_name TEXT NOT NULL DEFAULT ''`); err != nil {
+			app.Log.Errorf("InitDB: ошибка добавления display_name в categories_2: %v", err)
+			return nil, err
+		}
+		app.Log.Info("InitDB: в categories_2 добавлен столбец display_name")
+	}
+	if _, err = db.ExecContext(ctx, `UPDATE categories_2 SET display_name = name WHERE display_name = ''`); err != nil {
+		app.Log.Errorf("InitDB: ошибка заполнения display_name в categories_2: %v", err)
 		return nil, err
 	}
 

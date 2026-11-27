@@ -16,6 +16,7 @@ type Config struct {
 	WebAddr       string `mapstructure:"WEB_ADDR"`
 	TLSCertFile   string `mapstructure:"TLS_CERT_FILE"`
 	TLSKeyFile    string `mapstructure:"TLS_KEY_FILE"`
+	BotDebug      bool   `mapstructure:"BOT_DEBUG"`
 }
 
 func LoadConfig(app *slogavp.Application) (cfg Config) {
@@ -27,11 +28,13 @@ func LoadConfig(app *slogavp.Application) (cfg Config) {
 	// Чтение переменных окружения. Явно связываем параметры администратора,
 	// чтобы они загружались и из app.env, и из системного окружения.
 	viper.AutomaticEnv()
+	viper.SetDefault("BOT_DEBUG", false)
 	_ = viper.BindEnv("ADMIN_USERNAME")
 	_ = viper.BindEnv("ADMIN_PASSWORD")
 	_ = viper.BindEnv("WEB_ADDR")
 	_ = viper.BindEnv("TLS_CERT_FILE")
 	_ = viper.BindEnv("TLS_KEY_FILE")
+	_ = viper.BindEnv("BOT_DEBUG")
 
 	if err := viper.MergeInConfig(); err != nil {
 		app.Log.Printf("Error reading app.env file, %s", err)

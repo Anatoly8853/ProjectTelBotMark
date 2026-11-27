@@ -6,6 +6,7 @@ import (
 	"ProjectTelBotMark/internal/dataSources"
 	"ProjectTelBotMark/internal/structs"
 	"fmt"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
@@ -17,87 +18,110 @@ var DeliveryAddress = "Адрес доставки:"
 var PhoneNumber = "Номер телефона:"
 var FullName = "ФИО:"
 
-// UpdateMessage Основной обработчик всех данных бота docs.
+// parseProductCallbackID принимает только callback формата add_<положительный ID>.
+func parseProductCallbackID(callback string) (int, error) {
+	parts := strings.Split(callback, "_")
+	if len(parts) != 2 || parts[0] != "add" {
+		return 0, fmt.Errorf("ожидался формат add_<id>")
+	}
+	id, err := strconv.Atoi(parts[1])
+	if err != nil || id <= 0 {
+		return 0, fmt.Errorf("некорректный ID товара %q", parts[1])
+	}
+	return id, nil
+}
+
+// UpdateMessage запускает цикл получения обновлений Telegram.
 func (m *MessageService) UpdateMessage(cfg config.Config) {
 	go func() {
 		u := tgbotapi.NewUpdate(0)
 		u.Timeout = 10
+		u.AllowedUpdates = []string{"message", "callback_query"}
 
 		updates := m.bot.GetUpdatesChan(u)
-
 		for update := range updates {
-			if update.CallbackQuery != nil {
-				if update.CallbackQuery.Message == nil || update.CallbackQuery.Message.Chat == nil {
-					m.app.Log.Error("UpdateMessage: callback не содержит Message или Chat")
-					if update.CallbackQuery.ID != "" {
-						if _, err := m.bot.Request(tgbotapi.NewCallback(update.CallbackQuery.ID, "Некорректный запрос")); err != nil {
-							m.app.Log.Errorf("UpdateMessage: ошибка ответа на некорректный callback: %v", err)
-						}
+			// Изолируем каждое обновление: паника в одном обработчике не останавливает цикл.
+			func() {
+				defer func() {
+					if recovered := recover(); recovered != nil {
+						m.app.Log.Errorf(
+							"UpdateMessage: паника при обработке обновления updateID=%d: %v\nСтек вызовов:\n%s",
+							update.UpdateID, recovered, debug.Stack(),
+						)
 					}
-					continue
-				}
-				// Проверяем статус user_black
-				userChatID := update.CallbackQuery.Message.Chat.ID
-				id := dataSources.GetUserBlack(userChatID)
-				if id != 0 {
-					m.deletePreviousMessages(userChatID, update.CallbackQuery.Message.MessageID)
-					//отправляем сообщение
-					m.sendMessage(userChatID, "Вам мы ничего продать не можем.")
-					userName := ""
-					if update.CallbackQuery.Message.From != nil {
-						userName = update.CallbackQuery.Message.From.UserName
-					}
-					m.app.Log.Infof("Юзер из черного списка %v имя %v", userChatID, userName)
-					continue // Прерываем выполнение, если user_black != 0
-				}
-
-				// Очищаем старый экран только при реальном переходе на другой экран.
-				// Кнопки добавления товара, +/- корзины и перелистывания календаря остаются на месте.
-				if m.callbackOpensNewScreen(update.CallbackQuery) {
-					m.deletePreviousMessages(userChatID, update.CallbackQuery.Message.MessageID)
-				}
-
-				// Обработка CallbackQuery
-				m.handleCallbackQueryData(cfg, update)
-				continue // Переход к следующему обновлению после обработки CallbackQuery
-			}
-
-			if update.Message != nil {
-				// Проверяем статус user_black
-				id := dataSources.GetUserBlack(update.Message.Chat.ID)
-				if id != 0 {
-					m.deletePreviousMessages(update.Message.Chat.ID, update.Message.MessageID)
-					//отправляем сообщение
-					m.sendMessage(update.Message.Chat.ID, "Вам мы ничего продать не можем.")
-					m.app.Log.Infof("Юзер из черного списка %v имя %v", update.Message.Chat.ID, update.Message.From.UserName)
-					continue // Прерываем выполнение, если user_black != 0
-				}
-
-				// Удаляем предыдущий экран и входящее сообщение до формирования нового ответа.
-				// Команда /start отдельно создаёт приветствие, которое сохраняется между переходами.
-				m.deletePreviousMessages(update.Message.Chat.ID, update.Message.MessageID)
-
-				// В этом месте обрабатываем все сообщения, включая команды
-				if update.Message.IsCommand() {
-					// Обработка команд пользователя
-					m.handleCommands(update)
-				} else {
-					// Обработка текстовых сообщений (не команд)
-					m.handleMessageText(update)
-				}
-				continue
-			}
-
-			// Проверяем, что сообщение содержит изменение таймера авто удаление
-			if update.Message.MessageAutoDeleteTimerChanged != nil {
-				timerChange := update.Message.MessageAutoDeleteTimerChanged
-				chatID := update.Message.Chat.ID
-				newTimerDuration := timerChange.MessageAutoDeleteTime
-				// Логируем изменение таймера авто удаления
-				m.app.Log.Infof("Auto-delete timer changed in chat %d: new duration is %d seconds", chatID, newTimerDuration)
-			}
+				}()
+				m.processUpdate(cfg, update)
+			}()
 		}
 	}()
+}
+
+// processUpdate обрабатывает одно обновление Telegram.
+func (m *MessageService) processUpdate(cfg config.Config, update tgbotapi.Update) {
+	if update.CallbackQuery != nil {
+		if update.CallbackQuery.Message == nil || update.CallbackQuery.Message.Chat == nil {
+			m.app.Log.Error("processUpdate: callback не содержит Message или Chat")
+			if update.CallbackQuery.ID != "" {
+				if _, err := m.bot.Request(tgbotapi.NewCallback(update.CallbackQuery.ID, "Некорректный запрос")); err != nil {
+					m.app.Log.Errorf("processUpdate: ошибка ответа на некорректный callback: %v", err)
+				}
+			}
+			return
+		}
+		userChatID := update.CallbackQuery.Message.Chat.ID
+		if dataSources.GetUserBlack(userChatID) != 0 {
+			m.deletePreviousMessages(userChatID, update.CallbackQuery.Message.MessageID)
+			m.sendMessage(userChatID, "Вам мы ничего продать не можем.")
+			userName := ""
+			if update.CallbackQuery.Message.From != nil {
+				userName = update.CallbackQuery.Message.From.UserName
+			}
+			m.app.Log.Infof("Юзер из черного списка %v имя %v", userChatID, userName)
+			return
+		}
+		if m.callbackOpensNewScreen(update.CallbackQuery) {
+			m.deletePreviousMessages(userChatID, update.CallbackQuery.Message.MessageID)
+		}
+		m.handleCallbackQueryData(cfg, update)
+		return
+	}
+
+	if update.Message == nil {
+		m.app.Log.Debugf("processUpdate: пропущено неподдерживаемое обновление updateID=%d", update.UpdateID)
+		return
+	}
+	if update.Message.MessageAutoDeleteTimerChanged != nil {
+		if update.Message.Chat != nil {
+			m.app.Log.Infof(
+				"Изменён таймер автоудаления сообщений: chatID=%d, новая длительность=%d секунд",
+				update.Message.Chat.ID, update.Message.MessageAutoDeleteTimerChanged.MessageAutoDeleteTime,
+			)
+		}
+		return
+	}
+	if update.Message.Chat == nil {
+		m.app.Log.Warnf("processUpdate: сообщение без объекта Chat: updateID=%d", update.UpdateID)
+		return
+	}
+
+	chatID := update.Message.Chat.ID
+	if dataSources.GetUserBlack(chatID) != 0 {
+		m.deletePreviousMessages(chatID, update.Message.MessageID)
+		m.sendMessage(chatID, "Вам мы ничего продать не можем.")
+		userName := ""
+		if update.Message.From != nil {
+			userName = update.Message.From.UserName
+		}
+		m.app.Log.Infof("Юзер из черного списка %v имя %v", chatID, userName)
+		return
+	}
+
+	m.deletePreviousMessages(chatID, update.Message.MessageID)
+	if update.Message.IsCommand() {
+		m.handleCommands(update)
+	} else {
+		m.handleMessageText(update)
+	}
 }
 
 // handleCommands Обработка команды /start и вывод основного меню docs.
@@ -392,91 +416,37 @@ func (m *MessageService) handleCallbackQueryData(cfg config.Config, update tgbot
 	// ---------------------------------------------------------
 
 	case "add":
-		// Последние два параметра — количество и цена; название может содержать "_".
-		if len(parts) < 4 {
-			err := fmt.Errorf(
-				"неверный формат callback добавления товара: callback=%q, количество частей=%d",
-				callbackData,
-				len(parts),
+		productID, parseErr := parseProductCallbackID(callbackData)
+		if parseErr != nil {
+			m.app.Log.Errorf(
+				"handleCallbackQueryData: некорректный callback добавления товара: chatID=%d, callback=%q, ошибка=%v",
+				chatID, callbackData, parseErr,
 			)
-			m.app.Log.Error("handleCallbackQueryData", err.Error())
 			m.SendPopupMessage(update, "Некорректные данные товара")
 			return
 		}
 
-		item := strings.Join(parts[1:len(parts)-2], "_")
-		if strings.TrimSpace(item) == "" {
-			err := fmt.Errorf(
-				"пустое название товара: chatID=%d, callback=%q",
-				chatID,
-				callbackData,
-			)
-			m.app.Log.Error("handleCallbackQueryData", err.Error())
-			m.SendPopupMessage(update, "Не указано название товара")
-			return
-		}
-
-		// Проверяем количество.
-		quantity, err := strconv.Atoi(parts[len(parts)-2])
-		if err != nil {
+		// Название, фасовку и цену всегда берём из SQLite, а не из callback клиента.
+		product, productErr := m.repo.GetProductForBasket(productID)
+		if productErr != nil {
 			m.app.Log.Errorf(
-				"handleCallbackQueryData: ошибка преобразования количества: chatID=%d, товар=%q, значение=%q, ошибка=%v",
-				chatID,
-				item,
-				parts[len(parts)-2],
-				err,
+				"handleCallbackQueryData: товар не найден или недоступен: chatID=%d, productID=%d, ошибка=%v",
+				chatID, productID, productErr,
 			)
-			m.SendPopupMessage(update, "Некорректное количество товара")
+			m.SendPopupMessage(update, "Товар больше недоступен")
 			return
 		}
-
-		if quantity <= 0 {
-			err := fmt.Errorf(
-				"количество товара должно быть положительным: chatID=%d, товар=%q, quantity=%d",
-				chatID,
-				item,
-				quantity,
-			)
-			m.app.Log.Error("handleCallbackQueryData", err.Error())
-			m.SendPopupMessage(update, "Количество должно быть больше нуля")
-			return
-		}
-
-		// Проверяем цену.
-		cost, err := strconv.Atoi(parts[len(parts)-1])
-		if err != nil {
+		if product.Price <= 0 || strings.TrimSpace(product.Title) == "" {
 			m.app.Log.Errorf(
-				"handleCallbackQueryData: ошибка преобразования цены: chatID=%d, товар=%q, значение=%q, ошибка=%v",
-				chatID,
-				item,
-				parts[len(parts)-1],
-				err,
+				"handleCallbackQueryData: в базе некорректные данные товара: productID=%d, название=%q, цена=%d",
+				productID, product.Title, product.Price,
 			)
-			m.SendPopupMessage(update, "Некорректная цена товара")
+			m.SendPopupMessage(update, "Товар временно недоступен")
 			return
 		}
 
-		if cost <= 0 {
-			err := fmt.Errorf(
-				"цена товара должна быть положительной: chatID=%d, товар=%q, cost=%d",
-				chatID,
-				item,
-				cost,
-			)
-			m.app.Log.Error("handleCallbackQueryData", err.Error())
-			m.SendPopupMessage(update, "Цена товара должна быть больше нуля")
-			return
-		}
-
-		// Полное название получаем из БД по исходному callback; сам callback не изменяем.
-		category, subcategory, categoryErr := m.repo.GetProductCategoriesByCallback(callbackData)
-		if categoryErr != nil {
-			m.app.Log.Errorf("handleCallbackQueryData: не удалось получить категории товара: chatID=%d, callback=%q, ошибка=%v", chatID, callbackData, categoryErr)
-		} else {
-			item = formatProductTitle(category, subcategory, item)
-		}
-
-		m.AddToBasket(update, item, quantity, cost)
+		item := formatProductTitle(product.Category, product.Title, product.Packaging)
+		m.AddToBasket(update, item, 1, product.Price)
 
 	// ---------------------------------------------------------
 	// ИЗМЕНЕНИЕ КОЛИЧЕСТВА В КОРЗИНЕ

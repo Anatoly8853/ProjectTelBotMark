@@ -111,6 +111,31 @@ func (r *Repository) GetFavoriteProducts(userID int64) ([]structs.Product, error
 	return products, nil
 }
 
+// GetProductForBasket возвращает название, категорию, фасовку и цену товара по его ID.
+func (r *Repository) GetProductForBasket(productID int) (structs.Product, error) {
+	if productID <= 0 {
+		return structs.Product{}, fmt.Errorf("некорректный ID товара: %d", productID)
+	}
+
+	var product structs.Product
+	err := r.db.QueryRowContext(context.Background(), `
+		SELECT COALESCE(c.name, ''), COALESCE(c2.display_name, ''),
+		       COALESCE(pc.weight_kg, ''), pc.price_rub
+		FROM products_categories pc
+		LEFT JOIN categories c ON c.id = pc.category_id
+		LEFT JOIN categories_2 c2 ON c2.id = pc.categories_2_id
+		WHERE pc.id = ?`, productID,
+	).Scan(&product.Category, &product.Title, &product.Packaging, &product.Price)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return structs.Product{}, fmt.Errorf("товар с ID %d не найден", productID)
+		}
+		return structs.Product{}, fmt.Errorf("не удалось получить товар с ID %d: %w", productID, err)
+	}
+	product.ID = productID
+	return product, nil
+}
+
 // GetProductCategoriesByCallback возвращает родительскую категорию и подкатегорию товара по неизменённому callback из каталога.
 func (r *Repository) GetProductCategoriesByCallback(callback string) (string, string, error) {
 	if callback == "" {

@@ -288,7 +288,7 @@ func (r *Repository) getSubCategories(ctx context.Context, mainCatID int) ([]str
 // getProductsForMainCategory Получает продукты для основной категории (без подкатегорий).
 func (r *Repository) getProductsForMainCategory(ctx context.Context, mainCatID int) ([]structs.Category, error) {
 	rows, err := r.db.QueryContext(ctx, `
-        SELECT p.weight_kg, p.price_rub, p.callback, ph.name AS photo_path
+        SELECT p.id, p.text, ph.name AS photo_path
         FROM products_categories p
         JOIN photo ph ON p.photo_id = ph.id
         WHERE p.category_id = ? 
@@ -311,8 +311,8 @@ func (r *Repository) getProductsForMainCategory(ctx context.Context, mainCatID i
 	var products []structs.ButtonData
 	for rows.Next() {
 		var productID int
-		var text, callback, photoPath string
-		if err = rows.Scan(&productID, &text, &callback, &photoPath); err != nil {
+		var text, photoPath string
+		if err = rows.Scan(&productID, &text, &photoPath); err != nil {
 			r.app.Log.Error("getProductsForMainCategory", err.Error())
 			return nil, err
 		}
@@ -320,7 +320,7 @@ func (r *Repository) getProductsForMainCategory(ctx context.Context, mainCatID i
 		//displayText := fmt.Sprintf("⚖%s \uD83D\uDCB5 %d рублей", weight, price)
 		products = append(products, structs.ButtonData{
 			Text:             text,
-			Callback:         callback, // существующий callback товара сохраняется без изменений
+			Callback:         fmt.Sprintf("add_%d", productID),
 			FavoriteCallback: fmt.Sprintf("fav_toggle_%d", productID),
 		})
 
@@ -335,7 +335,7 @@ func (r *Repository) getProductsForMainCategory(ctx context.Context, mainCatID i
 // getProductsForSubCategory Получает продукты для подкатегории.
 func (r *Repository) getProductsForSubCategory(ctx context.Context, mainCatID, subCatID int) ([]structs.Category, error) {
 	rows, err := r.db.QueryContext(ctx, `
-        SELECT p.id, p.text, p.callback, ph.name AS photo_path
+        SELECT p.id, p.text, ph.name AS photo_path
         FROM products_categories p
         JOIN photo ph ON p.photo_id = ph.id
         WHERE p.category_id = ? 
@@ -360,15 +360,15 @@ func (r *Repository) getProductsForSubCategory(ctx context.Context, mainCatID, s
 	var products []structs.ButtonData
 	for rows.Next() {
 		var productID int
-		var text, callback, photoPath string
-		if err = rows.Scan(&productID, &text, &callback, &photoPath); err != nil {
+		var text, photoPath string
+		if err = rows.Scan(&productID, &text, &photoPath); err != nil {
 			r.app.Log.Error("getProductsForSubCategory", err.Error())
 			return nil, err
 		}
 
 		products = append(products, structs.ButtonData{
 			Text:             text,
-			Callback:         callback,
+			Callback:         fmt.Sprintf("add_%d", productID),
 			FavoriteCallback: fmt.Sprintf("fav_toggle_%d", productID),
 		})
 

@@ -256,16 +256,29 @@ func (r *Repository) AddProduct(product structs.Product) error {
 	}
 
 	// 4. Продукт-фасовка
-	_, err = tx.ExecContext(ctx, `
+	result, err := tx.ExecContext(ctx, `
 		INSERT INTO products_categories
 			(category_id, categories_2_id, photo_id, weight_kg, price_rub, text, callback)
 		VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		categoryID, subcategoryID, photoID,
 		product.Packaging, product.Price,
-		product.Text, product.Callback,
+		product.Text, "",
 	)
 	if err != nil {
 		return fmt.Errorf("failed to insert product category: %w", err)
+	}
+	productID, err := result.LastInsertId()
+	if err != nil {
+		return fmt.Errorf("failed to get inserted product ID: %w", err)
+	}
+	if productID <= 0 {
+		return fmt.Errorf("invalid inserted product ID: %d", productID)
+	}
+	if _, err = tx.ExecContext(ctx,
+		`UPDATE products_categories SET callback = ? WHERE id = ?`,
+		fmt.Sprintf("add_%d", productID), productID,
+	); err != nil {
+		return fmt.Errorf("failed to save product callback: %w", err)
 	}
 
 	// Commit
@@ -380,7 +393,7 @@ func (r *Repository) UpdateProduct(p structs.Product) (err error) {
 		UPDATE products_categories
 		SET category_id = ?, categories_2_id = ?, photo_id = ?, weight_kg = ?, price_rub = ?, text = ?, callback = ?
 		WHERE id = ?`,
-		newCatID, subID, newPhotoID, p.Packaging, p.Price, p.Text, p.Callback, p.ID,
+		newCatID, subID, newPhotoID, p.Packaging, p.Price, p.Text, fmt.Sprintf("add_%d", p.ID), p.ID,
 	)
 	if err != nil {
 		r.app.Log.Errorf("failed to update category: %v", err)

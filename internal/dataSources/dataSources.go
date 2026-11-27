@@ -402,37 +402,39 @@ func (r *Repository) CloseDB() {
 	}
 }
 
-func (r *Repository) UserID() []structs.User {
-
+func (r *Repository) UserID() (users []structs.User, err error) {
 	ctx := context.Background()
-	row, err := r.db.QueryContext(ctx, `SELECT user_id FROM tg_user_Chat_ID`)
+	rows, err := r.db.QueryContext(ctx, `SELECT user_id FROM tg_user_Chat_ID`)
 	if err != nil {
-		r.app.Log.Errorf("Error getting user id: %v", err)
-		return nil
+		r.app.Log.Errorf("UserID: ошибка получения списка пользователей: %v", err)
+		return nil, err
 	}
 
 	defer func() {
-		if closeErr := row.Close(); closeErr != nil {
+		if closeErr := rows.Close(); closeErr != nil {
 			r.app.Log.Errorf("UserID: ошибка закрытия SQL rows: %v", closeErr)
+			if err == nil {
+				err = closeErr
+			}
 		}
 	}()
 
-	var user []structs.User
-
-	for row.Next() {
-		u := structs.User{}
-		err = row.Scan(&u.UserID)
-		if err != nil {
+	users = make([]structs.User, 0)
+	for rows.Next() {
+		var user structs.User
+		if err = rows.Scan(&user.UserID); err != nil {
 			r.app.Log.Errorf("UserID: ошибка чтения ID пользователя: %v", err)
-			return nil
+			return nil, err
 		}
-		user = append(user, u)
+		users = append(users, user)
 	}
-	if err := row.Err(); err != nil {
+
+	if err = rows.Err(); err != nil {
 		r.app.Log.Errorf("UserID: ошибка обхода SQL rows: %v", err)
-		return nil
+		return nil, err
 	}
-	return user
+
+	return users, nil
 }
 
 // getOrInsertValues Функция для получения или вставки значений в таблицы базы данных.
@@ -1188,12 +1190,24 @@ func (r *Repository) StartBackupRoutine() {
 	}()
 }
 
-// GetByUserID Функция для выбора из базы данных.
-func (r *Repository) GetByUserID(userID int64) structs.OrderDb {
+// GetByUserID возвращает последние сохранённые данные заказа пользователя.
+func (r *Repository) GetByUserID(userID int64) (structs.OrderDb, error) {
 	ctx := context.Background()
-	var o structs.OrderDb
-	// Выполняем запрос для получения заказов
-	_ = r.db.QueryRowContext(ctx, baseQueryOrders, userID).Scan(&o.UserID.UserID, &o.FullName, &o.PhoneNumber, &o.DeliveryAddress)
+	var order structs.OrderDb
 
-	return o
+	err := r.db.QueryRowContext(ctx, baseQueryOrders, userID).Scan(
+		&order.UserID.UserID,
+		&order.FullName,
+		&order.PhoneNumber,
+		&order.DeliveryAddress,
+	)
+	if err == sql.ErrNoRows {
+		return order, nil
+	}
+	if err != nil {
+		r.app.Log.Errorf("GetByUserID: ошибка получения данных заказа: userID=%d, ошибка=%v", userID, err)
+		return structs.OrderDb{}, err
+	}
+
+	return order, nil
 }

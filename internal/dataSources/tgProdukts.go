@@ -79,6 +79,26 @@ func (r *Repository) GetCategoriesWithProducts() (map[string]structs.Category, e
 					}
 				}
 			}
+		} else {
+			// Основная категория без подкатегорий: показываем её товары напрямую.
+			products, err := r.getProductsForMainCategory(ctx, mainCat.ID)
+			if err != nil {
+				r.app.Log.Error("getProductsForMainCategory", err.Error())
+				return nil, err
+			}
+
+			category := structs.Category{
+				CategoryName: mainCat.CategoryName,
+				ButtonsM:     getDefaultButtonsM(),
+			}
+			if len(products) > 0 {
+				// В последнем элементе находятся все кнопки товаров категории.
+				lastProduct := products[len(products)-1]
+				category.Photo = lastProduct.Photo
+				category.Buttons = lastProduct.Buttons
+			}
+
+			jsonResult[mainCatName] = category
 		}
 	}
 

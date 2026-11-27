@@ -239,12 +239,13 @@ func (r *Repository) AddProduct(product structs.Product) error {
 		r.app.Log.Errorf("Failed to begin transaction: %v", err)
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
+	committed := false
 	defer func() {
-		if err != nil {
-			err := tx.Rollback()
-			if err != nil {
-				return
-			}
+		if committed {
+			return
+		}
+		if rollbackErr := tx.Rollback(); rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
+			r.app.Log.Errorf("AddProduct: ошибка отката транзакции: %v", rollbackErr)
 		}
 	}()
 
@@ -283,8 +284,10 @@ func (r *Repository) AddProduct(product structs.Product) error {
 
 	// Commit
 	if err = tx.Commit(); err != nil {
+		r.app.Log.Errorf("AddProduct: ошибка фиксации транзакции: %v", err)
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
+	committed = true
 
 	return nil
 }
@@ -363,13 +366,13 @@ func (r *Repository) UpdateProduct(p structs.Product) (err error) {
 		r.app.Log.Errorf("failed to start transaction: %v", err)
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
+	committed := false
 	defer func() {
-		if err != nil {
-			err := tx.Rollback()
-			if err != nil {
-				r.app.Log.Errorf("Failed to close product select: %v", err)
-				return
-			}
+		if committed {
+			return
+		}
+		if rollbackErr := tx.Rollback(); rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
+			r.app.Log.Errorf("UpdateProduct: ошибка отката транзакции: %v", rollbackErr)
 		}
 	}()
 
@@ -430,9 +433,10 @@ func (r *Repository) UpdateProduct(p structs.Product) (err error) {
 
 	// --- 7. Commit
 	if err = tx.Commit(); err != nil {
-		r.app.Log.Errorf("failed to commit transaction: %v", err)
+		r.app.Log.Errorf("UpdateProduct: ошибка фиксации транзакции: %v", err)
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
+	committed = true
 
 	return nil
 }
@@ -447,13 +451,13 @@ func (r *Repository) DeleteProduct(productID int) error {
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
+	committed := false
 	defer func() {
-		if err != nil {
-			err := tx.Rollback()
-			if err != nil {
-				r.app.Log.Error(err)
-				return
-			}
+		if committed {
+			return
+		}
+		if rollbackErr := tx.Rollback(); rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
+			r.app.Log.Errorf("DeleteProduct: ошибка отката транзакции: %v", rollbackErr)
 		}
 	}()
 
@@ -535,8 +539,10 @@ func (r *Repository) DeleteProduct(productID int) error {
 	}
 
 	if err = tx.Commit(); err != nil {
+		r.app.Log.Errorf("DeleteProduct: ошибка фиксации транзакции: %v", err)
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
+	committed = true
 
 	return nil
 }

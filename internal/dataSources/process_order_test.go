@@ -105,6 +105,52 @@ func TestProcessOrderPreservesUserBlackStatus(t *testing.T) {
 	}
 }
 
+func TestGetByUserIDReturnsEmptyWhenNoPreviousOrder(t *testing.T) {
+	repo, _ := newProcessOrderTestRepository(t)
+
+	order, err := repo.GetByUserID(10004)
+	if err != nil {
+		t.Fatalf("отсутствие предыдущего заказа не должно считаться ошибкой: %v", err)
+	}
+	if order.PhoneNumber != "" || order.FullName != "" || order.DeliveryAddress != "" {
+		t.Fatalf("ожидались пустые данные предыдущего заказа, получено: %#v", order)
+	}
+}
+
+func TestGetByUserIDReturnsDatabaseError(t *testing.T) {
+	repo, db := newProcessOrderTestRepository(t)
+	if err := db.Close(); err != nil {
+		t.Fatalf("не удалось закрыть тестовую базу: %v", err)
+	}
+
+	if _, err := repo.GetByUserID(10005); err == nil {
+		t.Fatal("ожидалась ошибка при чтении из закрытой базы данных")
+	}
+}
+
+func TestUserIDReturnsEmptyListWithoutError(t *testing.T) {
+	repo, _ := newProcessOrderTestRepository(t)
+
+	users, err := repo.UserID()
+	if err != nil {
+		t.Fatalf("пустой список пользователей не должен считаться ошибкой: %v", err)
+	}
+	if users == nil || len(users) != 0 {
+		t.Fatalf("ожидался пустой ненулевой список пользователей, получено: %#v", users)
+	}
+}
+
+func TestUserIDReturnsDatabaseError(t *testing.T) {
+	repo, db := newProcessOrderTestRepository(t)
+	if err := db.Close(); err != nil {
+		t.Fatalf("не удалось закрыть тестовую базу: %v", err)
+	}
+
+	if _, err := repo.UserID(); err == nil {
+		t.Fatal("ожидалась ошибка при чтении списка из закрытой базы данных")
+	}
+}
+
 func TestProcessOrderCreatesSeparateOrders(t *testing.T) {
 	repo, db := newProcessOrderTestRepository(t)
 	update := prepareProcessOrderTestData(t, 10001)

@@ -663,7 +663,12 @@ func (m *MessageService) handleCallbackQueryData(cfg config.Config, update tgbot
 		DeliveryDateChatID[chatID] = 0
 		deliveryDateMu.Unlock()
 
-		orders := m.repo.GetByUserID(chatID)
+		orders, err := m.repo.GetByUserID(chatID)
+		if err != nil {
+			m.app.Log.Errorf("handleCallbackQueryData: ошибка получения сохранённых данных заказа: chatID=%d, ошибка=%v", chatID, err)
+			m.SendPopupMessage(update, "Не удалось получить сохранённые данные. Попробуйте позже.")
+			return
+		}
 
 		if orders.PhoneNumber == "" ||
 			orders.FullName == "" ||
@@ -1039,7 +1044,13 @@ func (m *MessageService) continueAfterDeliveryDate(chatID int64, formatted strin
 	}
 	m.app.Log.Infof("continueAfterDeliveryDate: дата доставки подтверждена и сохранена: chatID=%d, дата=%s", chatID, formatted)
 
-	orders := m.repo.GetByUserID(chatID)
+	orders, err := m.repo.GetByUserID(chatID)
+	if err != nil {
+		m.app.Log.Errorf("continueAfterDeliveryDate: ошибка получения сохранённых данных заказа: chatID=%d, ошибка=%v", chatID, err)
+		m.sendMessage(chatID, "Не удалось получить сохранённые данные заказа. Попробуйте позже.")
+		return
+	}
+
 	if orders.PhoneNumber == "" || orders.FullName == "" || orders.DeliveryAddress == "" {
 		instructions := "Пожалуйста, введите " + PhoneNumber + "\nПример:\n+79345678901\n"
 		if err := m.addOrUpdateOrderField(chatID, "PhoneNumber", PhoneNumber); err != nil {

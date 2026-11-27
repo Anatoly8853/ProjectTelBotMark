@@ -84,7 +84,6 @@ func parseProductForm(c *gin.Context) (structs.Product, error) {
 		Title: title, Description: description, Price: price, Category: category,
 		Packaging: packaging,
 		Text:      fmt.Sprintf("⚖%s\n💵%s рублей", packaging, priceRaw),
-		Callback:  fmt.Sprintf("add_%s %s_1_%s", title, packaging, priceRaw),
 	}, nil
 }
 

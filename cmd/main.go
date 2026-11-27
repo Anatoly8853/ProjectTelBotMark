@@ -51,7 +51,7 @@ func main() {
 		app.Log.Error("GetCategoriesWithProducts", err)
 		return
 	}
-	structs.Categories = cat
+	structs.SetCategories(cat)
 
 	defer repo.CloseDB()
 

@@ -989,6 +989,12 @@ func (r *Repository) ProcessOrder(
 	}
 	stmtClosed = true
 
+	// Удаляем сохранённую корзину в той же транзакции, что и заказ.
+	if _, err = tx.ExecContext(ctx, `DELETE FROM tg_user_baskets WHERE user_id = ?`, userID); err != nil {
+		r.app.Log.Errorf("ProcessOrder: ошибка удаления сохранённой корзины: userID=%d, ошибка=%v", userID, err)
+		return err
+	}
+
 	// Завершаем транзакцию.
 	if err = tx.Commit(); err != nil {
 		r.app.Log.Errorf(

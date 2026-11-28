@@ -20,6 +20,7 @@ type JSONCategories map[string]structs.Category
 func (r *Repository) GetCategoriesWithProducts() (map[string]structs.Category, error) {
 	ctx := context.Background()
 	jsonResult := make(JSONCategories)
+	standaloneCategories := make(map[string]string)
 
 	mainCategories, err := r.getAllMainCategories(ctx)
 	if err != nil {
@@ -94,11 +95,31 @@ func (r *Repository) GetCategoriesWithProducts() (map[string]structs.Category, e
 			}
 
 			jsonResult[mainCatName] = category
+			standaloneCategories[mainCatName] = fmt.Sprintf("cat_%s", StripEmojis(mainCat.CategoryName))
 		}
 	}
 
 	// 🔄 Постраничная разбивка "Старт" + "Стр. 2", "Стр. 3", ...
 	paginated := paginateCategories(mainCategories)
+
+	// Для самостоятельной категории кнопка «Назад» должна возвращать
+	// на ту страницу каталога, с которой пользователь открыл категорию.
+	for pageName, page := range paginated {
+		for _, button := range page.Buttons {
+			for categoryKey, categoryCallback := range standaloneCategories {
+				if button.Callback != categoryCallback {
+					continue
+				}
+
+				category := jsonResult[categoryKey]
+				if len(category.ButtonsM) > 0 {
+					category.ButtonsM[0].Callback = fmt.Sprintf("cat_%s", pageName)
+					jsonResult[categoryKey] = category
+				}
+			}
+		}
+	}
+
 	maps.Copy(jsonResult, paginated)
 
 	// 📦 JSON отладка — можно закомментировать

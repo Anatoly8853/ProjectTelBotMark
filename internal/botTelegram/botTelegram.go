@@ -856,7 +856,7 @@ func (m *MessageService) createCategoryMessage(update tgbotapi.Update, categoryN
 	}
 
 	if categoryData.Photo == `` {
-		keyboardReply, err := CreateCategoryKeyboardReply(categoryData.CategoryName)
+		keyboardReply, err := CreateCategoryKeyboardReply(categoryName)
 		if err != nil {
 			// Обработка ошибки
 			m.app.Log.Errorf(`ошибка %v`, err)
@@ -900,7 +900,7 @@ func (m *MessageService) createCategoryMessage(update tgbotapi.Update, categoryN
 		}
 
 		// Создаем кнопки клавиатуры
-		keyboard, err := CreateCategoryKeyboard(categoryData.CategoryName)
+		keyboard, err := CreateCategoryKeyboard(categoryName)
 		if err != nil {
 			// Обработка ошибки
 			m.app.Log.Errorf(`Ошибка не удается создать кнопки клавиатуры %v`, err)

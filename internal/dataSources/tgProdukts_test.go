@@ -138,7 +138,7 @@ func TestMainCategoryBackButtonReturnsToItsCatalogPage(t *testing.T) {
 	}
 	mainCategoryCallbacks := map[string]string{
 		"Морковь": "cat_Морковь",
-		"Овощи": "cat_Овощи",
+		"Овощи":   "cat_Овощи",
 	}
 	pages := map[string]structs.Category{
 		"Старт": {

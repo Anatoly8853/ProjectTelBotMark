@@ -20,7 +20,7 @@ type JSONCategories map[string]structs.Category
 func (r *Repository) GetCategoriesWithProducts() (map[string]structs.Category, error) {
 	ctx := context.Background()
 	jsonResult := make(JSONCategories)
-	standaloneCategories := make(map[string]string)
+	mainCategoryCallbacks := make(map[string]string)
 
 	mainCategories, err := r.getAllMainCategories(ctx)
 	if err != nil {
@@ -95,16 +95,19 @@ func (r *Repository) GetCategoriesWithProducts() (map[string]structs.Category, e
 			}
 
 			jsonResult[mainCatName] = category
-			standaloneCategories[mainCatName] = fmt.Sprintf("cat_%s", StripEmojis(mainCat.CategoryName))
 		}
+		}
+
+		// Запоминаем callback каждой основной категории независимо от наличия подкатегорий.
+		mainCategoryCallbacks[mainCatName] = fmt.Sprintf("cat_%s", StripEmojis(mainCat.CategoryName))
 	}
 
 	// 🔄 Постраничная разбивка "Старт" + "Стр. 2", "Стр. 3", ...
 	paginated := paginateCategories(mainCategories)
 
-	// Для самостоятельной категории кнопка «Назад» должна возвращать
-	// на ту страницу каталога, с которой пользователь открыл категорию.
-	setStandaloneCategoryBackPages(jsonResult, standaloneCategories, paginated)
+	// Кнопка «Назад» любой основной категории возвращает на страницу каталога,
+	// с которой пользователь открыл эту категорию.
+	setMainCategoryBackPages(jsonResult, mainCategoryCallbacks, paginated)
 
 	maps.Copy(jsonResult, paginated)
 
@@ -234,11 +237,11 @@ func (r *Repository) GetDefaultButtonsM() []structs.ButtonData {
 	return getDefaultButtonsM()
 }
 
-// setStandaloneCategoryBackPages связывает кнопку «Назад» самостоятельной категории
+// setMainCategoryBackPages связывает кнопку «Назад» основной категории
 // со страницей каталога, на которой находится кнопка этой категории.
-func setStandaloneCategoryBackPages(
+func setMainCategoryBackPages(
 	categories map[string]structs.Category,
-	standaloneCategories map[string]string,
+	mainCategoryCallbacks map[string]string,
 	pages map[string]structs.Category,
 ) {
 	pageByCallback := make(map[string]string)
@@ -248,7 +251,7 @@ func setStandaloneCategoryBackPages(
 		}
 	}
 
-	for categoryKey, categoryCallback := range standaloneCategories {
+	for categoryKey, categoryCallback := range mainCategoryCallbacks {
 		pageName, found := pageByCallback[categoryCallback]
 		if !found {
 			continue

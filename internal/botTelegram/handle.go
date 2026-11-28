@@ -938,6 +938,12 @@ func (m *MessageService) handleCallbackQueryData(cfg config.Config, update tgbot
 			purchases[i].ID = generateBasketItemID()
 		}
 		basketMu.Lock()
+		if err := m.repo.SaveBasket(chatID, purchases); err != nil {
+			basketMu.Unlock()
+			m.app.Log.Errorf("handleCallbackQueryData: не удалось сохранить повторённый заказ в корзину: chatID=%d, ошибка=%v", chatID, err)
+			answerCallback("Не удалось сохранить корзину")
+			return
+		}
 		structs.Baskets[chatID] = purchases
 		basketMu.Unlock()
 		answerCallback("Последний заказ добавлен в корзину")
@@ -988,8 +994,12 @@ func (m *MessageService) handleCallbackQueryData(cfg config.Config, update tgbot
 	// ---------------------------------------------------------
 
 	case "delete":
+		if err := m.DeleteBasketContents(chatID); err != nil {
+			m.app.Log.Errorf("handleCallbackQueryData: не удалось очистить корзину: chatID=%d, ошибка=%v", chatID, err)
+			answerCallback("Не удалось очистить корзину")
+			return
+		}
 		answerCallback("Корзина успешно очищена")
-		m.DeleteBasketContents(chatID)
 
 		// Даём Telegram время показать всплывающее уведомление, затем открываем главное меню.
 		time.AfterFunc(2*time.Second, func() {

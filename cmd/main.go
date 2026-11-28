@@ -64,6 +64,10 @@ func main() {
 	}
 
 	updatemessage := botTelegram.NewUpdateMessage(repo, app, bot)
+	if err := updatemessage.RestoreBaskets(); err != nil {
+		app.Log.Errorf("Не удалось восстановить корзины из SQLite: %v", err)
+		return
+	}
 	updatemessage.UpdateMessage(cfg)
 
 	repo.StartBackupRoutine()

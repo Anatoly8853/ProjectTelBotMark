@@ -244,11 +244,16 @@ func (m *MessageService) deleteMessages(chatID int64) {
 }
 
 // DeleteBasketContents очищает корзину пользователя.
-func (m *MessageService) DeleteBasketContents(chatID int64) {
+func (m *MessageService) DeleteBasketContents(chatID int64) error {
 	if chatID == 0 {
 		err := fmt.Errorf("некорректный chatID: %d", chatID)
 		m.app.Log.Error("DeleteBasketContents", err.Error())
-		return
+		return err
+	}
+
+	if err := m.repo.DeleteBasket(chatID); err != nil {
+		m.app.Log.Errorf("DeleteBasketContents: не удалось удалить сохранённую корзину: chatID=%d, ошибка=%v", chatID, err)
+		return err
 	}
 
 	basketMu.Lock()
@@ -271,5 +276,5 @@ func (m *MessageService) DeleteBasketContents(chatID int64) {
 			forgetTrackedMessage(chatID, messageID)
 		}
 	}
-
+	return nil
 }

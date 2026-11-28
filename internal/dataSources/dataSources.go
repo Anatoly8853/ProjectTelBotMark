@@ -387,7 +387,123 @@ func InitDB(app *slogavp.Application) (db *sql.DB, err error) {
 		return nil, err
 	}
 
+	_, err = db.ExecContext(ctx, `
+	CREATE TABLE IF NOT EXISTS tg_user_baskets (
+		user_id INTEGER NOT NULL,
+		item_id INTEGER NOT NULL,
+		item_name TEXT NOT NULL,
+		quantity INTEGER NOT NULL CHECK(quantity > 0),
+		cost INTEGER NOT NULL CHECK(cost > 0),
+		position INTEGER NOT NULL,
+		PRIMARY KEY (user_id, item_id)
+	)
+	`)
+	if err != nil {
+		app.Log.Errorf("InitDB: ошибка создания таблицы корзин: %v", err)
+		return nil, err
+	}
+
 	return db, nil
+}
+
+// SaveBasket сохраняет текущее содержимое корзины пользователя в SQLite.
+func (r *Repository) SaveBasket(userID int64, purchases []structs.Purchase) error {
+	if userID <= 0 {
+		return fmt.Errorf("SaveBasket: некорректный userID=%d", userID)
+	}
+	if len(purchases) > 0 {
+		if _, err := structs.CalculatePurchasesTotal(purchases); err != nil {
+			return fmt.Errorf("SaveBasket: некорректная корзина пользователя %d: %w", userID, err)
+		}
+	}
+
+	tx, err := r.db.BeginTx(context.Background(), nil)
+	if err != nil {
+		return fmt.Errorf("SaveBasket: ошибка начала транзакции: %w", err)
+	}
+	defer func() {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil && rollbackErr != sql.ErrTxDone {
+			r.app.Log.Errorf("SaveBasket: ошибка отката транзакции: userID=%d, ошибка=%v", userID, rollbackErr)
+		}
+	}()
+
+	if _, err = tx.ExecContext(context.Background(), `DELETE FROM tg_user_baskets WHERE user_id = ?`, userID); err != nil {
+		return fmt.Errorf("SaveBasket: ошибка очистки старой корзины: %w", err)
+	}
+	if len(purchases) == 0 {
+		return tx.Commit()
+	}
+
+	stmt, err := tx.PrepareContext(context.Background(), `
+		INSERT INTO tg_user_baskets (user_id, item_id, item_name, quantity, cost, position)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`)
+	if err != nil {
+		return fmt.Errorf("SaveBasket: ошибка подготовки запроса: %w", err)
+	}
+	defer stmt.Close()
+
+	seenIDs := make(map[int64]struct{}, len(purchases))
+	for position, purchase := range purchases {
+		if purchase.ID <= 0 {
+			return fmt.Errorf("SaveBasket: некорректный ID позиции: userID=%d, itemID=%d", userID, purchase.ID)
+		}
+		if _, exists := seenIDs[purchase.ID]; exists {
+			return fmt.Errorf("SaveBasket: повторяющийся ID позиции: userID=%d, itemID=%d", userID, purchase.ID)
+		}
+		seenIDs[purchase.ID] = struct{}{}
+		if _, err = stmt.ExecContext(context.Background(), userID, purchase.ID, purchase.Item, purchase.Quantity, purchase.Cost, position); err != nil {
+			return fmt.Errorf("SaveBasket: ошибка сохранения позиции %q: %w", purchase.Item, err)
+		}
+	}
+	if err = stmt.Close(); err != nil {
+		return fmt.Errorf("SaveBasket: ошибка закрытия запроса: %w", err)
+	}
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("SaveBasket: ошибка фиксации транзакции: %w", err)
+	}
+	return nil
+}
+
+// GetAllBaskets загружает сохранённые корзины пользователей.
+func (r *Repository) GetAllBaskets() (map[int64][]structs.Purchase, error) {
+	rows, err := r.db.QueryContext(context.Background(), `
+		SELECT user_id, item_id, item_name, quantity, cost
+		FROM tg_user_baskets
+		ORDER BY user_id, position
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("GetAllBaskets: ошибка запроса: %w", err)
+	}
+	defer rows.Close()
+
+	baskets := make(map[int64][]structs.Purchase)
+	for rows.Next() {
+		var userID int64
+		var purchase structs.Purchase
+		if err = rows.Scan(&userID, &purchase.ID, &purchase.Item, &purchase.Quantity, &purchase.Cost); err != nil {
+			return nil, fmt.Errorf("GetAllBaskets: ошибка чтения позиции: %w", err)
+		}
+		if userID <= 0 || purchase.ID <= 0 || purchase.Quantity <= 0 || purchase.Cost <= 0 || strings.TrimSpace(purchase.Item) == "" {
+			return nil, fmt.Errorf("GetAllBaskets: обнаружена некорректная позиция корзины пользователя %d", userID)
+		}
+		baskets[userID] = append(baskets[userID], purchase)
+	}
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("GetAllBaskets: ошибка обхода результатов: %w", err)
+	}
+	return baskets, nil
+}
+
+// DeleteBasket удаляет сохранённую корзину пользователя.
+func (r *Repository) DeleteBasket(userID int64) error {
+	if userID <= 0 {
+		return fmt.Errorf("DeleteBasket: некорректный userID=%d", userID)
+	}
+	if _, err := r.db.ExecContext(context.Background(), `DELETE FROM tg_user_baskets WHERE user_id = ?`, userID); err != nil {
+		return fmt.Errorf("DeleteBasket: ошибка удаления корзины пользователя %d: %w", userID, err)
+	}
+	return nil
 }
 
 // CloseDB - закрытие соединения с базой данных.
@@ -871,6 +987,12 @@ func (r *Repository) ProcessOrder(
 		return err
 	}
 	stmtClosed = true
+
+	// Удаляем сохранённую корзину в той же транзакции, что и заказ.
+	if _, err = tx.ExecContext(ctx, `DELETE FROM tg_user_baskets WHERE user_id = ?`, userID); err != nil {
+		r.app.Log.Errorf("ProcessOrder: ошибка удаления сохранённой корзины: userID=%d, ошибка=%v", userID, err)
+		return err
+	}
 
 	// Завершаем транзакцию.
 	if err = tx.Commit(); err != nil {

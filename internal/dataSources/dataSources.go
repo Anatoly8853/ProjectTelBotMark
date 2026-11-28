@@ -406,7 +406,6 @@ func InitDB(app *slogavp.Application) (db *sql.DB, err error) {
 	return db, nil
 }
 
-
 // SaveBasket сохраняет текущее содержимое корзины пользователя в SQLite.
 func (r *Repository) SaveBasket(userID int64, purchases []structs.Purchase) error {
 	if userID <= 0 {

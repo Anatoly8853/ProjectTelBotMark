@@ -136,7 +136,7 @@ func TestMainCategoryBackButtonReturnsToItsCatalogPage(t *testing.T) {
 			ButtonsM:     getDefaultButtonsM(),
 		},
 	}
-	standaloneCategories := map[string]string{
+	mainCategoryCallbacks := map[string]string{
 		"Морковь": "cat_Морковь",
 		"Овощи": "cat_Овощи",
 	}
@@ -151,11 +151,12 @@ func TestMainCategoryBackButtonReturnsToItsCatalogPage(t *testing.T) {
 			CategoryName: "Стр 2",
 			Buttons: []structs.ButtonData{
 				{Text: "Морковь", Callback: "cat_Морковь"},
+				{Text: "Овощи", Callback: "cat_Овощи"},
 			},
 		},
 	}
 
-	setMainCategoryBackPages(categories, standaloneCategories, pages)
+	setMainCategoryBackPages(categories, mainCategoryCallbacks, pages)
 
 	carrot := categories["Морковь"]
 	if len(carrot.ButtonsM) == 0 || carrot.ButtonsM[0].Callback != "cat_Стр 2" {

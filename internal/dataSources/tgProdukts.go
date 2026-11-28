@@ -28,18 +28,13 @@ func (r *Repository) GetCategoriesWithProducts() (map[string]structs.Category, e
 	}
 
 	for mainCatName, mainCat := range mainCategories {
-		hasSubcategories, err := r.hasSubcategories(ctx, mainCat.ID)
+		subCats, err := r.getSubCategories(ctx, mainCat.ID)
 		if err != nil {
-			r.app.Log.Error("hasSubcategories", err.Error())
+			r.app.Log.Error("getSubCategories", err.Error())
 			return nil, err
 		}
 
-		if hasSubcategories {
-			subCats, err := r.getSubCategories(ctx, mainCat.ID)
-			if err != nil {
-				r.app.Log.Error("getSubCategories", err.Error())
-				return nil, err
-			}
+		if len(subCats) > 0 {
 
 			// Кнопки подкатегорий
 			var buttons []structs.ButtonData
@@ -280,30 +275,16 @@ func (r *Repository) getAllMainCategories(ctx context.Context) (map[string]struc
 	return result, nil
 }
 
-// hasSubcategories Проверяет, есть ли подкатегории у основной категории.
-func (r *Repository) hasSubcategories(ctx context.Context, mainCatID int) (bool, error) {
-	var count int
-	err := r.db.QueryRowContext(ctx, `
-        SELECT COUNT(*) 
-        FROM products_categories 
-        WHERE category_id = ? 
-        AND categories_2_id IS NOT NULL`,
-		mainCatID).Scan(&count)
-	if err != nil {
-		r.app.Log.Error("hasSubcategories", err.Error())
-		return false, err
-	}
-	return count > 0, nil
-}
-
 // getSubCategories Получает подкатегории для основной категории.
 func (r *Repository) getSubCategories(ctx context.Context, mainCatID int) ([]structs.Category, error) {
 	rows, err := r.db.QueryContext(ctx, `
         SELECT c2.id, c2.name, c2.display_name
         FROM categories_2 c2
         JOIN products_categories pc ON pc.categories_2_id = c2.id
+        JOIN categories c ON c.id = pc.category_id
         WHERE pc.category_id = ?
-        GROUP BY c2.id, c2.name
+        AND c2.name <> c.name
+        GROUP BY c2.id, c2.name, c2.display_name
         ORDER BY c2.name`, mainCatID)
 	if err != nil {
 		r.app.Log.Error("getSubcategories", err.Error())
@@ -341,8 +322,10 @@ func (r *Repository) getProductsForMainCategory(ctx context.Context, mainCatID i
         SELECT p.id, p.text, ph.name AS photo_path
         FROM products_categories p
         JOIN photo ph ON p.photo_id = ph.id
-        WHERE p.category_id = ? 
-        AND p.categories_2_id IS NULL`,
+        JOIN categories c ON c.id = p.category_id
+        LEFT JOIN categories_2 c2 ON c2.id = p.categories_2_id
+        WHERE p.category_id = ?
+        AND (p.categories_2_id IS NULL OR c2.name = c.name)`,
 		mainCatID)
 	if err != nil {
 		r.app.Log.Error("getProductsForMainCategory", err.Error())

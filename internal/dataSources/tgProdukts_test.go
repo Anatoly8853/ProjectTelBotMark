@@ -82,7 +82,7 @@ func TestGetCategoriesWithProductsSeparatesDirectProductsFromSubcategories(t *te
 		INSERT INTO products_categories(id, category_id, categories_2_id, photo_id, text, callback) VALUES
 			(1, 1, 1, 1, 'Морковь 1 кг', 'add_1'),
 			(2, 2, 2, 2, 'Капуста 1 кг', 'add_2');
-	`;
+	`
 	if _, err = db.Exec(schema); err != nil {
 		t.Fatalf("создание тестовых данных: %v", err)
 	}

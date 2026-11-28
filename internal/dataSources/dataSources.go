@@ -59,6 +59,7 @@ const baseQuery = `
 		tg_user_phone_number.phone_number,
 		tg_user_delivery_address.delivery_address,
 		COALESCE(tg_user_orders_date.comment, '') AS comment,
+		COALESCE(tg_user_orders_date.payment_method, '') AS payment_method,
 		tg_user_order_id.item_name,
 		tg_user_orders.quantity,
 		tg_user_orders.cost
@@ -95,6 +96,7 @@ const limitedOrdersQuery = `
         tg_user_phone_number.phone_number,
         tg_user_delivery_address.delivery_address,
         COALESCE(tg_user_orders_date.comment, '') AS comment,
+        COALESCE(tg_user_orders_date.payment_method, '') AS payment_method,
         tg_user_order_id.item_name,
         tg_user_orders.quantity,
         tg_user_orders.cost
@@ -227,6 +229,7 @@ func InitDB(app *slogavp.Application) (db *sql.DB, err error) {
     delivery_date DATE,
     total_cost INTEGER,
     comment TEXT NOT NULL DEFAULT '',
+    payment_method TEXT NOT NULL DEFAULT '',
     FOREIGN KEY (user_id) REFERENCES tg_user_Chat_ID(id),
     FOREIGN KEY (phone_number_id) REFERENCES tg_user_phone_number(id),
     FOREIGN KEY (full_name_id) REFERENCES tg_user_full_name(id),
@@ -273,6 +276,43 @@ func InitDB(app *slogavp.Application) (db *sql.DB, err error) {
 			return nil, err
 		}
 		app.Log.Info("В базу данных добавлен столбец комментария заказа")
+	}
+
+	// Добавляем поле способа оплаты в уже существующие базы данных.
+	paymentRows, err := db.QueryContext(ctx, `PRAGMA table_info(tg_user_orders_date)`)
+	if err != nil {
+		app.Log.Errorf("Ошибка проверки поля payment_method в tg_user_orders_date: %v", err)
+		return nil, err
+	}
+	paymentMethodColumnExists := false
+	for paymentRows.Next() {
+		var cid, notNull, primaryKey int
+		var name, columnType string
+		var defaultValue any
+		if err = paymentRows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
+			_ = paymentRows.Close()
+			app.Log.Errorf("Ошибка чтения структуры payment_method в tg_user_orders_date: %v", err)
+			return nil, err
+		}
+		if name == "payment_method" {
+			paymentMethodColumnExists = true
+		}
+	}
+	if err = paymentRows.Err(); err != nil {
+		_ = paymentRows.Close()
+		app.Log.Errorf("Ошибка обхода структуры payment_method в tg_user_orders_date: %v", err)
+		return nil, err
+	}
+	if err = paymentRows.Close(); err != nil {
+		app.Log.Errorf("Ошибка закрытия проверки payment_method в tg_user_orders_date: %v", err)
+		return nil, err
+	}
+	if !paymentMethodColumnExists {
+		if _, err = db.ExecContext(ctx, `ALTER TABLE tg_user_orders_date ADD COLUMN payment_method TEXT NOT NULL DEFAULT ''`); err != nil {
+			app.Log.Errorf("Ошибка добавления столбца payment_method в tg_user_orders_date: %v", err)
+			return nil, err
+		}
+		app.Log.Info("В базу данных добавлен столбец способа оплаты заказа")
 	}
 
 	_, err = db.ExecContext(ctx, `
@@ -590,6 +630,7 @@ func (r *Repository) ProcessOrder(
 		"DeliveryAddress",
 		"DeliveryDate",
 		"FullName",
+		"PaymentMethod",
 	}
 
 	values := make(map[string]string, len(fields)+1)
@@ -630,6 +671,12 @@ func (r *Repository) ProcessOrder(
 		}
 
 		values[field] = strValue
+	}
+
+	if values["PaymentMethod"] != structs.PaymentMethodCash && values["PaymentMethod"] != structs.PaymentMethodCard {
+		err := fmt.Errorf("неизвестный способ оплаты: userID=%d, способ=%q", userID, values["PaymentMethod"])
+		r.app.Log.Error("ProcessOrder", err.Error())
+		return err
 	}
 
 	// Комментарий необязателен, но сохраняется вместе с заказом.
@@ -759,6 +806,7 @@ func (r *Repository) ProcessOrder(
 		"delivery_date",
 		"total_cost",
 		"comment",
+		"payment_method",
 	}
 
 	valueList = []any{
@@ -770,11 +818,12 @@ func (r *Repository) ProcessOrder(
 		formattedDeliveryDate,
 		totalCost,
 		values["Comment"],
+		values["PaymentMethod"],
 	}
 
 	insertOrderQuery := `INSERT INTO tg_user_orders_date
-		(user_id, phone_number_id, full_name_id, delivery_address_id, date_time, delivery_date, total_cost, comment)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+		(user_id, phone_number_id, full_name_id, delivery_address_id, date_time, delivery_date, total_cost, comment, payment_method)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	result, err := tx.ExecContext(ctx, insertOrderQuery, valueList...)
 	if err != nil {
 		r.app.Log.Errorf("ProcessOrder: ошибка создания отдельной записи заказа: userID=%d, ошибка=%v", userID, err)
@@ -917,6 +966,7 @@ func (r *Repository) processRows(rows *sql.Rows) ([]structs.OrderDb, error) {
 			&order.PhoneNumber,
 			&order.DeliveryAddress,
 			&order.Comment,
+			&order.PaymentMethod,
 			&order.Purchase.Item,
 			&order.Purchase.Quantity,
 			&order.Purchase.Cost,

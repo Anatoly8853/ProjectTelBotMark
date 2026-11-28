@@ -111,7 +111,7 @@ func TestGetCategoriesWithProductsSeparatesDirectProductsFromSubcategories(t *te
 	if !ok {
 		t.Fatal("основная категория «Овощи» не найдена")
 	}
-	if len(vegetables.Buttons) != 1 || vegetables.Buttons[0].Callback != "cat_Капуста" {
+	if len(vegetables.Buttons) != 1 || vegetables.Buttons[0].Callback != `cat_"Капуста"` {
 		t.Fatalf("подкатегория основной категории потеряна: %+v", vegetables.Buttons)
 	}
 

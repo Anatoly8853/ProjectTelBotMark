@@ -220,6 +220,32 @@ func NewUpdateMessage(repo *dataSources.Repository, app *slogavp.Application, bo
 	}
 }
 
+// RestoreBaskets восстанавливает корзины из SQLite после запуска бота.
+func (m *MessageService) RestoreBaskets() error {
+	baskets, err := m.repo.GetAllBaskets()
+	if err != nil {
+		m.app.Log.Errorf("RestoreBaskets: ошибка загрузки корзин: %v", err)
+		return err
+	}
+
+	var maxItemID int64
+	for _, purchases := range baskets {
+		for _, purchase := range purchases {
+			if purchase.ID > maxItemID {
+				maxItemID = purchase.ID
+			}
+		}
+	}
+
+	basketMu.Lock()
+	structs.Baskets = baskets
+	basketMu.Unlock()
+	basketItemID.Store(maxItemID)
+
+	m.app.Log.Infof("Корзины восстановлены из SQLite: пользователей=%d", len(baskets))
+	return nil
+}
+
 // AddToBasket добавляет товар в корзину пользователя.
 func (m *MessageService) AddToBasket(update tgbotapi.Update, item string, quantity int, cost int) {
 	if update.CallbackQuery == nil || update.CallbackQuery.Message == nil || update.CallbackQuery.Message.Chat == nil {
@@ -243,6 +269,12 @@ func (m *MessageService) AddToBasket(update tgbotapi.Update, item string, quanti
 		basketMu.Unlock()
 		m.app.Log.Errorf("AddToBasket: не удалось добавить товар: chatID=%d, товар=%q, ошибка=%v", chatID, item, err)
 		m.SendPopupMessage(update, "Не удалось добавить товар: "+err.Error())
+		return
+	}
+	if err = m.repo.SaveBasket(chatID, purchases); err != nil {
+		basketMu.Unlock()
+		m.app.Log.Errorf("AddToBasket: не удалось сохранить корзину: chatID=%d, ошибка=%v", chatID, err)
+		m.SendPopupMessage(update, "Не удалось сохранить корзину. Попробуйте ещё раз.")
 		return
 	}
 	structs.Baskets[chatID] = purchases
@@ -346,6 +378,10 @@ func (m *MessageService) changeBasketQuantity(chatID, itemID int64, delta int) (
 	updated, _, err := changePurchaseQuantity(purchases, itemID, delta)
 	if err != nil {
 		m.app.Log.Errorf("changeBasketQuantity: chatID=%d, itemID=%d, delta=%d, ошибка=%v", chatID, itemID, delta, err)
+		return nil, err
+	}
+	if err := m.repo.SaveBasket(chatID, updated); err != nil {
+		m.app.Log.Errorf("changeBasketQuantity: не удалось сохранить корзину: chatID=%d, ошибка=%v", chatID, err)
 		return nil, err
 	}
 	structs.Baskets[chatID] = updated

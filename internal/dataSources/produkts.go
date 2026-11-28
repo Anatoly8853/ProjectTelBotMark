@@ -227,6 +227,45 @@ func upsertProductReferences(tx *sql.Tx, productID int, title, category, image s
 	return categoryID, subcategoryID, photoID, nil
 }
 
+// GetProductFormOptions возвращает существующие связи категории, названия и фасовки для подсказок формы.
+func (r *Repository) GetProductFormOptions() ([]structs.Product, error) {
+	ctx := context.Background()
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT DISTINCT
+			c.display_name,
+			c2.display_name,
+			pc.weight_kg
+		FROM products_categories pc
+		JOIN categories c ON c.id = pc.category_id
+		JOIN categories_2 c2 ON c2.id = pc.categories_2_id
+		ORDER BY c.display_name, c2.display_name, pc.weight_kg
+	`)
+	if err != nil {
+		r.app.Log.Errorf("GetProductFormOptions: ошибка получения вариантов формы: %v", err)
+		return nil, fmt.Errorf("failed to get product form options: %w", err)
+	}
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil {
+			r.app.Log.Errorf("GetProductFormOptions: ошибка закрытия SQL rows: %v", closeErr)
+		}
+	}()
+
+	options := make([]structs.Product, 0)
+	for rows.Next() {
+		var option structs.Product
+		if err := rows.Scan(&option.Category, &option.Title, &option.Packaging); err != nil {
+			r.app.Log.Errorf("GetProductFormOptions: ошибка чтения варианта формы: %v", err)
+			return nil, fmt.Errorf("failed to scan product form option: %w", err)
+		}
+		options = append(options, option)
+	}
+	if err := rows.Err(); err != nil {
+		r.app.Log.Errorf("GetProductFormOptions: ошибка обхода вариантов формы: %v", err)
+		return nil, fmt.Errorf("failed to iterate product form options: %w", err)
+	}
+	return options, nil
+}
+
 // AddProduct добавляет товар и его фасовку.
 func (r *Repository) AddProduct(product structs.Product) error {
 	if strings.TrimSpace(product.Title) == "" {

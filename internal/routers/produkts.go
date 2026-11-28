@@ -77,7 +77,16 @@ func (h *Handler) handlerProductsPage(c *gin.Context) {
 }
 
 func (h *Handler) showAddForm(c *gin.Context) {
-	c.HTML(http.StatusOK, "form.html", gin.H{"p": structs.Product{}})
+	options, err := h.repo.GetProductFormOptions()
+	if err != nil {
+		h.app.Log.Errorf("showAddForm: ошибка получения подсказок для формы товара: %v", err)
+		c.String(http.StatusInternalServerError, "Не удалось загрузить данные формы товара")
+		return
+	}
+	c.HTML(http.StatusOK, "form.html", gin.H{
+		"p":       structs.Product{},
+		"Options": options,
+	})
 }
 
 // parseProductForm читает и проверяет общие поля формы добавления и редактирования товара.
@@ -142,9 +151,17 @@ func (h *Handler) editProduct(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Не удалось получить товар"})
 		return
 	}
+	options, err := h.repo.GetProductFormOptions()
+	if err != nil {
+		h.app.Log.Errorf("editProduct: ошибка получения подсказок для формы товара id=%d: %v", id, err)
+		c.String(http.StatusInternalServerError, "Не удалось загрузить данные формы товара")
+		return
+	}
 	c.HTML(http.StatusOK, "form.html", gin.H{
 		"p":           p,
-		"Productedit": "current"})
+		"Options":     options,
+		"Productedit": "current",
+	})
 }
 
 func (h *Handler) updateProduct(c *gin.Context) {

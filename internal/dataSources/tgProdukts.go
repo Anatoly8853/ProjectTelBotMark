@@ -104,21 +104,7 @@ func (r *Repository) GetCategoriesWithProducts() (map[string]structs.Category, e
 
 	// Для самостоятельной категории кнопка «Назад» должна возвращать
 	// на ту страницу каталога, с которой пользователь открыл категорию.
-	for pageName, page := range paginated {
-		for _, button := range page.Buttons {
-			for categoryKey, categoryCallback := range standaloneCategories {
-				if button.Callback != categoryCallback {
-					continue
-				}
-
-				category := jsonResult[categoryKey]
-				if len(category.ButtonsM) > 0 {
-					category.ButtonsM[0].Callback = fmt.Sprintf("cat_%s", pageName)
-					jsonResult[categoryKey] = category
-				}
-			}
-		}
-	}
+	setStandaloneCategoryBackPages(jsonResult, standaloneCategories, paginated)
 
 	maps.Copy(jsonResult, paginated)
 
@@ -246,6 +232,35 @@ func getSubcategoryButtonsM(parentCategory string) []structs.ButtonData {
 // GetDefaultButtonsM возвращает стандартные кнопки меню для внешних пакетов.
 func (r *Repository) GetDefaultButtonsM() []structs.ButtonData {
 	return getDefaultButtonsM()
+}
+
+// setStandaloneCategoryBackPages связывает кнопку «Назад» самостоятельной категории
+// со страницей каталога, на которой находится кнопка этой категории.
+func setStandaloneCategoryBackPages(
+	categories map[string]structs.Category,
+	standaloneCategories map[string]string,
+	pages map[string]structs.Category,
+) {
+	pageByCallback := make(map[string]string)
+	for pageName, page := range pages {
+		for _, button := range page.Buttons {
+			pageByCallback[button.Callback] = pageName
+		}
+	}
+
+	for categoryKey, categoryCallback := range standaloneCategories {
+		pageName, found := pageByCallback[categoryCallback]
+		if !found {
+			continue
+		}
+
+		category := categories[categoryKey]
+		if len(category.ButtonsM) == 0 {
+			continue
+		}
+		category.ButtonsM[0].Callback = fmt.Sprintf("cat_%s", pageName)
+		categories[categoryKey] = category
+	}
 }
 
 // getMainCategoryButtonsM возвращает в главное меню из самостоятельной категории.

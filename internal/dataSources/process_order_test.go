@@ -39,6 +39,7 @@ func newProcessOrderTestRepository(t *testing.T) (*Repository, *sql.DB) {
 		`CREATE TABLE tg_user_orders_date (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, phone_number_id INTEGER, full_name_id INTEGER, delivery_address_id INTEGER, date_time TEXT, delivery_date DATE, total_cost INTEGER, comment TEXT NOT NULL DEFAULT '')`,
 		`CREATE TABLE tg_user_order_id (id INTEGER PRIMARY KEY AUTOINCREMENT, item_name TEXT UNIQUE)`,
 		`CREATE TABLE tg_user_orders (id INTEGER PRIMARY KEY AUTOINCREMENT, order_id INTEGER, item_name INTEGER, quantity INTEGER, cost INTEGER)`,
+		`CREATE TABLE tg_user_baskets (user_id INTEGER NOT NULL, item_id INTEGER NOT NULL, item_name TEXT NOT NULL, quantity INTEGER NOT NULL CHECK(quantity > 0), cost INTEGER NOT NULL CHECK(cost > 0), position INTEGER NOT NULL, PRIMARY KEY (user_id, item_id))`,
 	}
 	for _, statement := range schema {
 		if _, err := db.Exec(statement); err != nil {

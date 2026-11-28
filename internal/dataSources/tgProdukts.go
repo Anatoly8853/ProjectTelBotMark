@@ -96,7 +96,6 @@ func (r *Repository) GetCategoriesWithProducts() (map[string]structs.Category, e
 
 			jsonResult[mainCatName] = category
 		}
-		}
 
 		// Запоминаем callback каждой основной категории независимо от наличия подкатегорий.
 		mainCategoryCallbacks[mainCatName] = fmt.Sprintf("cat_%s", StripEmojis(mainCat.CategoryName))

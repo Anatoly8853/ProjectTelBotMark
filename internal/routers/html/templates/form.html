@@ -69,6 +69,12 @@
   </form>
 </div>
 
+<select id="productOptionSource" class="d-none" aria-hidden="true">
+  {{range .Options}}
+  <option data-category="{{.Category}}" data-title="{{.Title}}" data-packaging="{{.Packaging}}"></option>
+  {{end}}
+</select>
+
 <script>
   const input = document.getElementById('imageUpload');
   const fileNameSpan = document.getElementById('file-name');
@@ -78,7 +84,11 @@
   });
 
   // Варианты загружаются из БД. Новые значения можно вводить вручную.
-  const productOptions = {{toJSON .Options}};
+  const productOptions = Array.from(document.getElementById('productOptionSource').options).map(option => ({
+    Category: option.dataset.category,
+    Title: option.dataset.title,
+    Packaging: option.dataset.packaging
+  }));
   const categoryInput = document.getElementById('categoryInput');
   const titleInput = document.getElementById('titleInput');
   const packagingInput = document.getElementById('packagingInput');

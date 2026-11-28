@@ -2,6 +2,11 @@ package structs
 
 import "sync"
 
+const (
+	PaymentMethodCash = "Наличные"
+	PaymentMethodCard = "Перевод на карту"
+)
+
 type UserBlack struct {
 	UserName  string `json:"user_name,omitempty"`
 	UserBlack int    `json:"user_black,omitempty"`
@@ -117,6 +122,7 @@ type OrderDb struct {
 	PhoneNumber     string `json:"phone_number,omitempty"`
 	DeliveryAddress string `json:"delivery_address,omitempty"`
 	Comment         string `json:"comment,omitempty"`
+	PaymentMethod   string `json:"payment_method,omitempty"`
 	Purchase        Purchase
 }
 

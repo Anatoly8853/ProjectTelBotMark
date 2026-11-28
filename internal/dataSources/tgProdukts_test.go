@@ -38,7 +38,6 @@ func TestSubcategoryBackButtonReturnsToParentCategory(t *testing.T) {
 	}
 }
 
-
 func TestGetCategoriesWithProductsSeparatesDirectProductsFromSubcategories(t *testing.T) {
 	db, err := sql.Open("sqlite3", ":memory:")
 	if err != nil {

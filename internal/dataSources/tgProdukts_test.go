@@ -124,15 +124,21 @@ func TestGetCategoriesWithProductsSeparatesDirectProductsFromSubcategories(t *te
 	}
 }
 
-func TestStandaloneCategoryBackButtonReturnsToItsCatalogPage(t *testing.T) {
+func TestMainCategoryBackButtonReturnsToItsCatalogPage(t *testing.T) {
 	categories := map[string]structs.Category{
 		"Морковь": {
 			CategoryName: "Морковь",
 			ButtonsM:     getMainCategoryButtonsM(),
 		},
+		"Овощи": {
+			CategoryName: "Овощи",
+			Buttons:      []structs.ButtonData{{Text: "Перец", Callback: "cat_Перец"}},
+			ButtonsM:     getDefaultButtonsM(),
+		},
 	}
-	standaloneCategories := map[string]string{
+	mainCategoryCallbacks := map[string]string{
 		"Морковь": "cat_Морковь",
+		"Овощи":   "cat_Овощи",
 	}
 	pages := map[string]structs.Category{
 		"Старт": {
@@ -145,14 +151,20 @@ func TestStandaloneCategoryBackButtonReturnsToItsCatalogPage(t *testing.T) {
 			CategoryName: "Стр 2",
 			Buttons: []structs.ButtonData{
 				{Text: "Морковь", Callback: "cat_Морковь"},
+				{Text: "Овощи", Callback: "cat_Овощи"},
 			},
 		},
 	}
 
-	setStandaloneCategoryBackPages(categories, standaloneCategories, pages)
+	setMainCategoryBackPages(categories, mainCategoryCallbacks, pages)
 
 	carrot := categories["Морковь"]
 	if len(carrot.ButtonsM) == 0 || carrot.ButtonsM[0].Callback != "cat_Стр 2" {
 		t.Fatalf("кнопка «Назад» должна возвращать на страницу «Стр 2», получено: %+v", carrot.ButtonsM)
+	}
+
+	vegetables := categories["Овощи"]
+	if len(vegetables.ButtonsM) == 0 || vegetables.ButtonsM[0].Callback != "cat_Стр 2" {
+		t.Fatalf("основная категория с подкатегориями должна возвращать на страницу «Стр 2», получено: %+v", vegetables.ButtonsM)
 	}
 }
